@@ -1186,6 +1186,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.max,
           children: [
             // 現在時刻表示
             Container(
@@ -1294,6 +1295,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                       ),
                     )
                   : ListView.builder(
+                      shrinkWrap: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: _alarms.length,
                       itemBuilder: (context, index) {
                         final alarm = _alarms[index];

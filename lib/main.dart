@@ -1001,19 +1001,21 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              const Text('エラーが発生しました'),
-              ElevatedButton(
-                onPressed: () => setState(() => _hasError = false),
-                child: const Text('再試行'),
-              ),
-            ],
+      return MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text('エラーが発生しました'),
+                ElevatedButton(
+                  onPressed: () => setState(() => _hasError = false),
+                  child: const Text('再試行'),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -1323,7 +1325,7 @@ void main() async {
       await _initializeApp();
       // ✅ 修正：自動バックアップ機能を初期化（コメントアウト）
       // await _initializeAutoBackup();
-      runApp(ErrorBoundary(child: const MedicationAlarmApp()));
+      runApp(const MedicationAlarmApp());
     } catch (e) {
       debugPrint('アプリ初期化エラー: $e');
       // 初期化に失敗してもアプリは起動する
@@ -1333,7 +1335,7 @@ void main() async {
       } catch (crashlyticsError) {
         debugPrint('Crashlyticsエラーレポート失敗: $crashlyticsError');
       }
-      runApp(ErrorBoundary(child: const MedicationAlarmApp()));
+      runApp(const MedicationAlarmApp());
     }
   }, (error, stack) {
     try {
@@ -4761,7 +4763,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ? const AlwaysScrollableScrollPhysics() 
             : const BouncingScrollPhysics(),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               // メモフィールド（一番上に配置）
               if (_selectedDay != null)
@@ -5128,7 +5130,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                               addRepaintBoundaries: true, // 再描画境界を追加
                               addSemanticIndexes: true, // セマンティックインデックスを追加
                               shrinkWrap: false, // 高さを親に合わせる
-                              primary: true, // プライマリスクロールビューとして設定
+                              primary: false, // コントローラーを使用するため false に設定
                               children: [
                                 // 既存の追加された薬（完全に作り直されたリスト）
                                 ..._addedMedications.map((medication) {
@@ -5163,6 +5165,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.max,
               children: [
                 _buildMedicationStats(),
               ],
@@ -6038,8 +6041,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 addRepaintBoundaries: true, // 再描画境界を追加
                 addSemanticIndexes: true, // セマンティックインデックスを追加
                 // スクロール動作の最適化
-                shrinkWrap: false, // 高さを親に合わせる
-                primary: true, // プライマリスクロールビューとして設定
+                shrinkWrap: true, // コンテンツに応じて高さを調整
+                primary: false, // 高さ無制限のためfalseに設定
                 itemBuilder: (context, index) {
                   final memo = _medicationMemos[index];
                   return Card(
@@ -9376,48 +9379,48 @@ class _MemoDialogState extends State<_MemoDialog> {
   }
   @override
   Widget build(BuildContext context) {
-    // メモ編集と新規追加を統一した画面
+    // メモ編集と新規追加を統一した画面 - 上部のスペースを最大限活用
     return AnimatedContainer(
       duration: const Duration(milliseconds: 50),
       curve: Curves.easeOut,
       child: Dialog(
         insetPadding: EdgeInsets.symmetric(
-          horizontal: MediaQuery.of(context).size.width * 0.05, // 左右の余白を追加
-          vertical: MediaQuery.of(context).size.height * 0.1, // 上下の余白を追加
+          horizontal: MediaQuery.of(context).size.width * 0.02, // 左右の余白を大幅削減
+          vertical: MediaQuery.of(context).size.height * 0.02, // 上下の余白を大幅削減
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12), // 角丸を削減
         ),
         child: Stack(
           children: [
             Container(
           constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.8, // 画面の80%に調整
-                maxWidth: MediaQuery.of(context).size.width * 0.9,   // 画面の90%に削減
+                maxHeight: MediaQuery.of(context).size.height * 0.95, // 画面の95%に拡大
+                maxWidth: MediaQuery.of(context).size.width * 0.95,   // 画面の95%に拡大
                 minWidth: 280,   // 最小幅を280に設定
               ),
-              width: MediaQuery.of(context).size.width * 0.9, // 明示的な幅を設定
+              width: MediaQuery.of(context).size.width * 0.95, // 明示的な幅を設定
           child: SingleChildScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(), // 常にスクロール可能
             padding: EdgeInsets.symmetric(
-              horizontal: MediaQuery.of(context).size.width < 400 ? 8 : 16, // 小さい画面では余白を削減
-              vertical: MediaQuery.of(context).size.height < 600 ? 4 : 8, // 小さい画面では余白を削減
+              horizontal: MediaQuery.of(context).size.width < 400 ? 4 : 8, // 小さい画面では余白を大幅削減
+              vertical: MediaQuery.of(context).size.height < 600 ? 2 : 4, // 小さい画面では余白を大幅削減
             ),
             child: Column(
               mainAxisSize: MainAxisSize.max, // 最大サイズで配置
               children: [
-                // ヘッダー（入力時は非表示）
+                // ヘッダー（入力時は非表示） - コンパクト化
                 if (!_isNameFocused && !_isDosageFocused && !_isNotesFocused) ...[
                 Container(
                   padding: EdgeInsets.all(
-                    MediaQuery.of(context).size.height < 600 ? 6 : 10, // さらに削減
+                    MediaQuery.of(context).size.height < 600 ? 4 : 6, // パディングを大幅削減
                   ),
                   decoration: BoxDecoration(
                       color: _selectedType == 'サプリメント' ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
+                      topLeft: Radius.circular(12), // 角丸を削減
+                      topRight: Radius.circular(12),
                     ),
                   ),
                   child: Row(
@@ -9425,9 +9428,9 @@ class _MemoDialogState extends State<_MemoDialog> {
                       Icon(
                           _selectedType == 'サプリメント' ? Icons.eco : Icons.medication,
                           color: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
-                        size: 24,
+                        size: 20, // アイコンサイズを削減
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8), // 間隔を削減
                       Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -9436,15 +9439,15 @@ class _MemoDialogState extends State<_MemoDialog> {
                             Text(
                                 widget.initialMemo != null ? 'メモ編集' : 'メモ追加',
                               style: const TextStyle(
-                                fontSize: 18,
+                                fontSize: 16, // フォントサイズを削減
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 2), // 間隔を削減
                             Text(
                                 widget.initialMemo != null ? 'メモを編集します' : '新しいメモを追加します',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 12, // フォントサイズを削減
                                 color: Colors.grey[600],
                               ),
                             ),
@@ -9455,19 +9458,20 @@ class _MemoDialogState extends State<_MemoDialog> {
                 ),
               ),
               ],
-              // コンテンツ
+              // コンテンツ - パディングを大幅削減
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(MediaQuery.of(context).size.height < 600 ? 8 : 12), // パディングを大幅削減
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 名前（一番上に配置、常に表示）
+                    // 名前（一番上に配置、常に表示） - コンパクト化
                       TextField(
                         controller: _nameController,
                         decoration: const InputDecoration(
                           labelText: '名前',
                           border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.label),
+                          prefixIcon: Icon(Icons.label, size: 20), // アイコンサイズを削減
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
                         ),
                       onTap: () {
                         setState(() {
@@ -9487,40 +9491,38 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                    // 曜日選択を常に表示
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8), // さらに削減
-                    // 服用スケジュール（曜日選択）
+                    // 曜日選択を常に表示 - 間隔を削減
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を大幅削減
+                    // 服用スケジュール（曜日選択） - コンパクト化
                     Text(
                       '服用スケジュール',
                       style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.height < 600 ? 14 : 16, // 小さい画面ではフォントサイズを削減
+                        fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14, // フォントサイズを削減
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // さらに削減
-                    // 毎日オプション
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 2 : 4), // 間隔を大幅削減
+                    // 毎日オプション - コンパクト化
                     GestureDetector(
                       onTap: () {
                         setState(() {
                           if (_selectedWeekdays.length == 7) {
-                            // すべて選択されている場合はすべて解除
                             _selectedWeekdays.clear();
                           } else {
-                            // すべて選択
                             _selectedWeekdays = [0, 1, 2, 3, 4, 5, 6];
                           }
                         });
                       },
                       child: Container(
                         width: double.infinity,
-                        height: 56, // 明示的な高さを設定
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        height: 44, // 高さを削減
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), // パディングを削減
                         decoration: BoxDecoration(
                           color: _selectedWeekdays.length == 7 ? _selectedColor : Colors.grey.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8), // 角丸を削減
                           border: Border.all(
                             color: _selectedWeekdays.length == 7 ? _selectedColor : Colors.grey.withOpacity(0.3),
-                            width: 2,
+                            width: 1.5, // ボーダー幅を削減
                           ),
                         ),
                         child: Row(
@@ -9528,35 +9530,35 @@ class _MemoDialogState extends State<_MemoDialog> {
                             Icon(
                               Icons.calendar_today,
                               color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[600],
-                              size: 20,
+                              size: 18, // アイコンサイズを削減
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 8), // 間隔を削減
                             Expanded(
                               child: Text(
                               '毎日',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 14, // フォントサイズを削減
                                 fontWeight: FontWeight.bold,
                                 color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[700],
                               ),
                             ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4), // 間隔を削減
                             if (_selectedWeekdays.length == 7)
                               const Icon(
                                 Icons.check,
                                 color: Colors.white,
-                                size: 20,
+                                size: 16, // アイコンサイズを削減
                               ),
                           ],
                         ),
                       ),
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8), // さらに削減
-                    // 曜日選択
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
+                    // 曜日選択 - コンパクト化
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 6, // 間隔を削減
+                      runSpacing: 6,
                       children: [
                         '日', '月', '火', '水', '木', '金', '土'
                       ].asMap().entries.map((entry) {
@@ -9574,14 +9576,14 @@ class _MemoDialogState extends State<_MemoDialog> {
                             });
                           },
                           child: Container(
-                            width: 40,
-                            height: 40,
+                            width: 36, // サイズを削減
+                            height: 36,
                             decoration: BoxDecoration(
                               color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(18), // 角丸を調整
                               border: Border.all(
                                 color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.3),
-                                width: 2,
+                                width: 1.5, // ボーダー幅を削減
                               ),
                             ),
                             child: Center(
@@ -9590,7 +9592,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                                 style: TextStyle(
                                   color: isSelected ? Colors.white : Colors.grey[700],
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                                  fontSize: 12, // フォントサイズを削減
                                 ),
                               ),
                             ),
@@ -9598,16 +9600,17 @@ class _MemoDialogState extends State<_MemoDialog> {
                         );
                       }).toList(),
                     ),
-                    // 用量とメモ選択時は他の要素を非表示
+                    // 用量とメモ選択時は他の要素を非表示 - コンパクト化
                     if (!_isDosageFocused && !_isNotesFocused) ...[
-                      const SizedBox(height: 20),
-                      // 種類選択
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
+                      // 種類選択 - コンパクト化
                       DropdownButtonFormField<String>(
                         value: _selectedType,
                         decoration: const InputDecoration(
                           labelText: '種類',
                           border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
+                          prefixIcon: Icon(Icons.category, size: 20), // アイコンサイズを削減
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
                         ),
                         items: const [
                           DropdownMenuItem(value: '薬品', child: Text('💊 薬品')),
@@ -9619,24 +9622,24 @@ class _MemoDialogState extends State<_MemoDialog> {
                           });
                         },
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
                     ],
-                    // 服用回数
-                    const SizedBox(height: 16),
+                    // 服用回数 - コンパクト化
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
                     const Text(
                       '服用回数',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14, // フォントサイズを削減
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4), // 間隔を削減
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 8), // パディングを削減
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6), // 角丸を削減
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
@@ -9645,7 +9648,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                           items: List.generate(6, (index) => index + 1).map((frequency) {
                             return DropdownMenuItem<int>(
                               value: frequency,
-                              child: Text('$frequency回'),
+                              child: Text('$frequency回', style: const TextStyle(fontSize: 14)), // フォントサイズを削減
                             );
                           }).toList(),
                           onChanged: (value) {
@@ -9659,18 +9662,18 @@ class _MemoDialogState extends State<_MemoDialog> {
                       ),
                     ),
                     if (_dosageFrequency >= 6) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6), // 間隔を削減
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8), // パディングを削減
                           decoration: BoxDecoration(
                             color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(6), // 角丸を削減
                             border: Border.all(color: Colors.orange.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning, color: Colors.orange, size: 20),
-                              const SizedBox(width: 8),
+                              const Icon(Icons.warning, color: Colors.orange, size: 16), // アイコンサイズを削減
+                              const SizedBox(width: 6), // 間隔を削減
                               const Flexible(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -9681,7 +9684,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                                       style: TextStyle(
                                         color: Colors.orange,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        fontSize: 12, // フォントサイズを削減
                                       ),
                                     ),
                                     Text(
@@ -9689,7 +9692,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                                       style: TextStyle(
                                         color: Colors.orange,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                                        fontSize: 12, // フォントサイズを削減
                                       ),
                                     ),
                                   ],
@@ -9699,15 +9702,16 @@ class _MemoDialogState extends State<_MemoDialog> {
                           ),
                         ),
                     ],
-                    // 用量
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8), // さらに削減
+                    // 用量 - コンパクト化
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
                     TextField(
                       key: const ValueKey('dosage_field'),
                       controller: _dosageController,
                       decoration: const InputDecoration(
                         labelText: '用量',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.straighten),
+                        prefixIcon: Icon(Icons.straighten, size: 20), // アイコンサイズを削減
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
                       ),
                       onTap: () {
                         setState(() {
@@ -9729,15 +9733,16 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8), // さらに削減
-                    // メモ
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
+                    // メモ - コンパクト化
                     TextField(
                       key: const ValueKey('notes_field'),
                       controller: _notesController,
                       decoration: const InputDecoration(
                         labelText: 'メモ',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.note),
+                        prefixIcon: Icon(Icons.note, size: 20), // アイコンサイズを削減
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
                       ),
                       maxLines: MediaQuery.of(context).size.height < 600 ? 2 : 3, // 小さい画面では行数を削減
                       onTap: () {
@@ -9760,9 +9765,9 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                      // メモ入力時の決定・完了ボタン
+                      // メモ入力時の決定・完了ボタン - コンパクト化
                       if (_isNotesFocused) ...[
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8), // 間隔を削減
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
@@ -9773,14 +9778,16 @@ class _MemoDialogState extends State<_MemoDialog> {
                                   _isNotesFocused = false;
                                 });
                               },
-                              icon: const Icon(Icons.check),
-                              label: const Text('決定'),
+                              icon: const Icon(Icons.check, size: 16), // アイコンサイズを削減
+                              label: const Text('決定', style: TextStyle(fontSize: 12)), // フォントサイズを削減
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // パディングを削減
                               ),
                             ),
                             ),
+                            const SizedBox(width: 8), // 間隔を削減
                             Expanded(
                               child: ElevatedButton.icon(
                               onPressed: () {
@@ -9788,32 +9795,33 @@ class _MemoDialogState extends State<_MemoDialog> {
                                   _isNotesFocused = false;
                                 });
                               },
-                              icon: const Icon(Icons.done),
-                              label: const Text('完了'),
+                              icon: const Icon(Icons.done, size: 16), // アイコンサイズを削減
+                              label: const Text('完了', style: TextStyle(fontSize: 12)), // フォントサイズを削減
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue,
                                 foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // パディングを削減
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ],
-                      // 色選択も用量とメモ選択時は非表示
+                      // 色選択も用量とメモ選択時は非表示 - コンパクト化
                     if (!_isDosageFocused && !_isNotesFocused) ...[
-                      const SizedBox(height: 20),
-                        // 色選択
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
+                        // 色選択 - コンパクト化
                       const Text(
                         '色',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 14, // フォントサイズを削減
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8), // 間隔を削減
                       Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                        spacing: 8, // 間隔を削減
+                        runSpacing: 8,
                         children: [
                           Colors.blue,
                           Colors.red,
@@ -9830,26 +9838,26 @@ class _MemoDialogState extends State<_MemoDialog> {
                             });
                           },
                           child: Container(
-                            width: 48,
-                            height: 48,
+                            width: 40, // サイズを削減
+                            height: 40,
                             decoration: BoxDecoration(
                               color: color,
                               shape: BoxShape.circle,
                               border: _selectedColor == color
-                                  ? Border.all(color: Colors.black, width: 3)
+                                  ? Border.all(color: Colors.black, width: 2) // ボーダー幅を削減
                                   : Border.all(color: Colors.grey.withOpacity(0.3)),
                               boxShadow: _selectedColor == color
                                   ? [
                                       BoxShadow(
                                         color: color.withOpacity(0.3),
-                                        blurRadius: 8,
-                                        spreadRadius: 2,
+                                        blurRadius: 6, // ブラーを削減
+                                        spreadRadius: 1, // スプレッドを削減
                                       ),
                                     ]
                                   : null,
                             ),
                             child: _selectedColor == color
-                                ? const Icon(Icons.check, color: Colors.white, size: 24)
+                                ? const Icon(Icons.check, color: Colors.white, size: 20) // アイコンサイズを削減
                                 : null,
                           ),
                         )).toList(),
@@ -9858,64 +9866,70 @@ class _MemoDialogState extends State<_MemoDialog> {
                   ],
                 ),
               ),
-            // フッター（入力時は非表示）
+            // フッター（入力時は非表示） - コンパクト化
             if (!_isNameFocused && !_isDosageFocused && !_isNotesFocused) ...[
-              Container(
-                padding: EdgeInsets.only(
-                  left: MediaQuery.of(context).size.height < 600 ? 6 : 10,
-                  right: MediaQuery.of(context).size.height < 600 ? 4 : 6, // 右側のパディングを削減
-                  top: MediaQuery.of(context).size.height < 600 ? 6 : 10,
-                  bottom: MediaQuery.of(context).size.height < 600 ? 6 : 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    left: MediaQuery.of(context).size.height < 600 ? 4 : 8, // パディングを削減
+                    right: MediaQuery.of(context).size.height < 600 ? 4 : 8,
+                    top: MediaQuery.of(context).size.height < 600 ? 4 : 8,
+                    bottom: MediaQuery.of(context).size.height < 600 ? 4 : 8,
                   ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Flexible(
-                      child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('キャンセル'),
-                      ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(12), // 角丸を削減
+                      bottomRight: Radius.circular(12),
                     ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: ElevatedButton(
-                      onPressed: () {
-                        if (_nameController.text.trim().isNotEmpty) {
-                          try {
-                          final memo = MedicationMemo(
-                            id: widget.initialMemo?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                              name: _nameController.text.trim(),
-                            type: _selectedType,
-                              dosage: _dosageController.text.trim(),
-                              notes: _notesController.text.trim(),
-                            createdAt: widget.initialMemo?.createdAt ?? DateTime.now(),
-                            lastTaken: widget.initialMemo?.lastTaken,
-                            color: _selectedColor,
-                              selectedWeekdays: _selectedWeekdays,
-                              dosageFrequency: _dosageFrequency,
-                          );
-                          widget.onMemoAdded(memo);
-                          Navigator.pop(context);
-                          } catch (e) {
-                                  // エラーハンドリング
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Flexible(
+                        child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('キャンセル', style: TextStyle(fontSize: 12)), // フォントサイズを削減
+                        ),
+                      ),
+                      const SizedBox(width: 8), // 間隔を削減
+                      Flexible(
+                        child: ElevatedButton(
+                        onPressed: () {
+                          if (_nameController.text.trim().isNotEmpty) {
+                            try {
+                            final memo = MedicationMemo(
+                              id: widget.initialMemo?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                                name: _nameController.text.trim(),
+                              type: _selectedType,
+                                dosage: _dosageController.text.trim(),
+                                notes: _notesController.text.trim(),
+                              createdAt: widget.initialMemo?.createdAt ?? DateTime.now(),
+                              lastTaken: widget.initialMemo?.lastTaken,
+                              color: _selectedColor,
+                                selectedWeekdays: _selectedWeekdays,
+                                dosageFrequency: _dosageFrequency,
+                            );
+                            widget.onMemoAdded(memo);
+                            Navigator.pop(context);
+                            } catch (e) {
+                                    // エラーハンドリング
+                            }
                           }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
-                        foregroundColor: Colors.white,
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // パディングを削減
+                        ),
+                        child: Text(widget.initialMemo != null ? '更新' : '追加', style: const TextStyle(fontSize: 12)), // フォントサイズを削減
+                        ),
                       ),
-                      child: Text(widget.initialMemo != null ? '更新' : '追加'),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -9923,17 +9937,18 @@ class _MemoDialogState extends State<_MemoDialog> {
         ),
       ),
             ),
-            // 右上端に×ボタンを配置
+            // 右上端に×ボタンを配置 - コンパクト化
             Positioned(
-              top: 8,
-              right: 8,
+              top: 4, // 位置を調整
+              right: 4,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.grey),
+                icon: const Icon(Icons.close, color: Colors.grey, size: 20), // アイコンサイズを削減
                 onPressed: () => Navigator.pop(context),
                 tooltip: '閉じる',
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.white.withOpacity(0.9),
                   shape: const CircleBorder(),
+                  padding: const EdgeInsets.all(4), // パディングを削減
                 ),
               ),
             ),
