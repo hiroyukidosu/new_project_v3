@@ -33,177 +33,34 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 // import 'firebase_options.dart';
 import 'simple_alarm_app.dart';
 
-// ✅ 修正：デバッグログ用のヘルパー関数
+// 高速化：シンプルなデバッグログ
 void _debugLog(String message) {
   if (kDebugMode) {
     debugPrint(message);
   }
 }
 
-// ✅ 修正：ロガーの改善
+// 高速化：シンプルなLogger
 class Logger {
-  static DateTime? _lastLogTime;
-  static const Duration _logInterval = Duration(seconds: 30);
-  
   static void info(String message) {
-    if (kDebugMode && _shouldLog()) {
-      debugPrint('[INFO] ${DateTime.now()}: $message');
-    }
+    if (kDebugMode) debugPrint('[INFO] $message');
   }
-  
   static void error(String message, [dynamic error]) {
-    if (kDebugMode) {
-      debugPrint('[ERROR] ${DateTime.now()}: $message: $error');
-    }
-    try {
-      FirebaseCrashlytics.instance.log(message);
-      if (error != null) {
-        FirebaseCrashlytics.instance.recordError(error, StackTrace.current);
-      }
-    } catch (e) {
-      // Crashlytics自体のエラーは無視
-    }
+    if (kDebugMode) debugPrint('[ERROR] $message: $error');
   }
-  
   static void warning(String message) {
-    if (kDebugMode && _shouldLog()) {
-      debugPrint('[WARNING] ${DateTime.now()}: $message');
-    }
+    if (kDebugMode) debugPrint('[WARNING] $message');
   }
-  
   static void debug(String message) {
-    if (kDebugMode && _shouldLog()) {
-      debugPrint('[DEBUG] ${DateTime.now()}: $message');
-    }
-  }
-  
-  static void performance(String message) {
-    if (kDebugMode) {
-      debugPrint('[PERFORMANCE] ${DateTime.now()}: $message');
-    }
-  }
-  
-  static void critical(String message, [dynamic error]) {
-    if (kDebugMode) {
-      debugPrint('[CRITICAL] ${DateTime.now()}: $message: $error');
-    }
-    try {
-      FirebaseCrashlytics.instance.log('CRITICAL: $message');
-      if (error != null) {
-        FirebaseCrashlytics.instance.recordError(error, StackTrace.current);
-      }
-    } catch (e) {
-      // Crashlytics自体のエラーは無視
-    }
-  }
-  
-  // ログの頻度制御
-  static bool _shouldLog() {
-    final now = DateTime.now();
-    if (_lastLogTime == null || now.difference(_lastLogTime!).compareTo(_logInterval) >= 0) {
-      _lastLogTime = now;
-      return true;
-    }
-    return false;
+    if (kDebugMode) debugPrint('[DEBUG] $message');
   }
 }
 
-// ✅ 修正：コードの重複削減（汎用的なヘルパー関数）
-class PrefsHelper {
-  static Future<String?> loadWithFallback(List<String> keys) async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final key in keys) {
-      try {
-        final value = prefs.getString(key);
-        if (value != null && value.isNotEmpty) {
-          Logger.info('データ読み込み成功: $key');
-          return value;
-        }
-      } catch (e) {
-        Logger.warning('キー $key の読み込みエラー: $e');
-        continue;
-      }
-    }
-    Logger.warning('すべてのキーでデータが見つかりません: $keys');
-    return null;
-  }
-  
-  static Future<void> saveWithBackup(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      await Future.wait([
-        prefs.setString(key, value),
-        prefs.setString('${key}${AppConstants.backupSuffix}', value),
-      ]);
-      Logger.info('データ保存完了: $key');
-    } catch (e) {
-      Logger.error('データ保存エラー: $key', e);
-    }
-  }
-  
-  static Future<void> deleteWithBackup(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      await Future.wait([
-        prefs.remove(key),
-        prefs.remove('${key}${AppConstants.backupSuffix}'),
-      ]);
-      Logger.info('データ削除完了: $key');
-    } catch (e) {
-      Logger.error('データ削除エラー: $key', e);
-    }
-  }
-}
+// 高速化：PrefsHelper削除
 
-// ✅ 修正：ユーザーフレンドリーなエラーメッセージ
-void _showUserFriendlyError(BuildContext context, String errorContext, dynamic error) {
-  String message;
-  if (error.toString().contains('permission')) {
-    message = '権限が不足しています。設定を確認してください。';
-  } else if (error.toString().contains('network')) {
-    message = 'ネットワーク接続を確認してください。';
-  } else if (error.toString().contains('storage')) {
-    message = 'ストレージの容量が不足しています。';
-  } else {
-    message = '問題が発生しました。もう一度お試しください。';
-  }
-  
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: Colors.red,
-      duration: const Duration(seconds: 3),
-    ),
-  );
-}
+// 高速化：エラーハンドリング削除
 
-// ✅ 修正：ローディングオーバーレイ
-Widget _buildLoadingOverlay(bool isLoading) {
-  if (!isLoading) return const SizedBox.shrink();
-  
-  return Material(
-    color: Colors.black.withOpacity(0.5),
-    child: Center(
-      child: DefaultTextStyle(
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          decoration: TextDecoration.none,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-            SizedBox(height: 16),
-            Text('データを保存中...'),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+// 高速化：ローディングオーバーレイ削除
 
 // ✅ 修正：統一された定数管理
 class AppConstants {
@@ -4763,16 +4620,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ? const AlwaysScrollableScrollPhysics() 
             : const BouncingScrollPhysics(),
           child: Column(
-            mainAxisSize: MainAxisSize.max,
+            mainAxisSize: MainAxisSize.min,
             children: [
               // メモフィールド（一番上に配置）
               if (_selectedDay != null)
                 Container(
-                  margin: EdgeInsets.only(
-                    bottom: 16,
-                    left: MediaQuery.of(context).size.width * 0.02, // 画面幅の2%
-                    right: MediaQuery.of(context).size.width * 0.02, // 画面幅の2%
-                  ),
+                  margin: const EdgeInsets.only(bottom: 16), // 左右のマージンを削除して横いっぱいに
                   padding: EdgeInsets.all(
                     isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 画面サイズに応じたパディング調整
                   ),
@@ -4798,7 +4651,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           Icon(Icons.calendar_today, color: Colors.blue, size: 20),
                           const SizedBox(width: 8),
                           Text(
-                            '${DateFormat('M月d日', 'ja_JP').format(_selectedDay!)}のメモ',
+                            '今日のメモ',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -4833,9 +4686,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ],
                 ),
               ),
-              // カレンダー（端末サイズに応じて調整）
-              Container(
-                height: MediaQuery.of(context).size.height < 600 ? 300 : 400, // 小さい端末では高さを削減
+              // カレンダー（高さ350pxに固定）
+              SizedBox(
+                height: 350, // 高さを350pxに固定
+                child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16), // 角丸削減
                   gradient: const LinearGradient(
@@ -4943,7 +4797,40 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
               ),
+              ),
               const SizedBox(height: 12), // 間隔削減
+              // 今日の服用状況表示
+              if (_selectedDay != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.15),
+                        spreadRadius: 1,
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    '今日の薬の服用状況を管理しましょう',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              const SizedBox(height: 8),
               // 服用記録セクション（オーバーフロー防止）
               if (_selectedDay != null)
                 Container(
@@ -5071,82 +4958,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       key: _calendarBottomKey,
                       height: 1, // 見えないマーカー
                     ),
-                    // ✅ 修正：2件以上の服用記録がある場合に「下へ」ナビゲーションを表示
-                    // 服用済みリスト（高さ250pxで制限・スクロール可能）
+                    // ✅ 修正：服用記録リスト（高さ制限でスクロール可能）
                     SizedBox(
-                      height: 250, // 高さを250pxに制限
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (ScrollNotification notification) {
-                          // スクロール位置の追跡
-                          if (notification.metrics.pixels <= notification.metrics.minScrollExtent) {
-                            _isAtTop = true;
-                            debugPrint('服用記録リスト上端に到達 - 親スクロールにバトンタッチ可能');
-                            
-                            // スクロールバトンタッチを有効化
-                            if (!_isScrollBatonPassActive) {
-                              _isScrollBatonPassActive = true;
-                              debugPrint('スクロールバトンタッチ有効化');
-                              // ハプティックフィードバックで切り替えを通知
-                              HapticFeedback.lightImpact();
-                              // ✅ 修正：レイアウト中のsetState()を避ける
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                if (mounted) {
-                                  setState(() {});
-                                }
-                              });
-                            }
-                          } else {
-                            _isAtTop = false;
-                            
-                            // スクロールバトンタッチを無効化
-                            if (_isScrollBatonPassActive) {
-                              _isScrollBatonPassActive = false;
-                              debugPrint('スクロールバトンタッチ無効化');
-                              // ハプティックフィードバックで切り替えを通知
-                              HapticFeedback.selectionClick();
-                              // 状態更新でUIを再描画
-                              setState(() {});
-                            }
-                          }
-                          
-                          if (notification.metrics.pixels >= notification.metrics.maxScrollExtent) {
-                            debugPrint('服用記録リスト下端に到達');
-                          }
-                          
-                          _lastScrollPosition = notification.metrics.pixels;
-                          
-                          return false;
+                      height: 400, // 固定高さを設定
+                      child: ListView.builder(
+                        controller: _medicationHistoryScrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: _getMedicationListLength(),
+                        itemBuilder: (context, index) {
+                          return _buildMedicationItem(index);
                         },
-                        child: Stack(
-                          children: [
-                            ListView(
-                              controller: _medicationHistoryScrollController,
-                              physics: _isScrollBatonPassActive 
-                                ? const ClampingScrollPhysics() // バトンタッチ時は制限付きスクロール
-                                : const AlwaysScrollableScrollPhysics(), // 通常時は常にスクロール可能
-                              // スクロール動作の最適化
-                              cacheExtent: 1000, // キャッシュ範囲を拡張
-                              addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
-                              addRepaintBoundaries: true, // 再描画境界を追加
-                              addSemanticIndexes: true, // セマンティックインデックスを追加
-                              shrinkWrap: false, // 高さを親に合わせる
-                              primary: false, // コントローラーを使用するため false に設定
-                              children: [
-                                // 既存の追加された薬（完全に作り直されたリスト）
-                                ..._addedMedications.map((medication) {
-                                  return _buildAddedMedicationRecord(medication);
-                                }).toList(),
-                                // 服用メモの曜日指定した薬を表示（完全に作り直されたリスト）
-                                ..._getMedicationsForSelectedDay().map((memo) {
-                                  return _buildMedicationMemoCheckbox(memo);
-                                }).toList(),
-                                // 服用メモが未追加の場合のメッセージ表示
-                                if (_addedMedications.isEmpty && _getMedicationsForSelectedDay().isEmpty)
-                                  _buildNoMedicationMessage(),
-                              ],
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],
@@ -5178,9 +4999,36 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
   // 安全な最大高さを計算する関数
 
+  // 服用記録リストの長さを取得
+  int _getMedicationListLength() {
+    final addedCount = _addedMedications.length;
+    final memoCount = _getMedicationsForSelectedDay().length;
+    final hasNoData = addedCount == 0 && memoCount == 0;
+    return addedCount + memoCount + (hasNoData ? 1 : 0);
+  }
+
+  // 服用記録アイテムを構築
+  Widget _buildMedicationItem(int index) {
+    final addedCount = _addedMedications.length;
+    final memoCount = _getMedicationsForSelectedDay().length;
+    
+    if (index < addedCount) {
+      // 追加された薬
+      return _buildAddedMedicationRecord(_addedMedications[index]);
+    } else if (index < addedCount + memoCount) {
+      // 服用メモ
+      final memoIndex = index - addedCount;
+      return _buildMedicationMemoCheckbox(_getMedicationsForSelectedDay()[memoIndex]);
+    } else {
+      // データなしメッセージ
+      return _buildNoMedicationMessage();
+    }
+  }
+
   // 服用メモが未追加の場合のメッセージ表示
   Widget _buildNoMedicationMessage() {
     return Container(
+      height: 450, // 高さを450pxに設定
       margin: const EdgeInsets.symmetric(vertical: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
