@@ -4863,7 +4863,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
                 const SizedBox(height: 4), // 間隔削減
                 Text(
-                  '今日の薬の服用状況を管理しましょう',
+                  '今日の服用状況を確認しましょう',
                   style: TextStyle(
                     fontSize: 12, // フォントサイズ削減
                     color: Colors.white.withOpacity(0.9),
@@ -4947,8 +4947,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                               },
                             ),
                           ),
-                    // 服用数の表示UI
-                    if (_getMedicationListLength() > 0)
+                    // 服用数の表示UI（メモ0のときは表示しない）
+                    if (_getMedicationListLength() > 0 && _getMedicationListLength() != 1)
                       Container(
                         margin: const EdgeInsets.symmetric(vertical: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -5084,9 +5084,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 16),
           Text(
-            '服用メモから服用スケジュール(毎日、曜日)を選択してください',
+            '服用メモから服用スケジュール\n(毎日、曜日)を選択してください',
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: FontWeight.bold,
               color: Theme.of(context).brightness == Brightness.dark 
                   ? Colors.white 
@@ -5096,7 +5096,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 8),
           Text(
-            '服用メモタブで薬やサプリメントを追加してから、\nカレンダーページで服用スケジュールを管理できます。',
+            '服用メモタブで薬品やサプリメントを追加してから、\nカレンダーページで服用スケジュールを管理できます。',
             style: TextStyle(
               fontSize: 14,
               color: Theme.of(context).brightness == Brightness.dark 
@@ -8443,7 +8443,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ バックアップ実行機能（非同期で軽く最適化）
+  // ✅ バックアップ実行機能（1回で完了するように最適化）
   Future<void> _performBackup(String backupName) async {
     // ローディング表示
     if (mounted) {
@@ -8466,11 +8466,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
     
     try {
-      // 非同期でバックアップデータを作成
-      final backupData = await _createBackupDataAsync(backupName);
-      
-      // 非同期で暗号化と保存
-      await _saveBackupAsync(backupData, backupName);
+      // ✅ 改善：1回でバックアップを完了
+      await _createAndSaveBackupInOneStep(backupName);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -8489,6 +8486,59 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
         );
       }
+    }
+  }
+
+  // ✅ 1回でバックアップを完了するメソッド
+  Future<void> _createAndSaveBackupInOneStep(String backupName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
+      
+      // バックアップデータを直接作成
+      final backupData = {
+        'name': backupName,
+        'createdAt': DateTime.now().toIso8601String(),
+        'type': 'manual',
+        // 服用メモ関連
+        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
+        'addedMedications': _addedMedications,
+        'medicationData': _medicationData.map((dateKey, dayData) {
+          final dayDataJson = <String, dynamic>{};
+          for (final medEntry in dayData.entries) {
+            dayDataJson[medEntry.key] = medEntry.value.toJson();
+          }
+          return MapEntry(dateKey, dayDataJson);
+        }),
+        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
+        // チェック状態関連
+        'weekdayMedicationStatus': _weekdayMedicationStatus,
+        'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus,
+        'medicationMemoStatus': _medicationMemoStatus,
+        // カレンダー色関連（Colorオブジェクトをintに変換）
+        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
+        // アラーム関連
+        'alarmList': _alarmList,
+        'alarmSettings': _alarmSettings,
+        // その他の状態
+        'adherenceRates': _adherenceRates,
+      };
+      
+      // JSONエンコード
+      final jsonString = jsonEncode(backupData);
+      
+      // 暗号化（簡易版）
+      final encryptedData = await _encryptDataAsync(jsonString);
+      
+      // 保存
+      await prefs.setString(backupKey, encryptedData);
+      
+      // 履歴更新
+      await _updateBackupHistory(backupName, backupKey);
+      
+    } catch (e) {
+      debugPrint('1回バックアップ作成エラー: $e');
+      rethrow;
     }
   }
 
