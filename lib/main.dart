@@ -2812,8 +2812,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // 服用履歴メモ用のScrollController
   final ScrollController _medicationHistoryScrollController = ScrollController();
   
-  
-  
+  // 服用記録ページめくり用のコントローラー
+  late PageController _medicationPageController;
+  int _currentMedicationPage = 0;
   
   // カレンダー下の位置を取得するためのGlobalKey
   final GlobalKey _calendarBottomKey = GlobalKey();
@@ -2845,6 +2846,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     });
     
    
+    
+    // PageControllerを初期化
+    _medicationPageController = PageController(viewportFraction: 1.0);
     
     // こぱさん流：データ読み込みを先に実行（上書きを防ぐ）
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -3978,6 +3982,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _tabController.dispose();
     _calendarScrollController.dispose();
     _medicationHistoryScrollController.dispose();
+    _medicationPageController.dispose();
     _customDaysController.dispose();
     
     // ✅ 修正：購入サービスも解放
@@ -4626,8 +4631,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               if (_selectedDay != null)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16), // 左右のマージンを削除して横いっぱいに
-                  padding: EdgeInsets.all(
-                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 画面サイズに応じたパディング調整
+                  padding: EdgeInsets.fromLTRB(
+                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 左
+                    0, // 上（余白削除）
+                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 右
+                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 下
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -4648,8 +4656,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       // 日付表示
                       Row(
                         children: [
-                          Icon(Icons.calendar_today, color: Colors.blue, size: 20),
-                          const SizedBox(width: 8),
                           Text(
                             '今日のメモ',
                             style: TextStyle(
@@ -4660,7 +4666,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      // 余白削除
                       // メモフィールド
                       _buildMemoField(),
                     ],
@@ -4799,46 +4805,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
               ),
               const SizedBox(height: 12), // 間隔削減
-              // 今日の服用状況表示
+              // 今日の服用状況表示（カレンダーの下、服用記録の上）
               if (_selectedDay != null)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.15),
-                        spreadRadius: 1,
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    '今日の薬の服用状況を管理しましょう',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                _buildMedicationStats(),
               const SizedBox(height: 8),
-              // 服用記録セクション（オーバーフロー防止）
+              // 服用記録セクション（高さ制限削除）
               if (_selectedDay != null)
-                Container(
-                  constraints: BoxConstraints(
-                    maxHeight: 600, // 固定高さ600pxに拡大
-                  ),
-                  child: _buildMedicationRecords(),
-                ),
+                _buildMedicationRecords(),
               const SizedBox(height: 20),
             ],
           ),
@@ -4901,16 +4874,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ),
           ),
           // 完全に作り直された服用記録リスト
-            Container(
-            constraints: const BoxConstraints(
-              maxHeight: 500, // 最大高さを拡大
-            ),
+          Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                   // メモ選択時は選択されたメモのみ表示
                   if (_isMemoSelected && _selectedMemo != null) ...[
                     // 戻るボタン
@@ -4958,40 +4926,108 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       key: _calendarBottomKey,
                       height: 1, // 見えないマーカー
                     ),
-                    // ✅ 修正：服用記録リスト（高さ制限でスクロール可能）
-                    SizedBox(
-                      height: 400, // 固定高さを設定
-                      child: ListView.builder(
-                        controller: _medicationHistoryScrollController,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        itemCount: _getMedicationListLength(),
-                        itemBuilder: (context, index) {
-                          return _buildMedicationItem(index);
-                        },
+                    // ✅ 修正：服用記録リスト（ページめくり方式・SizedBox）
+                    _getMedicationListLength() == 0
+                        ? SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4, // MediaQuery使用
+                            child: _buildNoMedicationMessage(),
+                          )
+                        : SizedBox(
+                            height: 400, // 固定高さを設定
+                            child: PageView.builder(
+                              controller: _medicationPageController,
+                              onPageChanged: (index) {
+                                setState(() {
+                                  _currentMedicationPage = index;
+                                });
+                              },
+                              itemCount: _getMedicationListLength(),
+                              itemBuilder: (context, index) {
+                                return _buildMedicationItem(index);
+                              },
+                            ),
+                          ),
+                    // 服用数の表示UI
+                    if (_getMedicationListLength() > 0)
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.blue, width: 1),
+                        ),
+                        child: Text(
+                          '${_currentMedicationPage + 1}/${_getMedicationListLength()} 服用の数',
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
+                    // ページめくりボタン
+                    if (_getMedicationListLength() > 1)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _currentMedicationPage > 0 ? () {
+                                  _medicationPageController.previousPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                  );
+                                } : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _currentMedicationPage > 0 ? Colors.blue : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  '前の\n服用内容',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _currentMedicationPage < _getMedicationListLength() - 1 ? () {
+                                  _medicationPageController.nextPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                  );
+                                } : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _currentMedicationPage < _getMedicationListLength() - 1 ? Colors.blue : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  '次の\n服用内容',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ],
-              ),
             ),
           ),
-          // フッター統計
-          Container(
-            padding: const EdgeInsets.all(16), // パディング削減
-            decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(20),
-                bottomRight: Radius.circular(20),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                _buildMedicationStats(),
-              ],
-            ),
-          ),
+          // フッター統計（削除）
         ],
       ),
     );
@@ -7374,7 +7410,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         // ✅ 修正：オーバーフローを防ぐためにFlexibleを使用
         Row(
           children: [
-            const Icon(Icons.note, color: Colors.grey, size: 16), // アイコンサイズ削減
+            Icon(Icons.note_alt, color: Colors.blue, size: 16),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -7431,8 +7467,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: TextField(
             controller: _memoController,
             focusNode: _memoFocusNode,
-            maxLines: MediaQuery.of(context).size.height < 600 ? 4 : 6, // 小さい画面では行数を削減
-            minLines: 1, // 最小行数を1に変更
+            maxLines: 2, // 2行表示に固定
+            minLines: 2, // 最小行数を2に変更
             decoration: InputDecoration(
               hintText: '副作用、病院、通院記録など',
               hintStyle: const TextStyle(
@@ -8886,74 +8922,97 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // ✅ 非同期でデータを復元
   Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
     // データの復元（型安全な処理）- 全データを復元対象に
-    setState(() {
-      // 服用メモ関連の復元
-      _medicationMemos = (backupData['medicationMemos'] as List)
-          .map((json) => MedicationMemo.fromJson(json))
+    // ✅ 修正：setState()を呼ぶ前に全データを復元し、一度にUI更新
+    final List<MedicationMemo> restoredMemos = (backupData['medicationMemos'] as List)
+        .map((json) => MedicationMemo.fromJson(json))
+        .toList();
+    final List<Map<String, dynamic>> restoredAddedMedications = List<Map<String, dynamic>>.from(backupData['addedMedications']);
+    
+    // 薬品データの復元
+    List<MedicineData> restoredMedicines = [];
+    if (backupData['medicines'] != null) {
+      restoredMedicines = (backupData['medicines'] as List)
+          .map((json) => MedicineData.fromJson(json))
           .toList();
-      _addedMedications = List<Map<String, dynamic>>.from(backupData['addedMedications']);
-      
-      // 薬品データの復元
-      if (backupData['medicines'] != null) {
-        _medicines = (backupData['medicines'] as List)
-            .map((json) => MedicineData.fromJson(json))
-            .toList();
-      }
-      
-      // ✅ 修正：MedicationInfo型の安全な復元処理
-      _medicationData = <String, Map<String, MedicationInfo>>{};
-      if (backupData['medicationData'] != null) {
-        final medicationDataMap = backupData['medicationData'] as Map<String, dynamic>;
-        for (final entry in medicationDataMap.entries) {
-          final dateKey = entry.key;
-          final dayData = entry.value as Map<String, dynamic>;
-          final medicationInfoMap = <String, MedicationInfo>{};
-          
-          for (final medEntry in dayData.entries) {
-            final medKey = medEntry.key;
-            final medData = medEntry.value as Map<String, dynamic>;
-            medicationInfoMap[medKey] = MedicationInfo.fromJson(medData);
-          }
-          
-          _medicationData[dateKey] = medicationInfoMap;
+    }
+    
+    // ✅ 修正：MedicationInfo型の安全な復元処理
+    final Map<String, Map<String, MedicationInfo>> restoredMedicationData = <String, Map<String, MedicationInfo>>{};
+    if (backupData['medicationData'] != null) {
+      final medicationDataMap = backupData['medicationData'] as Map<String, dynamic>;
+      for (final entry in medicationDataMap.entries) {
+        final dateKey = entry.key;
+        final dayData = entry.value as Map<String, dynamic>;
+        final medicationInfoMap = <String, MedicationInfo>{};
+        
+        for (final medEntry in dayData.entries) {
+          final medKey = medEntry.key;
+          final medData = medEntry.value as Map<String, dynamic>;
+          medicationInfoMap[medKey] = MedicationInfo.fromJson(medData);
         }
+        
+        restoredMedicationData[dateKey] = medicationInfoMap;
       }
-      
-      // チェック状態の復元
-      if (backupData['weekdayMedicationStatus'] != null) {
-        _weekdayMedicationStatus = Map<String, Map<String, bool>>.from(backupData['weekdayMedicationStatus']);
+    }
+    
+    // チェック状態の復元
+    final Map<String, Map<String, bool>> restoredWeekdayStatus = {};
+    if (backupData['weekdayMedicationStatus'] != null) {
+      restoredWeekdayStatus.addAll(Map<String, Map<String, bool>>.from(backupData['weekdayMedicationStatus']));
+    }
+    
+    final Map<String, Map<String, Map<int, bool>>> restoredWeekdayDoseStatus = {};
+    if (backupData['weekdayMedicationDoseStatus'] != null) {
+      restoredWeekdayDoseStatus.addAll(Map<String, Map<String, Map<int, bool>>>.from(backupData['weekdayMedicationDoseStatus']));
+    }
+    
+    final Map<String, bool> restoredMemoStatus = {};
+    if (backupData['medicationMemoStatus'] != null) {
+      restoredMemoStatus.addAll(Map<String, bool>.from(backupData['medicationMemoStatus']));
+    }
+    
+    // ✅ 修正：dayColorsの安全な復元処理
+    final Map<String, Color> restoredDayColors = <String, Color>{};
+    if (backupData['dayColors'] != null) {
+      final dayColorsMap = backupData['dayColors'] as Map<String, dynamic>;
+      for (final entry in dayColorsMap.entries) {
+        restoredDayColors[entry.key] = Color(entry.value as int);
       }
-      if (backupData['weekdayMedicationDoseStatus'] != null) {
-        _weekdayMedicationDoseStatus = Map<String, Map<String, Map<int, bool>>>.from(backupData['weekdayMedicationDoseStatus']);
-      }
-      if (backupData['medicationMemoStatus'] != null) {
-        _medicationMemoStatus = Map<String, bool>.from(backupData['medicationMemoStatus']);
-      }
-      
-      // ✅ 修正：dayColorsの安全な復元処理
-      _dayColors = <String, Color>{};
-      if (backupData['dayColors'] != null) {
-        final dayColorsMap = backupData['dayColors'] as Map<String, dynamic>;
-        for (final entry in dayColorsMap.entries) {
-          _dayColors[entry.key] = Color(entry.value as int);
-        }
-      }
-      
-      // アラーム関連の復元
-      if (backupData['alarmList'] != null) {
-        _alarmList = List<Map<String, dynamic>>.from(backupData['alarmList']);
-      }
-      if (backupData['alarmSettings'] != null) {
-        _alarmSettings = Map<String, dynamic>.from(backupData['alarmSettings']);
-      }
-      
-      // その他の状態の復元
-      if (backupData['adherenceRates'] != null) {
-        _adherenceRates = Map<String, double>.from(backupData['adherenceRates']);
-      }
+    }
+    
+    // アラーム関連の復元
+    final List<Map<String, dynamic>> restoredAlarmList = [];
+    if (backupData['alarmList'] != null) {
+      restoredAlarmList.addAll(List<Map<String, dynamic>>.from(backupData['alarmList']));
+    }
+    
+    final Map<String, dynamic> restoredAlarmSettings = {};
+    if (backupData['alarmSettings'] != null) {
+      restoredAlarmSettings.addAll(Map<String, dynamic>.from(backupData['alarmSettings']));
+    }
+    
+    // その他の状態の復元
+    final Map<String, double> restoredAdherenceRates = {};
+    if (backupData['adherenceRates'] != null) {
+      restoredAdherenceRates.addAll(Map<String, double>.from(backupData['adherenceRates']));
+    }
+    
+    // ✅ 修正：一度に全データを復元してsetState()を1回だけ呼ぶ
+    setState(() {
+      _medicationMemos = restoredMemos;
+      _addedMedications = restoredAddedMedications;
+      _medicines = restoredMedicines;
+      _medicationData = restoredMedicationData;
+      _weekdayMedicationStatus = restoredWeekdayStatus;
+      _weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
+      _medicationMemoStatus = restoredMemoStatus;
+      _dayColors = restoredDayColors;
+      _alarmList = restoredAlarmList;
+      _alarmSettings = restoredAlarmSettings;
+      _adherenceRates = restoredAdherenceRates;
     });
     
-    // 非同期でデータを保存
+    // ✅ 修正：復元後にデータを保存（1回だけ）
     await _saveAllData();
   }
 
