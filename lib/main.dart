@@ -18,6 +18,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'firebase_options.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:permission_handler/permission_handler.dart';
@@ -1175,6 +1178,23 @@ void main() async {
   };
     } catch (e) {
       debugPrint('Crashlyticsエラーハンドリング設定失敗: $e');
+    }
+
+    // ✅ Firebase初期化
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      debugPrint('Firebase初期化完了');
+      
+      // Crashlytics初期化
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+      debugPrint('Firebase Crashlytics初期化完了');
+      
+      // テスト用の初期ログ
+      await FirebaseCrashlytics.instance.log('アプリ起動 - Firebase Crashlytics有効');
+    } catch (e) {
+      debugPrint('Firebase初期化エラー: $e');
     }
 
     // アプリ初期化と起動
