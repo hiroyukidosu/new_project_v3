@@ -28,6 +28,10 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
   
+  # 🚀 高性能データベース（大量データ対応）
+  # isar: ^3.1.0+1
+  # isar_flutter_libs: ^3.1.0+1
+  
   # 📅 日付・時間管理
   timezone: ^0.9.2
   
@@ -62,6 +66,7 @@ dependencies:
   
   # 💳 アプリ内課金機能
   in_app_purchase: ^3.1.13
+  # isar_generator: ^3.1.0+1
   
   
 

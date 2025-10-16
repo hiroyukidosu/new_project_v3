@@ -30,6 +30,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:expandable/expandable.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+// import 'package:isar/isar.dart';
 
 // Local imports
 // import 'firebase_options.dart';
@@ -1141,15 +1142,15 @@ void main() async {
  
     // Firebase初期化（統合版）
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
       _debugLog('Firebase初期化完了');
-      
+    
       // Crashlytics初期化
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
       _debugLog('Firebase Crashlytics初期化完了');
-      
+    
       // テスト用の初期ログ
       await FirebaseCrashlytics.instance.log('アプリ起動 - Firebase Crashlytics有効');
   } catch (e) {
@@ -1421,6 +1422,7 @@ class MedicineData {
 }
 /// 服用メモのデータモデル
 /// 薬やサプリメントの情報を管理
+// Hive最適化版のMedicationMemo（大量データ対応）
 class MedicationMemo {
   final String id;
   final String name;
@@ -1432,6 +1434,7 @@ class MedicationMemo {
   final Color color;
   final List<int> selectedWeekdays; // 0=日曜日, 1=月曜日, ..., 6=土曜日
   final int dosageFrequency; // 服用回数（1〜6回）
+  
   MedicationMemo({
     required this.id,
     required this.name,
@@ -1444,6 +1447,8 @@ class MedicationMemo {
     this.selectedWeekdays = const [],
     this.dosageFrequency = 1,
   }) : color = color ?? Colors.blue;
+  
+  // JSON変換（後方互換性）
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -1456,6 +1461,7 @@ class MedicationMemo {
         'selectedWeekdays': selectedWeekdays,
         'dosageFrequency': dosageFrequency,
       };
+      
   factory MedicationMemo.fromJson(Map<String, dynamic> json) => MedicationMemo(
         id: json['id'] ?? '',
         name: json['name'] ?? '',
@@ -1469,6 +1475,7 @@ class MedicationMemo {
         dosageFrequency: json['dosageFrequency'] ?? 1,
       );
 }
+
 class MedicineDataAdapter extends TypeAdapter<MedicineData> {
   @override
   final int typeId = 1;
@@ -2856,6 +2863,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     // PageControllerを初期化
     _medicationPageController = PageController(viewportFraction: 1.0);
     
+    // ページネーション初期化
+    _initializeScrollListener();
+      
     // こぱさん流：データ読み込みを先に実行（上書きを防ぐ）
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // データ読み込みを確実に実行
@@ -2864,6 +2874,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       
       // 服用メモデータを読み込み
       await _loadMedicationMemos();
+   
+      // ページネーション初期化
+      _currentPage = 0;
+      _displayedMemos.clear();
+      _loadMoreMemos();
    
       // データ読み込み後に基本設定を実行
       if (_selectedDay == null) {
@@ -5353,41 +5368,41 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     _showMemoDetailDialog(context, memo.name, memo.notes);
                   },
                   child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.note, size: 16, color: Colors.blue),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'メモ',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
-                              ),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.note, size: 16, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'メモ',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          memo.notes,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black87,
-                            height: 1.4,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        memo.notes,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          height: 1.4,
                         ),
+                          maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                         const SizedBox(height: 4),
                         Text(
                           'タップしてメモを表示',
@@ -5485,6 +5500,65 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
+  // ページネーション機能（大量データ対応）
+  static const int _pageSize = 20; // 1ページあたりの件数
+  int _currentPage = 0;
+  List<MedicationMemo> _displayedMemos = [];
+  bool _isLoadingMore = false;
+  final ScrollController _memoScrollController = ScrollController();
+  
+  // アラーム制限機能
+  static const int maxAlarms = 100; // アラーム上限
+  static const int maxMemos = 1000; // メモ上限
+
+  // Hive最適化データベースサービス（大量データ対応）
+  static Box<MedicationMemo>? _memoBox;
+  
+  static Future<Box<MedicationMemo>> get _getMemoBox async {
+    if (_memoBox != null) return _memoBox!;
+    _memoBox = await Hive.openBox<MedicationMemo>('medication_memos');
+    return _memoBox!;
+  }
+  
+  // ページネーション付きメモ取得
+  static Future<List<MedicationMemo>> getMemos({
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    final box = await _getMemoBox;
+    final allMemos = box.values.toList();
+    allMemos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return allMemos.skip(offset).take(limit).toList();
+  }
+  
+  // 検索機能
+  static Future<List<MedicationMemo>> searchMemos(String keyword) async {
+    final box = await _getMemoBox;
+    return box.values
+        .where((memo) => memo.name.toLowerCase().contains(keyword.toLowerCase()))
+        .take(50)
+        .toList();
+  }
+  
+  // メモ保存
+  static Future<void> saveMemo(MedicationMemo memo) async {
+    final box = await _getMemoBox;
+    await box.put(memo.id, memo);
+  }
+  
+  // メモ削除
+  static Future<void> deleteMemo(String id) async {
+    final box = await _getMemoBox;
+    await box.delete(id);
+  }
+  
+  // リアクティブストリーム
+  static Stream<List<MedicationMemo>> watchMemos() async* {
+    final box = await _getMemoBox;
+    yield box.values.toList();
+    yield* box.watch().map((_) => box.values.toList());
+  }
+
   // 統一データサービス（重複削除）
   Future<void> _saveAllDataUnified() async {
     try {
@@ -5514,6 +5588,72 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     } catch (e) {
       debugPrint('統一データサービス読み込みエラー: $e');
     }
+  }
+
+  // ページネーション機能の実装
+  Future<void> _loadMoreMemos() async {
+    if (_isLoadingMore || _currentPage * _pageSize >= _medicationMemos.length) return;
+    
+    setState(() => _isLoadingMore = true);
+    
+    // ページングで一部だけ読み込み
+    final startIndex = _currentPage * _pageSize;
+    final endIndex = (startIndex + _pageSize).clamp(0, _medicationMemos.length);
+    
+    if (startIndex < _medicationMemos.length) {
+      final newMemos = _medicationMemos.sublist(startIndex, endIndex);
+      
+      setState(() {
+        _displayedMemos.addAll(newMemos);
+        _currentPage++;
+        _isLoadingMore = false;
+      });
+    } else {
+      setState(() => _isLoadingMore = false);
+    }
+  }
+  
+  // スクロール監視の初期化
+  void _initializeScrollListener() {
+    _memoScrollController.addListener(() {
+      if (_memoScrollController.position.pixels >= 
+          _memoScrollController.position.maxScrollExtent * 0.8) {
+        _loadMoreMemos();
+      }
+    });
+  }
+  
+  // アラーム制限チェック
+  bool _canAddAlarm() {
+    return _alarmList.length < maxAlarms;
+  }
+  
+  // メモ制限チェック
+  bool _canAddMemo() {
+    return _medicationMemos.length < maxMemos;
+  }
+  
+  // 制限ダイアログ表示
+  void _showLimitDialog(String type) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.warning, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text('${type}上限'),
+          ],
+        ),
+        content: Text('${type}は最大${type == 'アラーム' ? maxAlarms : maxMemos}件まで設定できます。\n不要な${type}を削除してください。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('了解'),
+          ),
+        ],
+      ),
+    );
   }
 
   // 服用済みに追加（簡素化版）
@@ -5997,8 +6137,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   }
 
   Widget _buildMedicineTab() {
-    return Scaffold(
-      body: Padding(
+    return Padding(
         padding: const EdgeInsets.all(12),
         child: Card(
           elevation: 4,
@@ -6044,19 +6183,45 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         ],
                       ),
                     )
-                  : ListView.builder(
+                  : StreamBuilder<List<MedicationMemo>>(
+                stream: _MedicationHomePageState.watchMemos(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  
+                  if (snapshot.hasError) {
+                    return Center(child: Text('エラー: ${snapshot.error}'));
+                  }
+                  
+                  final memos = snapshot.data ?? [];
+                  
+                  return ListView.builder(
+                    controller: _memoScrollController,
                 physics: const BouncingScrollPhysics(),
-                itemCount: _medicationMemos.length,
-                // 無限スクロール用の最適化設定
-                cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
-                addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
-                addRepaintBoundaries: true, // 再描画境界を追加
-                addSemanticIndexes: true, // セマンティックインデックスを追加
-                // スクロール動作の最適化
-                shrinkWrap: true, // コンテンツに応じて高さを調整
-                primary: false, // 高さ無制限のためfalseに設定
-                itemBuilder: (context, index) {
-                  final memo = _medicationMemos[index];
+                    itemCount: _displayedMemos.length + 1, // +1 for loading indicator
+                    // 無限スクロール用の最適化設定
+                    cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
+                    addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
+                    addRepaintBoundaries: true, // 再描画境界を追加
+                    addSemanticIndexes: true, // セマンティックインデックスを追加
+                    // スクロール動作の最適化
+                    shrinkWrap: true, // コンテンツに応じて高さを調整
+                    primary: false, // 高さ無制限のためfalseに設定
+                    itemBuilder: (context, index) {
+                      // ローディングインジケーター
+                      if (index == _displayedMemos.length) {
+                        return _isLoadingMore 
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                          : const SizedBox.shrink();
+                      }
+                      
+                      final memo = _displayedMemos[index];
                   return Card(
                     margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                     elevation: 4,
@@ -6331,23 +6496,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ),
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          // トライアル制限チェック
-          final isExpired = await TrialService.isTrialExpired();
-          if (isExpired) {
-            showDialog(
-              context: context,
-              builder: (context) => TrialLimitDialog(featureName: '服用メモ'),
-            );
-            return;
-          }
-          _addMemo();
-        },
-        child: const Icon(Icons.add),
-        backgroundColor: const Color(0xFF2196F3),
-        foregroundColor: Colors.white,
       ),
     );
   }
@@ -7344,6 +7492,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
   void _addMedicationToTimeSlot(String medicationName) {
+    // メモ制限チェック
+    if (!_canAddMemo()) {
+      _showLimitDialog('メモ');
+      return;
+    }
+    
     // 服用メモから薬の詳細情報を取得
     final memo = _medicationMemos.firstWhere(
       (memo) => memo.name == medicationName,
