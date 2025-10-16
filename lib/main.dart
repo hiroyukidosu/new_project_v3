@@ -6491,9 +6491,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 },
               ),
             ),
-            // 今日の服用状況を削除
-              ],
-            ),
+          ],
           ),
         ),
       ),

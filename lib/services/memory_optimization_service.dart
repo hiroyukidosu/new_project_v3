@@ -157,11 +157,11 @@ class MemoryOptimizationService {
   
   // メモリ使用量の監視
   static void monitorMemoryUsage() {
-    Logger.info('メモリ使用量: ${_currentMemoryUsage / 1024 / 1024:.2f}MB');
+    Logger.info('メモリ使用量: ${(_currentMemoryUsage / 1024 / 1024).toStringAsFixed(2)}MB');
     Logger.info('キャッシュサイズ: ${_cache.length}件');
     
     if (_currentMemoryUsage > _maxMemoryUsage * 0.8) {
-      Logger.warning('メモリ使用量が高いです: ${_currentMemoryUsage / 1024 / 1024:.2f}MB');
+      Logger.warning('メモリ使用量が高いです: ${(_currentMemoryUsage / 1024 / 1024).toStringAsFixed(2)}MB');
       _evictOldCache();
     }
   }

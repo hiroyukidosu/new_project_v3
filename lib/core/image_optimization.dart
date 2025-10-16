@@ -232,7 +232,7 @@ class ImageCacheManager {
     final currentSize = getCurrentCacheSize();
     final currentObjects = getCurrentCacheObjects();
     
-    Logger.info('現在のキャッシュサイズ: ${currentSize / 1024 / 1024:.2f}MB');
+    Logger.info('現在のキャッシュサイズ: ${(currentSize / 1024 / 1024).toStringAsFixed(2)}MB');
     Logger.info('現在のキャッシュオブジェクト数: $currentObjects');
     
     // キャッシュサイズが大きすぎる場合
@@ -265,10 +265,10 @@ class ImageCacheManager {
     final size = getCurrentCacheSize();
     final objects = getCurrentCacheObjects();
     
-    Logger.performance('画像キャッシュ: ${size / 1024 / 1024:.2f}MB, $objects個のオブジェクト');
+    Logger.performance('画像キャッシュ: ${(size / 1024 / 1024).toStringAsFixed(2)}MB, $objects個のオブジェクト');
     
     if (size > _maxCacheSize * 1024 * 1024 * 0.8) {
-      Logger.warning('画像キャッシュの使用量が高いです: ${size / 1024 / 1024:.2f}MB');
+      Logger.warning('画像キャッシュの使用量が高いです: ${(size / 1024 / 1024).toStringAsFixed(2)}MB');
       optimizeCache();
     }
   }
