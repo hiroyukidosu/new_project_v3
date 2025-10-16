@@ -34,6 +34,7 @@ dependencies:
   # 🎨 UI・状態管理
   provider: ^6.1.2
   cupertino_icons: ^1.0.8
+  expandable: ^5.0.1
   
   # 🛠️ ユーティリティ（Flutter 3.29.3対応）
   uuid: ^4.5.1

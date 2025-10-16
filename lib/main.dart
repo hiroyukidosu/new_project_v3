@@ -28,6 +28,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:expandable/expandable.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -1151,29 +1152,29 @@ void main() async {
       
       // テスト用の初期ログ
       await FirebaseCrashlytics.instance.log('アプリ起動 - Firebase Crashlytics有効');
-    } catch (e) {
-      debugPrint('Firebase初期化エラー: $e');
+  } catch (e) {
+    debugPrint('Firebase初期化エラー: $e');
       // CrashlyticsHelperは初期化前なので直接debugPrint
       debugPrint('Crashlytics初期化前のエラー: $e');
-    }
+  }
 
     // Firebase Crashlyticsのエラーハンドリングを設定（安全な初期化）
     try {
       FlutterError.onError = (errorDetails) {
-        try {
-          FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
-        } catch (e) {
+    try {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+    } catch (e) {
           debugPrint('Crashlyticsエラーレポート失敗: $e');
-        }
-      };
- 
+    }
+  };
+
   // プラットフォームエラーハンドリング
   PlatformDispatcher.instance.onError = (error, stack) {
-        try {
+    try {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        } catch (e) {
+    } catch (e) {
           debugPrint('Crashlyticsプラットフォームエラーレポート失敗: $e');
-        }
+    }
     return true;
   };
     } catch (e) {
@@ -1199,21 +1200,21 @@ void main() async {
 
     // アプリ初期化と起動
     try {
-      await _initializeApp();
+    await _initializeApp();
       // ✅ 修正：自動バックアップ機能を初期化（コメントアウト）
       // await _initializeAutoBackup();
-      runApp(const MedicationAlarmApp());
-    } catch (e) {
-      debugPrint('アプリ初期化エラー: $e');
+    runApp(const MedicationAlarmApp());
+  } catch (e) {
+    debugPrint('アプリ初期化エラー: $e');
       // 初期化に失敗してもアプリは起動する
       try {
         // エラーをCrashlyticsに送信（初期化済みの場合）
-        FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
-      } catch (crashlyticsError) {
+      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
+    } catch (crashlyticsError) {
         debugPrint('Crashlyticsエラーレポート失敗: $crashlyticsError');
-      }
-      runApp(const MedicationAlarmApp());
     }
+    runApp(const MedicationAlarmApp());
+  }
   }, (error, stack) {
     try {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
@@ -5359,52 +5360,143 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
               ],
-              // メモ情報
+              // メモ情報（タップ可能）
               if (memo.notes.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.note, size: 16, color: Colors.blue),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'メモ',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                GestureDetector(
+                  onTap: () {
+                    _showMemoDetailDialog(context, memo.name, memo.notes);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.note, size: 16, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'メモ',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        memo.notes,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          height: 1.4,
+                          ],
                         ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Text(
+                          memo.notes,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'タップしてメモを表示',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.withOpacity(0.7),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ],
           ),
         ),
+    );
+  }
+
+  // メモ詳細ダイアログを表示
+  void _showMemoDetailDialog(BuildContext context, String medicationName, String memo) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          height: MediaQuery.of(context).size.height * 0.7,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ヘッダー
+              Row(
+                children: [
+                  const Icon(Icons.note, size: 24, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '$medicationName のメモ',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                  ),
+                ],
+              ),
+              const Divider(height: 20),
+              // メモ内容
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                    ),
+                    child: Text(
+                      memo,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // フッターボタン
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('閉じる'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -9761,7 +9853,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // パディングを削減
-                              ),
+                            ),
                             ),
                             ),
                             const SizedBox(width: 8), // 間隔を削減
@@ -9870,7 +9962,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                         child: TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('キャンセル', style: TextStyle(fontSize: 12)), // フォントサイズを削減
-                        ),
+                      ),
                       ),
                       const SizedBox(width: 8), // 間隔を削減
                       Flexible(
