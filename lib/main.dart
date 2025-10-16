@@ -6184,115 +6184,115 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       ),
                     )
                   : StreamBuilder<List<MedicationMemo>>(
-                stream: _MedicationHomePageState.watchMemos(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  
-                  if (snapshot.hasError) {
-                    return Center(child: Text('エラー: ${snapshot.error}'));
-                  }
-                  
-                  final memos = snapshot.data ?? [];
-                  
-                  return ListView.builder(
-                    controller: _memoScrollController,
-                physics: const BouncingScrollPhysics(),
-                    itemCount: _displayedMemos.length + 1, // +1 for loading indicator
-                    // 無限スクロール用の最適化設定
-                    cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
-                    addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
-                    addRepaintBoundaries: true, // 再描画境界を追加
-                    addSemanticIndexes: true, // セマンティックインデックスを追加
-                    // スクロール動作の最適化
-                    shrinkWrap: true, // コンテンツに応じて高さを調整
-                    primary: false, // 高さ無制限のためfalseに設定
-                    itemBuilder: (context, index) {
-                      // ローディングインジケーター
-                      if (index == _displayedMemos.length) {
-                        return _isLoadingMore 
-                          ? const Center(
+                      stream: _MedicationHomePageState.watchMemos(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        
+                        if (snapshot.hasError) {
+                          return Center(child: Text('エラー: ${snapshot.error}'));
+                        }
+                        
+                        final memos = snapshot.data ?? [];
+                        
+                        return ListView.builder(
+                          controller: _memoScrollController,
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _displayedMemos.length + 1, // +1 for loading indicator
+                          // 無限スクロール用の最適化設定
+                          cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
+                          addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
+                          addRepaintBoundaries: true, // 再描画境界を追加
+                          addSemanticIndexes: true, // セマンティックインデックスを追加
+                          // スクロール動作の最適化
+                          shrinkWrap: true, // コンテンツに応じて高さを調整
+                          primary: false, // 高さ無制限のためfalseに設定
+                          itemBuilder: (context, index) {
+                            // ローディングインジケーター
+                            if (index == _displayedMemos.length) {
+                              return _isLoadingMore 
+                                ? const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16.0),
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  )
+                                : const SizedBox.shrink();
+                            }
+                            
+                            final memo = _displayedMemos[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              elevation: 4,
+                              shadowColor: Colors.black.withOpacity(0.2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          : const SizedBox.shrink();
-                      }
-                      
-                      final memo = _displayedMemos[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                    elevation: 4,
-                    shadowColor: Colors.black.withOpacity(0.2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        children: [
-                          // アイコンと名前を上に配置
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: memo.color,
-                                radius: 24,
-                                child: Icon(
-                                  memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
+                                padding: const EdgeInsets.all(18),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      memo.name,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Theme.of(context).brightness == Brightness.dark 
-                                            ? Colors.white 
-                                            : Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: memo.type == 'サプリメント'
-                                            ? Colors.green.withOpacity(0.1)
-                                            : Colors.blue.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: memo.type == 'サプリメント'
-                                              ? Colors.green.withOpacity(0.3)
-                                              : Colors.blue.withOpacity(0.3),
+                                    // アイコンと名前を上に配置
+                                    Row(
+                                      children: [
+                                        CircleAvatar(
+                                          backgroundColor: memo.color,
+                                          radius: 24,
+                                          child: Icon(
+                                            memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
+                                            color: Colors.white,
+                                            size: 24,
+                                          ),
                                         ),
-                                      ),
-                                      child: Text(
-                                        memo.type,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: Theme.of(context).brightness == Brightness.dark 
-                                              ? Colors.white70 
-                                              : (memo.type == 'サプリメント' ? Colors.green : Colors.blue),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                memo.name,
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Theme.of(context).brightness == Brightness.dark 
+                                                      ? Colors.white 
+                                                      : Colors.black87,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: memo.type == 'サプリメント'
+                                                      ? Colors.green.withOpacity(0.1)
+                                                      : Colors.blue.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  border: Border.all(
+                                                    color: memo.type == 'サプリメント'
+                                                        ? Colors.green.withOpacity(0.3)
+                                                        : Colors.blue.withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  memo.type,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Theme.of(context).brightness == Brightness.dark 
+                                                        ? Colors.white70 
+                                                        : (memo.type == 'サプリメント' ? Colors.green : Colors.blue),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // アクションボタンを右上に配置
-                              PopupMenuButton<String>(
-                                onSelected: (value) async {
-                                  // トライアル制限チェック
-                                  final isExpired = await TrialService.isTrialExpired();
+                                        // アクションボタンを右上に配置
+                                        PopupMenuButton<String>(
+                                          onSelected: (value) async {
+                                            // トライアル制限チェック
+                                            final isExpired = await TrialService.isTrialExpired();
                                   if (isExpired) {
                                     showDialog(
                                       context: context,
@@ -6488,8 +6488,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       ),
                     ),
                   );
-                },
-              ),
+                        },
+                      );
+                    },
+                  ),
             ),
           ],
           ),
