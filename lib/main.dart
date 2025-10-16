@@ -30,8 +30,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:expandable/expandable.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 // Local imports
 // import 'firebase_options.dart';
@@ -1141,9 +1139,11 @@ void main() async {
     // Flutter bindingsの初期化を同じゾーン内で実行
   WidgetsFlutterBinding.ensureInitialized();
  
-    // Firebase初期化
+    // Firebase初期化（統合版）
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       _debugLog('Firebase初期化完了');
       
       // Crashlytics初期化
@@ -1181,22 +1181,7 @@ void main() async {
       debugPrint('Crashlyticsエラーハンドリング設定失敗: $e');
     }
 
-    // ✅ Firebase初期化
-    try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      debugPrint('Firebase初期化完了');
-      
-      // Crashlytics初期化
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-      debugPrint('Firebase Crashlytics初期化完了');
-      
-      // テスト用の初期ログ
-      await FirebaseCrashlytics.instance.log('アプリ起動 - Firebase Crashlytics有効');
-    } catch (e) {
-      debugPrint('Firebase初期化エラー: $e');
-    }
+    // Firebase初期化は上記で完了済み
 
     // アプリ初期化と起動
     try {
@@ -5498,6 +5483,37 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         ),
       ),
     );
+  }
+
+  // 統一データサービス（重複削除）
+  Future<void> _saveAllDataUnified() async {
+    try {
+      await Future.wait([
+        _saveMedicationData(),
+        _saveMemoStatus(),
+        _saveAlarmData(),
+        _saveUserPreferences(),
+        _saveAppSettings(),
+      ]);
+      debugPrint('統一データサービス: 全データ保存完了');
+    } catch (e) {
+      debugPrint('統一データサービス保存エラー: $e');
+    }
+  }
+  
+  Future<void> _loadAllDataUnified() async {
+    try {
+      await Future.wait([
+        _loadMedicationData(),
+        _loadMemoStatus(),
+        _loadAlarmData(),
+        _loadUserPreferences(),
+        _loadAppSettings(),
+      ]);
+      debugPrint('統一データサービス: 全データ読み込み完了');
+    } catch (e) {
+      debugPrint('統一データサービス読み込みエラー: $e');
+    }
   }
 
   // 服用済みに追加（簡素化版）
