@@ -4566,46 +4566,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 完全に作り直されたマーク表示
-      if (hasMedications) {
-        if (allTaken && totalCount > 0) {
-          // すべて服用済み - チェックマーク（緑）
-          return [
-            Container(
-              margin: const EdgeInsets.only(top: 2),
-              child: const Icon(
-                Icons.check_circle,
-                size: 14,
-                color: Colors.green,
-              ),
-            ),
-          ];
-        } else if (takenCount > 0) {
-          // 一部服用済み - チェックマーク（オレンジ）
-          return [
-            Container(
-              margin: const EdgeInsets.only(top: 2),
-              child: const Icon(
-                Icons.check_circle_outline,
-                size: 14,
-                color: Colors.orange,
-              ),
-            ),
-          ];
-        } else {
-          // 未服用 - 未チェックマーク（グレー）
-          return [
-            Container(
-              margin: const EdgeInsets.only(top: 2),
-              child: const Icon(
-                Icons.radio_button_unchecked,
-                size: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ];
-        }
-      }
+      // 完全に作り直されたマーク表示（すべてのマークを削除）
+      // 赤丸を含むすべてのマークを削除
       return [];
     } catch (e) {
       return [];
@@ -4867,32 +4829,32 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                                 
-                                // ✅ 右下：色変更アイコン
+                                // ✅ 左矢印アイコンの右側：色変更アイコン
                                 Positioned(
-                                  bottom: 12,
-                                  right: 12,
+                                  top: 12,
+                                  left: 60, // 左矢印アイコンの右側に配置
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: _changeDayColor,
-                                      borderRadius: BorderRadius.circular(20),
+                                      borderRadius: BorderRadius.circular(15),
                                       child: Container(
-                                        padding: const EdgeInsets.all(8),
+                                        padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
                                           color: Colors.white.withOpacity(0.9),
-                                          borderRadius: BorderRadius.circular(20),
+                                          borderRadius: BorderRadius.circular(15),
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black.withOpacity(0.2),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 2),
+                                              blurRadius: 3,
+                                              offset: const Offset(0, 1),
                                             ),
                                           ],
                                         ),
                                         child: const Icon(
                                           Icons.palette,
                                           color: Colors.purple,
-                                          size: 20,
+                                          size: 16,
                                         ),
                                       ),
                                     ),
