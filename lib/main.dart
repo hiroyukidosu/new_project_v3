@@ -2808,8 +2808,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   bool _isMemoSelected = false;
   MedicationMemo? _selectedMemo;
   
-  // 日別の色を管理
-  Map<String, Color> _dayColors = {};
   
   // アラームデータを管理
   List<Map<String, dynamic>> _alarmList = [];
@@ -2837,6 +2835,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   
   // ログ制御用の変数
   DateTime _lastAlarmCheckLog = DateTime.now();
+  
+  // カレンダー色変更用の変数
+  Map<String, Color> _dayColors = {};
   static const Duration _logInterval = Duration(seconds: 30); // 30秒間隔でログ出力
   
   // ログ出力を制限するヘルパーメソッド
@@ -4280,15 +4281,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // 選択された日付の色を変更
-  void _changeDayColor() {
-    if (_selectedDay != null) {
-      final dateKey = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-      _showColorPickerDialog(dateKey);
-    } else {
-      _showSnackBar('日付を選択してください');
-    }
-  }
   
   // カレンダースタイルを動的に生成（日付の色に基づく）
   CalendarStyle _buildCalendarStyle() {
@@ -4630,33 +4622,53 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Widget _buildCalendarTab() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // ✅ 修正：画面サイズに応じたレスポンシブデザイン
         final screenWidth = MediaQuery.of(context).size.width;
         final screenHeight = MediaQuery.of(context).size.height;
         final isSmallScreen = screenHeight < 600;
         final isNarrowScreen = screenWidth < 360;
         
-        return SingleChildScrollView(
+        return Column(
+          children: [
+            // ✅ ①スワイプ可能なカレンダーエリア
+            Expanded(
+              flex: 1,
+              child: GestureDetector(
+                onVerticalDragEnd: (details) {
+                  if (details.primaryVelocity! < 0) {
+                    // 上にスワイプ → 下にスクロール
+                    _calendarScrollController.animateTo(
+                      _calendarScrollController.position.maxScrollExtent,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  } else if (details.primaryVelocity! > 0) {
+                    // 下にスワイプ → 上にスクロール
+                    _calendarScrollController.animateTo(
+                      0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                },
+                child: SingleChildScrollView(
           controller: _calendarScrollController,
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: isNarrowScreen ? 8 : screenWidth * 0.05, // 狭い画面ではパディング削減
-            vertical: isSmallScreen ? 4 : 8, // 小さい画面では縦パディング削減
+                      horizontal: isNarrowScreen ? 8 : screenWidth * 0.05,
+                      vertical: isSmallScreen ? 4 : 8,
           ),
-          physics: _isScrollBatonPassActive 
-            ? const AlwaysScrollableScrollPhysics() 
-            : const BouncingScrollPhysics(),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              // メモフィールド（一番上に配置）
+                        // メモフィールド
               if (_selectedDay != null)
                 Container(
-                  margin: const EdgeInsets.only(bottom: 16), // 左右のマージンを削除して横いっぱいに
+                            margin: const EdgeInsets.only(bottom: 16),
                   padding: EdgeInsets.fromLTRB(
-                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 左
-                    0, // 上（余白削除）
-                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 右
-                    isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16), // 下
+                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                              0,
+                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -4674,7 +4686,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 日付表示
                       Row(
                         children: [
                           Text(
@@ -4687,38 +4698,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           ),
                         ],
                       ),
-                      // 余白削除
-                      // メモフィールド
                       _buildMemoField(),
                     ],
                   ),
                 ),
-              // 色を変えるボタン（コンパクト化）
-              Container(
-                margin: const EdgeInsets.only(bottom: 8), // マージン削減
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _changeDayColor,
-                      icon: const Icon(Icons.palette, size: 16), // アイコンサイズ削減
-                      label: const Text('日付の色を変える', style: TextStyle(fontSize: 12)), // フォントサイズ削減
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // パディング削減
-                        minimumSize: const Size(0, 32), // 最小サイズ設定
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // カレンダー（高さ350pxに固定）
+                        
+                        // ✅ ②カレンダーにパレットアイコン付き
               SizedBox(
-                height: 350, // 高さを350pxに固定
+                          height: 350,
                 child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16), // 角丸削減
+                              borderRadius: BorderRadius.circular(16),
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -4736,19 +4726,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     ),
                   ],
                 ),
-                child: ClipRRect(
+                            child: Stack(
+                              children: [
+                                // カレンダー本体
+                                ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xFF667eea),
-                          Color(0xFF764ba2),
-                        ],
-                      ),
-                    ),
                     child: TableCalendar<dynamic>(
                       firstDay: DateTime.utc(2020, 1, 1),
                       lastDay: DateTime.utc(2030, 12, 31),
@@ -4758,38 +4740,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       startingDayOfWeek: StartingDayOfWeek.monday,
                       locale: 'ja_JP',
                       calendarBuilders: CalendarBuilders(
+                                      // ✅ ③④ 曜日マーク・チェックマーク表示
                         defaultBuilder: (context, day, focusedDay) {
-                          final customDecoration = _getCustomDayDecoration(day);
-                          if (customDecoration != null) {
-                            return Container(
-                              margin: const EdgeInsets.all(1), // マージン削減
-                              decoration: customDecoration,
-                              child: Center(
-                                child: Text(
-                                  '${day.day}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12, // フォントサイズ削減
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          return null;
-                        },
-                      ),
-                      headerStyle: const HeaderStyle(
+                                        return _buildCalendarDay(day);
+                                      },
+                                      selectedBuilder: (context, day, focusedDay) {
+                                        return _buildCalendarDay(day, isSelected: true);
+                                      },
+                                      todayBuilder: (context, day, focusedDay) {
+                                        return _buildCalendarDay(day, isToday: true);
+                                      },
+                                    ),
+                                    headerStyle: HeaderStyle(
                         formatButtonVisible: false,
                         titleCentered: true,
-                        titleTextStyle: TextStyle(
-                          fontSize: 18, // フォントサイズ削減
+                                      titleTextStyle: const TextStyle(
+                                        fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
-                        leftChevronIcon: Icon(Icons.chevron_left, color: Colors.white, size: 20),
-                        rightChevronIcon: Icon(Icons.chevron_right, color: Colors.white, size: 20),
-                        decoration: BoxDecoration(
+                                      leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                                      rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                                      decoration: const BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
@@ -4803,13 +4775,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       daysOfWeekStyle: const DaysOfWeekStyle(
                         weekdayStyle: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 12, // フォントサイズ削減
+                                        fontSize: 12,
                           color: Colors.white,
                         ),
                         weekendStyle: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
-                          fontSize: 12, // フォントサイズ削減
+                                        fontSize: 12,
                         ),
                       ),
                       calendarStyle: _buildCalendarStyle(),
@@ -4822,24 +4794,434 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       },
                     ),
                   ),
-                ),
-              ),
-              ),
-              const SizedBox(height: 12), // 間隔削減
-              // 今日の服用状況表示（カレンダーの下、服用記録の上）
+                                
+                                // ✅ 左上：左移動ボタン
+                                Positioned(
+                                  top: 12,
+                                  left: 12,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        // カレンダーを左に移動（前の月）
+                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1);
+                                        setState(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_back,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                
+                                // ✅ 右上：右移動ボタン
+                                Positioned(
+                                  top: 12,
+                                  right: 12,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        // カレンダーを右に移動（次の月）
+                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1);
+                                        setState(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_forward,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                
+                                // ✅ 右下：色変更アイコン
+                                Positioned(
+                                  bottom: 12,
+                                  right: 12,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _changeDayColor,
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.palette,
+                                          color: Colors.purple,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 12),
+                        
+                        // 今日の服用状況表示
               if (_selectedDay != null)
                 _buildMedicationStats(),
+                        
               const SizedBox(height: 8),
-              // 服用記録セクション（高さ制限削除）
+                        
+                        // 服用記録セクション
               if (_selectedDay != null)
                 _buildMedicationRecords(),
+                        
               const SizedBox(height: 20),
             ],
           ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
+
+  // ✅ ③④ カレンダーの日付セル（曜日マーク・チェックマーク表示）
+  Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false}) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(day);
+    final weekday = day.weekday % 7;
+    
+    // ③服用メモで設定された曜日かチェック
+    final hasScheduledMemo = _medicationMemos.any((memo) => 
+      memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)
+    );
+    
+    // ④服用記録が100%かチェック
+    final stats = _calculateDayMedicationStats(day);
+    final total = stats['total'] ?? 0;
+    final taken = stats['taken'] ?? 0;
+    final isComplete = total > 0 && taken == total;
+    
+    // カスタム色取得
+    final customColor = _dayColors[dateStr];
+    
+    return Container(
+      margin: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: customColor ?? 
+          (isSelected 
+            ? const Color(0xFFff6b6b)
+            : isToday 
+              ? const Color(0xFF4ecdc4)
+              : Colors.white.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(8),
+        border: hasScheduledMemo 
+          ? Border.all(color: Colors.amber, width: 2)
+          : null,
+        boxShadow: isSelected || isToday
+          ? [
+              BoxShadow(
+                color: (customColor ?? (isSelected ? const Color(0xFFff6b6b) : const Color(0xFF4ecdc4))).withOpacity(0.3),
+                spreadRadius: 1,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ]
+          : null,
+      ),
+      child: Stack(
+        children: [
+          // 日付
+          Center(
+            child: Text(
+              '${day.day}',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          
+          // ③曜日マーク（左上）
+          if (hasScheduledMemo)
+            Positioned(
+              top: 2,
+              left: 2,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.amber,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.5),
+                      blurRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          
+          // ④完了チェックマーク（右下）
+          if (isComplete)
+            Positioned(
+              bottom: 2,
+              right: 2,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withOpacity(0.5),
+                      blurRadius: 2,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.check,
+                  color: Colors.white,
+                  size: 10,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 日別の服用統計を計算
+  Map<String, int> _calculateDayMedicationStats(DateTime day) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(day);
+    final weekday = day.weekday % 7;
+    
+    int totalMedications = 0;
+    int takenMedications = 0;
+    
+    // 動的薬リストの統計
+    if (_medicationData.containsKey(dateStr)) {
+      final dayData = _medicationData[dateStr]!;
+      totalMedications += dayData.length;
+      takenMedications += dayData.values.where((info) => info.checked).length;
+    }
+    
+    // 服用メモの統計
+    for (final memo in _medicationMemos) {
+      if (memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)) {
+        totalMedications += memo.dosageFrequency;
+        final checkedCount = _getMedicationMemoCheckedCountForDate(memo.id, dateStr);
+        takenMedications += checkedCount;
+      }
+    }
+    
+    return {'total': totalMedications, 'taken': takenMedications};
+  }
+
+  // 指定日のメモの服用済み回数を取得
+  int _getMedicationMemoCheckedCountForDate(String memoId, String dateStr) {
+    final doseStatus = _weekdayMedicationDoseStatus[dateStr]?[memoId];
+    if (doseStatus == null) return 0;
+    return doseStatus.values.where((isChecked) => isChecked).length;
+  }
+
+  // 日付の色を変更するメソッド
+  void _changeDayColor() {
+    if (_selectedDay == null) return;
+    
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+    final colors = [
+      {'color': const Color(0xFFff6b6b), 'name': '赤'},
+      {'color': const Color(0xFF4ecdc4), 'name': '青緑'},
+      {'color': const Color(0xFF45b7d1), 'name': '青'},
+      {'color': const Color(0xFFf9ca24), 'name': '黄色'},
+      {'color': const Color(0xFFf0932b), 'name': 'オレンジ'},
+      {'color': const Color(0xFFeb4d4b), 'name': 'ピンク'},
+      {'color': const Color(0xFF6c5ce7), 'name': '紫'},
+      {'color': const Color(0xFFa29bfe), 'name': '薄紫'},
+      {'color': const Color(0xFF00d2d3), 'name': 'ターコイズ'},
+      {'color': const Color(0xFF1e3799), 'name': '濃紺'},
+      {'color': const Color(0xFFe55039), 'name': 'トマト'},
+      {'color': const Color(0xFF4a69bd), 'name': 'ロイヤル\nブルー'},
+    ];
+    
+    // 色選択ダイアログを表示
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'カレンダーの色を選択',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: GridView.builder(
+              shrinkWrap: true,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1,
+              ),
+              itemCount: colors.length + 1, // +1 for "色をリセット"
+              itemBuilder: (context, index) {
+                if (index == colors.length) {
+                  // 色をリセットボタン
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _dayColors.remove(dateStr);
+                      });
+                      Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey, width: 2),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.clear, color: Colors.grey, size: 32),
+                          SizedBox(height: 4),
+                          Text(
+                            'リセット',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                
+                final colorData = colors[index];
+                final color = colorData['color'] as Color;
+                final name = colorData['name'] as String;
+                final isSelected = _dayColors[dateStr] == color;
+                
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _dayColors[dateStr] = color;
+                    });
+                    Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? Colors.white : Colors.transparent,
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.5),
+                          spreadRadius: 1,
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (isSelected)
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.white,
+                            size: 32,
+                          )
+                        else
+                          const SizedBox(height: 32),
+                        const SizedBox(height: 4),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                offset: Offset(1, 1),
+                                blurRadius: 2,
+                                color: Colors.black45,
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('キャンセル'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildMedicationRecords() {
     return Container(
       decoration: BoxDecoration(
@@ -5245,7 +5627,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     child: Semantics(
                       label: '${memo.name}の服用記録 ${index + 1}回目',
                       hint: 'タップして服用状態を切り替え',
-                    child: GestureDetector(
+                      child: GestureDetector(
                       onTap: () {
                         if (_selectedDay != null) {
                           final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
@@ -5297,11 +5679,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             ),
                           ],
                         ),
-                        ),
                       ),
                     ),
-                  );
-                }),
+                  ),
+                );
+              }),
               ),
               // 服用回数情報
               const SizedBox(height: 12),
@@ -5420,7 +5802,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ],
           ),
         ),
-    );
+      );
   }
 
   // メモ詳細ダイアログを表示
@@ -6183,23 +6565,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         ],
                       ),
                     )
-                  : StreamBuilder<List<MedicationMemo>>(
-                      stream: _MedicationHomePageState.watchMemos(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        
-                        if (snapshot.hasError) {
-                          return Center(child: Text('エラー: ${snapshot.error}'));
-                        }
-                        
-                        final memos = snapshot.data ?? [];
-                        
-                        return ListView.builder(
+                  : ListView.builder(
                           controller: _memoScrollController,
                           physics: const BouncingScrollPhysics(),
-                          itemCount: _displayedMemos.length + 1, // +1 for loading indicator
+                      itemCount: _medicationMemos.length,
                           // 無限スクロール用の最適化設定
                           cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
                           addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
@@ -6209,19 +6578,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           shrinkWrap: true, // コンテンツに応じて高さを調整
                           primary: false, // 高さ無制限のためfalseに設定
                           itemBuilder: (context, index) {
-                            // ローディングインジケーター
-                            if (index == _displayedMemos.length) {
-                              return _isLoadingMore 
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16.0),
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  )
-                                : const SizedBox.shrink();
-                            }
-                            
-                            final memo = _displayedMemos[index];
+                        final memo = _medicationMemos[index];
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                               elevation: 4,
@@ -6487,8 +6844,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         ],
                       ),
                     ),
-                  );
-                        },
                       );
                     },
                   ),
@@ -7142,11 +7497,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       context: context,
       builder: (context) => _MemoDialog(
         onMemoAdded: (memo) async {
+          try {
+            // メモを保存
+            await AppPreferences.saveMedicationMemo(memo);
+            
+            // UIを更新
           setState(() {
             _medicationMemos.add(memo);
           });
-          await AppPreferences.saveMedicationMemo(memo);
+            
+            // データを再読み込み
+            await _loadMedicationMemos();
+            
           _showSnackBar('${memo.type}を追加しました');
+          } catch (e) {
+            _showSnackBar('メモの追加に失敗しました: $e');
+          }
         },
       ),
     );
@@ -7193,11 +7559,29 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _showSnackBar('${memo.name}の服用を記録しました');
   }
   void _deleteMemo(String id) async {
+    try {
+      // メモを削除
+      await AppPreferences.deleteMedicationMemo(id);
+      
+      // UIを更新
     setState(() {
       _medicationMemos.removeWhere((memo) => memo.id == id);
-    });
-    await AppPreferences.deleteMedicationMemo(id);
+        // 関連データも削除
+        _medicationMemoStatus.remove(id);
+        _weekdayMedicationStatus.remove(id);
+        // 日付別の服用状態も削除
+        for (final dateStr in _weekdayMedicationDoseStatus.keys) {
+          _weekdayMedicationDoseStatus[dateStr]?.remove(id);
+        }
+      });
+      
+      // データを保存
+      await _saveAllData();
+      
     _showSnackBar('メモを削除しました');
+    } catch (e) {
+      _showSnackBar('削除に失敗しました: $e');
+    }
   }
 
   // CSV共有機能の強化（未使用）
@@ -9537,6 +9921,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ],
               ),
         ),
+        // 服用メモタブでのみFloatingActionButtonを表示
+        floatingActionButton: _tabController.index == 1 
+          ? FloatingActionButton(
+              onPressed: _addMemo,
+              backgroundColor: Colors.blue,
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
       ),
     );
   }
