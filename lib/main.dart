@@ -5086,7 +5086,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       {'color': const Color(0xFF00d2d3), 'name': 'ターコイズ'},
       {'color': const Color(0xFF1e3799), 'name': '濃紺'},
       {'color': const Color(0xFFe55039), 'name': 'トマト'},
-      {'color': const Color(0xFF4a69bd), 'name': 'ロイヤル\nブルー'},
+      {'color': const Color(0xFF2ecc71), 'name': 'エメラルド'},
     ];
     
     // 色選択ダイアログを表示
@@ -5100,12 +5100,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           content: SizedBox(
             width: double.maxFinite,
+            height: 300, // 高さを制限
             child: GridView.builder(
               shrinkWrap: true,
+              physics: const BouncingScrollPhysics(), // スクロール可能
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+                mainAxisSpacing: 13.7,
                 childAspectRatio: 1,
               ),
               itemCount: colors.length + 1, // +1 for "色をリセット"
