@@ -43,28 +43,36 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
 
   Future<void> _initializeApp() async {
     try {
+      // SharedPreferencesを確実に初期化
       _prefs = await SharedPreferences.getInstance();
+      debugPrint('✅ SharedPreferences初期化完了');
+      
+      // 設定とアラームを読み込み
       await _loadSettings();
-      // 通知の初期化を非同期で実行（アプリ起動をブロックしない）
+      debugPrint('✅ 設定読み込み完了');
+      
+      // アラームデータを明示的に読み込み
+      await _loadAlarms();
+      debugPrint('✅ アラーム読み込み完了: ${_alarms.length}件');
+      
+      // 通知の初期化
       _initializeNotifications().catchError((e) {
         debugPrint('通知初期化エラー: $e');
       });
       
-      // mountedチェック付きで初期化
-      if (!mounted || _disposed) return;
-      if (context.mounted == false) return;
-      
-      _updateTime();
-      _startAlarmCheck();
-      debugPrint('アプリ初期化完了');
+      // UIを更新
+      if (mounted && !_disposed) {
+        setState(() {});
+        _updateTime();
+        _startAlarmCheck();
+        debugPrint('✅ アプリ初期化完了');
+      }
     } catch (e) {
-      debugPrint('初期化エラー: $e');
-      // エラーが発生してもアプリは動作を続ける（mountedチェック付き）
-      if (!mounted || _disposed) return;
-      if (context.mounted == false) return;
-      
-      _updateTime();
-      _startAlarmCheck();
+      debugPrint('❌ 初期化エラー: $e');
+      if (mounted && !_disposed) {
+        _updateTime();
+        _startAlarmCheck();
+      }
     }
   }
 
@@ -74,9 +82,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       _selectedNotificationType = _prefs!.getString('notification_type') ?? 'sound';
       _selectedAlarmSound = _prefs!.getString('alarm_sound') ?? 'default';
       _notificationVolume = _prefs!.getInt('notification_volume') ?? 80;
-      
-      // アラームデータを読み込み
-      await _loadAlarms();
+      debugPrint('✅ 設定読み込み完了');
+      // ⚠️ ここでは_loadAlarms()を呼ばない（_initializeApp()で明示的に呼ぶ）
     }
   }
 
@@ -806,39 +813,37 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
   }
 
   void _addAlarm() {
-    debugPrint('アラーム追加ダイアログを表示');
+    debugPrint('📝 アラーム追加ダイアログを表示');
     showDialog(
       context: context,
       builder: (context) => _AddAlarmDialog(
         onAlarmAdded: (alarm) async {
-          debugPrint('アラーム追加コールバック実行: ${alarm.toString()}');
-          // ✅ 修正：状態チェックを完全に削除してアラーム追加を確実に実行
-          debugPrint('アラーム追加前のリスト数: ${_alarms.length}');
-          try {
-            // 直接アラームを追加（setStateを使わない）
-            _alarms.add(alarm);
-            debugPrint('アラーム追加後のリスト数: ${_alarms.length}');
-            
-            // アラーム追加後に自動保存
-            await _saveAlarms();
-            debugPrint('アラーム保存完了');
-            
-            // 保存後にsetStateでUI更新
-            if (mounted) {
-              setState(() {
-                // UI更新を強制
-              });
-            }
-          } catch (e) {
-            debugPrint('アラーム追加エラー: $e');
-            // エラーが発生してもアラームを追加
-            _alarms.add(alarm);
-            await _saveAlarms();
-            if (mounted) {
-              setState(() {
-                // UI更新を強制
-              });
-            }
+          debugPrint('📝 アラーム追加: ${alarm.toString()}');
+          debugPrint('📝 追加前のアラーム数: ${_alarms.length}');
+          
+          // アラームを追加
+          _alarms.add(alarm);
+          debugPrint('📝 追加後のアラーム数: ${_alarms.length}');
+          
+          // 保存
+          await _saveAlarms();
+          debugPrint('✅ アラーム保存完了');
+          
+          // UI更新
+          if (mounted && !_disposed) {
+            setState(() {
+              debugPrint('✅ UI更新完了: ${_alarms.length}件表示');
+            });
+          }
+          
+          // 確認用のスナックバー
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('アラーム「${alarm['name']}」を追加しました'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
           }
         },
       ),
@@ -1328,35 +1333,41 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
             
             // アラーム一覧
             Expanded(
-              child: Builder(
-                builder: (context) {
-                  debugPrint('アラームリスト表示: ${_alarms.length}件');
-                  return _alarms.isEmpty
-                      ? const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.alarm_off,
-                                size: 64,
-                                color: Colors.grey,
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                'アラームが設定されていません',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
+              child: _alarms.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.alarm_off,
+                            size: 64,
+                            color: Colors.grey,
                           ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: _alarms.length,
-                          itemBuilder: (context, index) {
+                          SizedBox(height: 16),
+                          Text(
+                            'アラームが設定されていません',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            '右下の+ボタンでアラームを追加',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: _alarms.length,
+                      itemBuilder: (context, index) {
+                        debugPrint('🔍 アラーム表示[$index]: ${_alarms[index]['name']}');
                         final alarm = _alarms[index];
                         return Card(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -1489,9 +1500,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                           ),
                         );
                       },
-                    );
-                },
-              ),
+                    ),
             ),
           ],
         ),
