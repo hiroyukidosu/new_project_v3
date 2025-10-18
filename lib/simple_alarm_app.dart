@@ -812,25 +812,33 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         onAlarmAdded: (alarm) async {
           debugPrint('アラーム追加コールバック実行: ${alarm.toString()}');
-          // ✅ 修正：mountedチェックを緩和してアラーム追加を確実に実行
-          if (!_disposed) {
-            debugPrint('アラーム追加前のリスト数: ${_alarms.length}');
-            try {
+          // ✅ 修正：状態チェックを完全に削除してアラーム追加を確実に実行
+          debugPrint('アラーム追加前のリスト数: ${_alarms.length}');
+          try {
+            // 直接アラームを追加（setStateを使わない）
+            _alarms.add(alarm);
+            debugPrint('アラーム追加後のリスト数: ${_alarms.length}');
+            
+            // アラーム追加後に自動保存
+            await _saveAlarms();
+            debugPrint('アラーム保存完了');
+            
+            // 保存後にsetStateでUI更新
+            if (mounted) {
               setState(() {
-                _alarms.add(alarm);
+                // UI更新を強制
               });
-              debugPrint('アラーム追加後のリスト数: ${_alarms.length}');
-              // アラーム追加後に自動保存
-              await _saveAlarms();
-              debugPrint('アラーム保存完了');
-            } catch (e) {
-              debugPrint('アラーム追加エラー: $e');
-              // エラーが発生してもアラームを追加
-              _alarms.add(alarm);
-              await _saveAlarms();
             }
-          } else {
-            debugPrint('_disposedがtrueのためアラーム追加をスキップ');
+          } catch (e) {
+            debugPrint('アラーム追加エラー: $e');
+            // エラーが発生してもアラームを追加
+            _alarms.add(alarm);
+            await _saveAlarms();
+            if (mounted) {
+              setState(() {
+                // UI更新を強制
+              });
+            }
           }
         },
       ),
@@ -843,19 +851,28 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         initialAlarm: alarm,
         onAlarmAdded: (updatedAlarm) async {
-          // ✅ 修正：_disposedチェックを緩和してアラーム編集を確実に実行
-          if (!_disposed) {
-            try {
+          // ✅ 修正：状態チェックを完全に削除してアラーム編集を確実に実行
+          try {
+            // 直接アラームを更新（setStateを使わない）
+            _alarms[index] = updatedAlarm;
+            // アラーム編集後に自動保存
+            await _saveAlarms();
+            
+            // 保存後にsetStateでUI更新
+            if (mounted) {
               setState(() {
-                _alarms[index] = updatedAlarm;
+                // UI更新を強制
               });
-              // アラーム編集後に自動保存
-              await _saveAlarms();
-            } catch (e) {
-              debugPrint('アラーム編集エラー: $e');
-              // エラーが発生してもアラームを更新
-              _alarms[index] = updatedAlarm;
-              await _saveAlarms();
+            }
+          } catch (e) {
+            debugPrint('アラーム編集エラー: $e');
+            // エラーが発生してもアラームを更新
+            _alarms[index] = updatedAlarm;
+            await _saveAlarms();
+            if (mounted) {
+              setState(() {
+                // UI更新を強制
+              });
             }
           }
         },
@@ -1384,20 +1401,29 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                       Switch(
                                         value: alarm['enabled'],
                                         onChanged: (value) async {
-                                          // ✅ 修正：_disposedチェックを緩和してアラーム切り替えを確実に実行
-                                          if (!_disposed) {
-                                            try {
+                                          // ✅ 修正：状態チェックを完全に削除してアラーム切り替えを確実に実行
+                                          try {
+                                            // 直接アラームを切り替え（setStateを使わない）
+                                            alarm['enabled'] = value;
+                                            
+                                            // アラーム切り替え後に自動保存
+                                            await _saveAlarms();
+                                            
+                                            // 保存後にsetStateでUI更新
+                                            if (mounted) {
                                               setState(() {
-                                                alarm['enabled'] = value;
+                                                // UI更新を強制
                                               });
-                                              
-                                              // アラーム切り替え後に自動保存
-                                              await _saveAlarms();
-                                            } catch (e) {
-                                              debugPrint('アラーム切り替えエラー: $e');
-                                              // エラーが発生してもアラームを切り替え
-                                              alarm['enabled'] = value;
-                                              await _saveAlarms();
+                                            }
+                                          } catch (e) {
+                                            debugPrint('アラーム切り替えエラー: $e');
+                                            // エラーが発生してもアラームを切り替え
+                                            alarm['enabled'] = value;
+                                            await _saveAlarms();
+                                            if (mounted) {
+                                              setState(() {
+                                                // UI更新を強制
+                                              });
                                             }
                                           }
                                           
@@ -1425,19 +1451,29 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                     children: [
                                       IconButton(
                                         onPressed: () async {
-                                          // ✅ 修正：_disposedチェックを緩和してアラーム削除を確実に実行
-                                          if (!_disposed) {
-                                            try {
+                                          // ✅ 修正：状態チェックを完全に削除してアラーム削除を確実に実行
+                                          try {
+                                            // 直接アラームを削除（setStateを使わない）
+                                            _alarms.removeAt(index);
+                                            
+                                            // アラーム削除後に自動保存
+                                            await _saveAlarms();
+                                            
+                                            // 保存後にsetStateでUI更新
+                                            if (mounted) {
                                               setState(() {
-                                                _alarms.removeAt(index);
+                                                // UI更新を強制
                                               });
-                                              // アラーム削除後に自動保存
-                                              await _saveAlarms();
-                                            } catch (e) {
-                                              debugPrint('アラーム削除エラー: $e');
-                                              // エラーが発生してもアラームを削除
-                                              _alarms.removeAt(index);
-                                              await _saveAlarms();
+                                            }
+                                          } catch (e) {
+                                            debugPrint('アラーム削除エラー: $e');
+                                            // エラーが発生してもアラームを削除
+                                            _alarms.removeAt(index);
+                                            await _saveAlarms();
+                                            if (mounted) {
+                                              setState(() {
+                                                // UI更新を強制
+                                              });
                                             }
                                           }
                                         },
