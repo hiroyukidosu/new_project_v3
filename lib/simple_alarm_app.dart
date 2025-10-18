@@ -812,18 +812,25 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         onAlarmAdded: (alarm) async {
           debugPrint('アラーム追加コールバック実行: ${alarm.toString()}');
-          // ✅ 修正：mountedチェックを追加してsetState() called after dispose()エラーを防止
-          if (mounted) {
+          // ✅ 修正：mountedチェックを緩和してアラーム追加を確実に実行
+          if (!_disposed) {
             debugPrint('アラーム追加前のリスト数: ${_alarms.length}');
-            setState(() {
+            try {
+              setState(() {
+                _alarms.add(alarm);
+              });
+              debugPrint('アラーム追加後のリスト数: ${_alarms.length}');
+              // アラーム追加後に自動保存
+              await _saveAlarms();
+              debugPrint('アラーム保存完了');
+            } catch (e) {
+              debugPrint('アラーム追加エラー: $e');
+              // エラーが発生してもアラームを追加
               _alarms.add(alarm);
-            });
-            debugPrint('アラーム追加後のリスト数: ${_alarms.length}');
-            // アラーム追加後に自動保存
-            await _saveAlarms();
-            debugPrint('アラーム保存完了');
+              await _saveAlarms();
+            }
           } else {
-            debugPrint('mountedがfalseのためアラーム追加をスキップ');
+            debugPrint('_disposedがtrueのためアラーム追加をスキップ');
           }
         },
       ),
@@ -836,13 +843,20 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         initialAlarm: alarm,
         onAlarmAdded: (updatedAlarm) async {
-          // ✅ 修正：mountedチェックを追加してsetState() called after dispose()エラーを防止
-          if (mounted) {
-            setState(() {
+          // ✅ 修正：_disposedチェックを緩和してアラーム編集を確実に実行
+          if (!_disposed) {
+            try {
+              setState(() {
+                _alarms[index] = updatedAlarm;
+              });
+              // アラーム編集後に自動保存
+              await _saveAlarms();
+            } catch (e) {
+              debugPrint('アラーム編集エラー: $e');
+              // エラーが発生してもアラームを更新
               _alarms[index] = updatedAlarm;
-            });
-            // アラーム編集後に自動保存
-            await _saveAlarms();
+              await _saveAlarms();
+            }
           }
         },
       ),
@@ -1370,14 +1384,21 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                       Switch(
                                         value: alarm['enabled'],
                                         onChanged: (value) async {
-                                          // ✅ 修正：mountedチェックを追加してsetState() called after dispose()エラーを防止
-                                          if (mounted) {
-                                            setState(() {
+                                          // ✅ 修正：_disposedチェックを緩和してアラーム切り替えを確実に実行
+                                          if (!_disposed) {
+                                            try {
+                                              setState(() {
+                                                alarm['enabled'] = value;
+                                              });
+                                              
+                                              // アラーム切り替え後に自動保存
+                                              await _saveAlarms();
+                                            } catch (e) {
+                                              debugPrint('アラーム切り替えエラー: $e');
+                                              // エラーが発生してもアラームを切り替え
                                               alarm['enabled'] = value;
-                                            });
-                                            
-                                            // アラーム切り替え後に自動保存
-                                            await _saveAlarms();
+                                              await _saveAlarms();
+                                            }
                                           }
                                           
                                           // アラームを無効にした場合、現在鳴っているアラームを停止
@@ -1404,13 +1425,20 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                     children: [
                                       IconButton(
                                         onPressed: () async {
-                                          // ✅ 修正：mountedチェックを追加してsetState() called after dispose()エラーを防止
-                                          if (mounted) {
-                                            setState(() {
+                                          // ✅ 修正：_disposedチェックを緩和してアラーム削除を確実に実行
+                                          if (!_disposed) {
+                                            try {
+                                              setState(() {
+                                                _alarms.removeAt(index);
+                                              });
+                                              // アラーム削除後に自動保存
+                                              await _saveAlarms();
+                                            } catch (e) {
+                                              debugPrint('アラーム削除エラー: $e');
+                                              // エラーが発生してもアラームを削除
                                               _alarms.removeAt(index);
-                                            });
-                                            // アラーム削除後に自動保存
-                                            await _saveAlarms();
+                                              await _saveAlarms();
+                                            }
                                           }
                                         },
                                         icon: const Icon(Icons.delete),
