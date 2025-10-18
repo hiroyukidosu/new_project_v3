@@ -1257,6 +1257,7 @@ Future<void> _initializeApp() async {
     // 日本語ロケール初期化
     await initializeDateFormatting('ja_JP', null);
   } catch (e) {
+    // エラーが発生しても続行
   }
 
   try {
@@ -4591,295 +4592,346 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         
         return Column(
           children: [
-            // ✅ ①スワイプ可能なカレンダーエリア
+            // ✅ スワイプ可能なカレンダーエリア
             Expanded(
               flex: 1,
-              child: GestureDetector(
-                onVerticalDragEnd: (details) {
-                  if (details.primaryVelocity! < 0) {
-                    // 上にスワイプ → 下にスクロール
-                    _calendarScrollController.animateTo(
-                      _calendarScrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  } else if (details.primaryVelocity! > 0) {
-                    // 下にスワイプ → 上にスクロール
-                    _calendarScrollController.animateTo(
-                      0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  // スクロール通知を処理
+                  return true;
                 },
                 child: SingleChildScrollView(
-          controller: _calendarScrollController,
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-          padding: EdgeInsets.symmetric(
-                      horizontal: isNarrowScreen ? 8 : screenWidth * 0.05,
-                      vertical: isSmallScreen ? 4 : 8,
-          ),
-          child: Column(
-            children: [
-                        // メモフィールド
-              if (_selectedDay != null)
-                Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                  padding: EdgeInsets.fromLTRB(
-                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                              0,
-                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                              isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
+                  controller: _calendarScrollController,
+                  physics: const ClampingScrollPhysics(),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            '今日のメモ',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isNarrowScreen ? 8 : screenWidth * 0.05,
+                          vertical: isSmallScreen ? 4 : 8,
+                        ),
+                        child: Column(
+                          children: [
+                            // メモフィールド
+                            if (_selectedDay != null)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: EdgeInsets.fromLTRB(
+                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                                  0,
+                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      spreadRadius: 1,
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          '今日のメモ',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    _buildMemoField(),
+                                  ],
+                                ),
+                              ),
+                            
+                            // ✅ カレンダー本体（スワイプ検出を改善）
+                            GestureDetector(
+                              // ✅ 修正：スワイプを確実に検出
+                              behavior: HitTestBehavior.translucent,
+                              onVerticalDragStart: (_) {
+                                // ドラッグ開始を検出
+                                debugPrint('カレンダー: ドラッグ開始');
+                              },
+                              onVerticalDragUpdate: (details) {
+                                // スワイプの方向と距離を検出
+                                final delta = details.delta.dy;
+                                
+                                if (delta < -3) { // 上スワイプ（感度を調整）
+                                  // 下にスクロール（服用記録を表示）
+                                  if (_calendarScrollController.hasClients) {
+                                    final maxScroll = _calendarScrollController.position.maxScrollExtent;
+                                    final currentScroll = _calendarScrollController.offset;
+                                    final targetScroll = (currentScroll + 30).clamp(0.0, maxScroll);
+                                    
+                                    _calendarScrollController.animateTo(
+                                      targetScroll,
+                                      duration: const Duration(milliseconds: 100),
+                                      curve: Curves.easeOut,
+                                    );
+                                  }
+                                } else if (delta > 3) { // 下スワイプ（感度を調整）
+                                  // 上にスクロール（カレンダーを表示）
+                                  if (_calendarScrollController.hasClients) {
+                                    final currentScroll = _calendarScrollController.offset;
+                                    final targetScroll = (currentScroll - 30).clamp(0.0, double.infinity);
+                                    
+                                    _calendarScrollController.animateTo(
+                                      targetScroll,
+                                      duration: const Duration(milliseconds: 100),
+                                      curve: Curves.easeOut,
+                                    );
+                                  }
+                                }
+                              },
+                              onVerticalDragEnd: (details) {
+                                // ドラッグ終了時の処理
+                                final velocity = details.primaryVelocity ?? 0;
+                                
+                                if (!_calendarScrollController.hasClients) return;
+                                
+                                if (velocity < -300) { // 上スワイプ（速い）
+                                  // 服用記録まで一気にスクロール
+                                  _calendarScrollController.animateTo(
+                                    _calendarScrollController.position.maxScrollExtent,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOut,
+                                  );
+                                } else if (velocity > 300) { // 下スワイプ（速い）
+                                  // カレンダーまで一気にスクロール
+                                  _calendarScrollController.animateTo(
+                                    0,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOut,
+                                  );
+                                }
+                              },
+                              child: SizedBox(
+                                height: 350,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF667eea),
+                                        Color(0xFF764ba2),
+                                      ],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF667eea).withOpacity(0.3),
+                                        spreadRadius: 1,
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      // カレンダー本体
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: TableCalendar<dynamic>(
+                                          firstDay: DateTime.utc(2020, 1, 1),
+                                          lastDay: DateTime.utc(2030, 12, 31),
+                                          focusedDay: _focusedDay,
+                                          calendarFormat: CalendarFormat.month,
+                                          eventLoader: _getEventsForDay,
+                                          startingDayOfWeek: StartingDayOfWeek.monday,
+                                          locale: 'ja_JP',
+                                          // ✅ カレンダー独自のジェスチャーを無効化
+                                          availableGestures: AvailableGestures.none,
+                                          calendarBuilders: CalendarBuilders(
+                                            defaultBuilder: (context, day, focusedDay) {
+                                              return _buildCalendarDay(day);
+                                            },
+                                            selectedBuilder: (context, day, focusedDay) {
+                                              return _buildCalendarDay(day, isSelected: true);
+                                            },
+                                            todayBuilder: (context, day, focusedDay) {
+                                              return _buildCalendarDay(day, isToday: true);
+                                            },
+                                          ),
+                                          headerStyle: HeaderStyle(
+                                            formatButtonVisible: false,
+                                            titleCentered: true,
+                                            titleTextStyle: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                            leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                                            rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                                            decoration: const BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                  Color(0xFF667eea),
+                                                  Color(0xFF764ba2),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          daysOfWeekStyle: const DaysOfWeekStyle(
+                                            weekdayStyle: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                              color: Colors.white,
+                                            ),
+                                            weekendStyle: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          calendarStyle: _buildCalendarStyle(),
+                                          onDaySelected: _onDaySelected,
+                                          selectedDayPredicate: (day) {
+                                            return _selectedDates.contains(_normalizeDate(day));
+                                          },
+                                          onPageChanged: (focusedDay) {
+                                            _focusedDay = focusedDay;
+                                          },
+                                        ),
+                                      ),
+                                      
+                                      // 左上：左移動ボタン
+                                      Positioned(
+                                        top: 12,
+                                        left: 12,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () {
+                                              _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1);
+                                              setState(() {});
+                                            },
+                                            borderRadius: BorderRadius.circular(20),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.9),
+                                                borderRadius: BorderRadius.circular(20),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.2),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.arrow_back,
+                                                color: Colors.blue,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      
+                                      // 右上：右移動ボタン
+                                      Positioned(
+                                        top: 12,
+                                        right: 12,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () {
+                                              _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1);
+                                              setState(() {});
+                                            },
+                                            borderRadius: BorderRadius.circular(20),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.9),
+                                                borderRadius: BorderRadius.circular(20),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.2),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.arrow_forward,
+                                                color: Colors.blue,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      
+                                      // 左矢印アイコンの右側：色変更アイコン
+                                      Positioned(
+                                        top: 12,
+                                        left: 60,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: _changeDayColor,
+                                            borderRadius: BorderRadius.circular(15),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.9),
+                                                borderRadius: BorderRadius.circular(15),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.2),
+                                                    blurRadius: 3,
+                                                    offset: const Offset(0, 1),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.palette,
+                                                color: Colors.purple,
+                                                size: 16,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            
+                            const SizedBox(height: 12),
+                            
+                            // 今日の服用状況表示
+                            if (_selectedDay != null)
+                              _buildMedicationStats(),
+                            
+                            const SizedBox(height: 8),
+                            
+                            // 服用記録セクション
+                            if (_selectedDay != null)
+                              _buildMedicationRecords(),
+                            
+                            const SizedBox(height: 20),
+                          ],
+                        ),
                       ),
-                      _buildMemoField(),
                     ],
-                  ),
-                ),
-                        
-                        // ✅ ②カレンダーにパレットアイコン付き
-              SizedBox(
-                          height: 350,
-                child: Container(
-                decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF667eea),
-                      Color(0xFF764ba2),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF667eea).withOpacity(0.3),
-                      spreadRadius: 1,
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                            child: Stack(
-                              children: [
-                                // カレンダー本体
-                                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                    child: TableCalendar<dynamic>(
-                      firstDay: DateTime.utc(2020, 1, 1),
-                      lastDay: DateTime.utc(2030, 12, 31),
-                      focusedDay: _focusedDay,
-                      calendarFormat: CalendarFormat.month,
-                      eventLoader: _getEventsForDay,
-                      startingDayOfWeek: StartingDayOfWeek.monday,
-                      locale: 'ja_JP',
-                      calendarBuilders: CalendarBuilders(
-                                      // ✅ ③④ 曜日マーク・チェックマーク表示
-                        defaultBuilder: (context, day, focusedDay) {
-                                        return _buildCalendarDay(day);
-                                      },
-                                      selectedBuilder: (context, day, focusedDay) {
-                                        return _buildCalendarDay(day, isSelected: true);
-                                      },
-                                      todayBuilder: (context, day, focusedDay) {
-                                        return _buildCalendarDay(day, isToday: true);
-                                      },
-                                    ),
-                                    headerStyle: HeaderStyle(
-                        formatButtonVisible: false,
-                        titleCentered: true,
-                                      titleTextStyle: const TextStyle(
-                                        fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                                      leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
-                                      rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
-                                      decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0xFF667eea),
-                              Color(0xFF764ba2),
-                            ],
-                          ),
-                        ),
-                      ),
-                      daysOfWeekStyle: const DaysOfWeekStyle(
-                        weekdayStyle: TextStyle(
-                          fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                          color: Colors.white,
-                        ),
-                        weekendStyle: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                                        fontSize: 12,
-                        ),
-                      ),
-                      calendarStyle: _buildCalendarStyle(),
-                      onDaySelected: _onDaySelected,
-                      selectedDayPredicate: (day) {
-                        return _selectedDates.contains(_normalizeDate(day));
-                      },
-                      onPageChanged: (focusedDay) {
-                        _focusedDay = focusedDay;
-                      },
-                    ),
-                  ),
-                                
-                                // ✅ 左上：左移動ボタン
-                                Positioned(
-                                  top: 12,
-                                  left: 12,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        // カレンダーを左に移動（前の月）
-                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1);
-                                        setState(() {});
-                                      },
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.9),
-                                          borderRadius: BorderRadius.circular(20),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.2),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_back,
-                                          color: Colors.blue,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                
-                                // ✅ 右上：右移動ボタン
-                                Positioned(
-                                  top: 12,
-                                  right: 12,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        // カレンダーを右に移動（次の月）
-                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1);
-                                        setState(() {});
-                                      },
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.9),
-                                          borderRadius: BorderRadius.circular(20),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.2),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_forward,
-                                          color: Colors.blue,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                
-                                // ✅ 左矢印アイコンの右側：色変更アイコン
-                                Positioned(
-                                  top: 12,
-                                  left: 60, // 左矢印アイコンの右側に配置
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: _changeDayColor,
-                                      borderRadius: BorderRadius.circular(15),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.9),
-                                          borderRadius: BorderRadius.circular(15),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.2),
-                                              blurRadius: 3,
-                                              offset: const Offset(0, 1),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.palette,
-                                          color: Colors.purple,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 12),
-                        
-                        // 今日の服用状況表示
-              if (_selectedDay != null)
-                _buildMedicationStats(),
-                        
-              const SizedBox(height: 8),
-                        
-                        // 服用記録セクション
-              if (_selectedDay != null)
-                _buildMedicationRecords(),
-                        
-              const SizedBox(height: 20),
-            ],
-          ),
                   ),
                 ),
               ),
@@ -5591,7 +5643,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     child: Semantics(
                       label: '${memo.name}の服用記録 ${index + 1}回目',
                       hint: 'タップして服用状態を切り替え',
-                      child: GestureDetector(
+                    child: GestureDetector(
                       onTap: () {
                         if (_selectedDay != null) {
                           final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
@@ -5643,11 +5695,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             ),
                           ],
                         ),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                }),
               ),
               // 服用回数情報
               const SizedBox(height: 12),
@@ -5766,7 +5818,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ],
           ),
         ),
-      );
+    );
   }
 
   // メモ詳細ダイアログを表示
