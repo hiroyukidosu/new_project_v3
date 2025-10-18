@@ -118,11 +118,19 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
           await _prefs!.setBool('alarm_${i}_enabled', alarm['enabled'] ?? true);
           await _prefs!.setString('alarm_${i}_alarmType', alarm['alarmType'] ?? 'sound');
           await _prefs!.setInt('alarm_${i}_volume', alarm['volume'] ?? 80);
+          
+          // ✅ 曜日データを保存
+          final selectedDays = alarm['selectedDays'] as List<bool>? ?? 
+                              [false, false, false, false, false, false, false];
+          for (int j = 0; j < 7; j++) {
+            await _prefs!.setBool('alarm_${i}_day_$j', selectedDays[j]);
+          }
         }
         
-        debugPrint('アラームデータを保存しました: ${_alarms.length}件');
-      } catch (e) {
-        debugPrint('アラームデータ保存エラー: $e');
+        debugPrint('✅ アラームデータを保存しました: ${_alarms.length}件');
+      } catch (e, stackTrace) {
+        debugPrint('❌ アラームデータ保存エラー: $e');
+        debugPrint('スタックトレース: $stackTrace');
       }
     } else {
       debugPrint('SharedPreferencesがnullのため保存をスキップ');
@@ -139,23 +147,27 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         final alarmsList = <Map<String, dynamic>>[];
         
         for (int i = 0; i < alarmCount; i++) {
-          final name = _prefs!.getString('alarm_${i}_name');
-          final time = _prefs!.getString('alarm_${i}_time');
-          final repeat = _prefs!.getString('alarm_${i}_repeat');
-          final enabled = _prefs!.getBool('alarm_${i}_enabled');
-          final alarmType = _prefs!.getString('alarm_${i}_alarmType');
-          final volume = _prefs!.getInt('alarm_${i}_volume');
+          // ✅ 型を明示的に指定して安全に取得
+          final name = _prefs!.getString('alarm_${i}_name') ?? '';
+          final time = _prefs!.getString('alarm_${i}_time') ?? '00:00';
+          final repeat = _prefs!.getString('alarm_${i}_repeat') ?? '一度だけ';
+          final enabled = _prefs!.getBool('alarm_${i}_enabled') ?? true;
+          final alarmType = _prefs!.getString('alarm_${i}_alarmType') ?? 'sound';
+          final volume = _prefs!.getInt('alarm_${i}_volume') ?? 80;  // ✅ getIntを使用
           
           debugPrint('アラーム $i 読み込み: name=$name, time=$time, repeat=$repeat, enabled=$enabled, alarmType=$alarmType, volume=$volume');
           
-          if (name != null && time != null) {
+          // ✅ 必須フィールドが存在する場合のみ追加（nullチェックを削除）
+          if (name.isNotEmpty && time.isNotEmpty) {
             alarmsList.add({
               'name': name,
               'time': time,
-              'repeat': repeat ?? '一度だけ',
-              'enabled': enabled ?? true,
-              'alarmType': alarmType ?? 'sound',
-              'volume': volume ?? 80,
+              'repeat': repeat,
+              'enabled': enabled,
+              'alarmType': alarmType,
+              'volume': volume,
+              'isRepeatEnabled': repeat != '一度だけ',  // ✅ 自動的に判定
+              'selectedDays': _loadSelectedDays(i),     // ✅ 曜日データを別途読み込み
             });
             debugPrint('アラーム $i 追加完了');
           } else {
@@ -178,12 +190,23 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
           debugPrint('_loadAlarms setState エラー: $e');
         }
         debugPrint('アラームデータを読み込みました: ${_alarms.length}件');
-      } catch (e) {
-        debugPrint('アラームデータ読み込みエラー: $e');
+      } catch (e, stackTrace) {
+        debugPrint('❌ アラームデータ読み込みエラー: $e');
+        debugPrint('スタックトレース: $stackTrace');  // ✅ 詳細なエラー情報
       }
     } else {
       debugPrint('SharedPreferencesがnullのため読み込みをスキップ');
     }
+  }
+
+  // ✅ 曜日データを読み込むヘルパーメソッドを追加
+  List<bool> _loadSelectedDays(int index) {
+    final selectedDays = <bool>[];
+    for (int j = 0; j < 7; j++) {
+      final day = _prefs!.getBool('alarm_${index}_day_$j') ?? false;
+      selectedDays.add(day);
+    }
+    return selectedDays;
   }
 
   @override
