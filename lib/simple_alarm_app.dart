@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'core/alarm_optimization.dart';
+import 'core/snapshot_service.dart';
 
 class SimpleAlarmApp extends StatefulWidget {
   const SimpleAlarmApp({super.key});
@@ -30,6 +31,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
   DateTime? _lastCheckTime;
   SharedPreferences? _prefs;
   bool _disposed = false;
+  // 同一分内の重複発火防止用
+  String? _lastFiredTimeLabel; // 'HH:mm'
+  int? _lastFiredMinuteMarker; // 日内分番号 (hour*60+minute)
 
   @override
   void initState() {
@@ -131,154 +135,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     }
   }
 
-  // アラームデータ保存機能（再起動後も保持）
-  Future<void> _saveAlarms() async {
-    debugPrint('アラーム保存開始: ${_alarms.length}件');
-    if (_prefs != null) {
-      try {
-        // アラーム数を保存
-        await _prefs!.setInt('alarm_count', _alarms.length);
-        debugPrint('アラーム数保存完了: ${_alarms.length}件');
-        
-        // 各アラームのデータを個別に保存（型安全性を完全に保証）
-        for (int i = 0; i < _alarms.length; i++) {
-          try {
-            final alarm = _alarms[i];
-            debugPrint('アラーム $i 保存: ${alarm.toString()}');
-            
-            // ✅ 文字列フィールドの安全な保存
-            await _prefs!.setString('alarm_${i}_name', alarm['name']?.toString() ?? '');
-            await _prefs!.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
-            await _prefs!.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
-            await _prefs!.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
-            
-            // ✅ ブール値の安全な保存
-            final enabled = alarm['enabled'] is bool ? alarm['enabled'] as bool : true;
-            await _prefs!.setBool('alarm_${i}_enabled', enabled);
-            
-            // ✅ 整数値の安全な保存（型キャストエラーの完全防止）
-            int volume = 80; // デフォルト値
-            if (alarm['volume'] is int) {
-              volume = alarm['volume'] as int;
-            } else if (alarm['volume'] is String) {
-              volume = int.tryParse(alarm['volume'] as String) ?? 80;
-              debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換して保存: ${alarm['volume']} -> $volume');
-            } else {
-              debugPrint('⚠️ アラーム $i: volumeの型が不明、デフォルト値80を使用');
-            }
-            await _prefs!.setInt('alarm_${i}_volume', volume);
-            
-            // ✅ 曜日データの安全な保存
-            final selectedDays = alarm['selectedDays'] is List ? 
-                                (alarm['selectedDays'] as List).cast<bool>() : 
-                                [false, false, false, false, false, false, false];
-            for (int j = 0; j < 7; j++) {
-              await _prefs!.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
-            }
-            
-            debugPrint('✅ アラーム $i 保存完了');
-          } catch (e) {
-            debugPrint('❌ アラーム $i 保存エラー: $e');
-            // エラーが発生しても次のアラームの保存を続行
-            continue;
-          }
-        }
-        
-        debugPrint('✅ アラームデータを保存しました: ${_alarms.length}件');
-      } catch (e, stackTrace) {
-        debugPrint('❌ アラームデータ保存エラー: $e');
-        debugPrint('スタックトレース: $stackTrace');
-      }
-    } else {
-      debugPrint('SharedPreferencesがnullのため保存をスキップ');
-    }
-  }
 
-  // アラームデータ読み込み機能（再起動後も保持）
-  Future<void> _loadAlarms() async {
-    debugPrint('アラーム読み込み開始');
-    if (_prefs != null) {
-      try {
-        final alarmCount = _prefs!.getInt('alarm_count') ?? 0;
-        debugPrint('保存されているアラーム数: $alarmCount件');
-        final alarmsList = <Map<String, dynamic>>[];
-        
-        for (int i = 0; i < alarmCount; i++) {
-          try {
-            // ✅ 型を明示的に指定して安全に取得（完全版）
-            final name = _prefs!.getString('alarm_${i}_name') ?? '';
-            final time = _prefs!.getString('alarm_${i}_time') ?? '00:00';
-            final repeat = _prefs!.getString('alarm_${i}_repeat') ?? '一度だけ';
-            final enabled = _prefs!.getBool('alarm_${i}_enabled') ?? true;
-            final alarmType = _prefs!.getString('alarm_${i}_alarmType') ?? 'sound';
-            
-            // ✅ volumeの型安全性を完全に保証
-            int volume = 80; // デフォルト値
-            try {
-              final volumeValue = _prefs!.getInt('alarm_${i}_volume');
-              if (volumeValue != null) {
-                volume = volumeValue;
-              } else {
-                // 古いデータでStringとして保存されている場合の対応
-                final volumeStr = _prefs!.getString('alarm_${i}_volume');
-                if (volumeStr != null && volumeStr.isNotEmpty) {
-                  volume = int.tryParse(volumeStr) ?? 80;
-                  debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換: $volumeStr -> $volume');
-                }
-              }
-            } catch (e) {
-              debugPrint('⚠️ アラーム $i: volume読み込みエラー、デフォルト値80を使用: $e');
-              volume = 80;
-            }
-            
-            debugPrint('アラーム $i 読み込み: name=$name, time=$time, repeat=$repeat, enabled=$enabled, alarmType=$alarmType, volume=$volume');
-            
-            // ✅ 必須フィールドが存在する場合のみ追加
-            if (name.isNotEmpty && time.isNotEmpty) {
-              alarmsList.add({
-                'name': name,
-                'time': time,
-                'repeat': repeat,
-                'enabled': enabled,
-                'alarmType': alarmType,
-                'volume': volume,  // ✅ int型のまま保存
-                'isRepeatEnabled': repeat != '一度だけ',
-                'selectedDays': _loadSelectedDays(i),
-              });
-              debugPrint('✅ アラーム $i 追加完了');
-            } else {
-              debugPrint('⚠️ アラーム $i は無効なデータのためスキップ');
-            }
-          } catch (e) {
-            debugPrint('❌ アラーム $i 読み込みエラー: $e');
-            // エラーが発生しても次のアラームの処理を続行
-            continue;
-          }
-        }
-        
-        debugPrint('読み込み完了: ${alarmsList.length}件のアラーム');
-        
-        // 安全なsetState呼び出し
-        if (!mounted || _disposed) return;
-        if (context.mounted == false) return;
-        
-        try {
-          setState(() {
-            _alarms = alarmsList;
-          });
-          debugPrint('setState完了: _alarms.length=${_alarms.length}');
-        } catch (e) {
-          debugPrint('_loadAlarms setState エラー: $e');
-        }
-        debugPrint('アラームデータを読み込みました: ${_alarms.length}件');
-      } catch (e, stackTrace) {
-        debugPrint('❌ アラームデータ読み込みエラー: $e');
-        debugPrint('スタックトレース: $stackTrace');  // ✅ 詳細なエラー情報
-      }
-    } else {
-      debugPrint('SharedPreferencesがnullのため読み込みをスキップ');
-    }
-  }
 
   // ✅ 曜日データを読み込むヘルパーメソッドを追加
   List<bool> _loadSelectedDays(int index) {
@@ -385,7 +242,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       // 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
       final now = DateTime.now();
       for (final alarm in _alarms) {
-        if (alarm['enabled'] && alarm['time'] == '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}') {
+        if ((alarm['enabled'] as bool) && alarm['time'] == '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}') {
           alarm['lastTriggered'] = now;
           // 一時的にアラームを無効化（次の分まで）
           alarm['temporarilyDisabled'] = true;
@@ -394,8 +251,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       }
       
       // 状態を更新
-      if (!mounted || _disposed) return;
-      if (context.mounted == false) return;
+        if (!mounted || _disposed) return;
+        if (!context.mounted) return;
       
       try {
         // 最終的なmountedチェック
@@ -414,8 +271,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       debugPrint('服用時間のアラーム停止エラー: $e');
       
       // エラー時の安全な状態更新
-      if (!mounted || _disposed) return;
-      if (context.mounted == false) return;
+        if (!mounted || _disposed) return;
+        if (!context.mounted) return;
       
       try {
         // 最終的なmountedチェック
@@ -559,13 +416,19 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       debugPrint('服用時間のアラームチェック: $currentTime, アラーム数: ${_alarms.length}, 有効: $_isAlarmEnabled');
     }
     
+    bool firedThisMinute = false;
     for (final alarm in _alarms) {
       // ✅ 修正：ログの頻度制限のみ適用（アラーム機能は正常に動作）
       if (AlarmOptimization.shouldLogAlarmCheck()) {
         debugPrint('服用時間のアラーム: ${alarm['name']}, 時間: ${alarm['time']}, 有効: ${alarm['enabled']}');
       }
       
-      if (alarm['enabled'] && alarm['time'] == currentTime) {
+      if ((alarm['enabled'] as bool) && alarm['time'] == currentTime) {
+        // 同一分内に既にどれかのアラームが発火していればスキップ
+        final minuteMarker = now.hour * 60 + now.minute;
+        if (_lastFiredTimeLabel == currentTime && _lastFiredMinuteMarker == minuteMarker) {
+          continue;
+        }
         // 一時的に無効化されたアラームはスキップ
         if (alarm['temporarilyDisabled'] == true) {
           // ✅ 修正：スキップログの頻度制限（5分に1回のみ）
@@ -586,6 +449,10 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
             await _triggerAlarm(alarm);
             // 発火時刻を記録
             alarm['lastTriggered'] = now;
+            _lastFiredTimeLabel = currentTime;
+            _lastFiredMinuteMarker = minuteMarker;
+            firedThisMinute = true;
+            break; // 同じ分に複数発火しないように打ち切る
           } else {
             // ✅ 修正：スキップログの頻度制限（5分に1回のみ）
             if (AlarmOptimization.shouldLogAlarmCheck()) {
@@ -608,7 +475,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     final selectedDays = alarm['selectedDays'] as List<bool>?;
     
     // 一度だけの場合は常に発火
-    if (!isRepeatEnabled || repeat == '一度だけ') {
+    if (!(isRepeatEnabled as bool) || repeat == '一度だけ') {
       return true;
     }
     
@@ -640,8 +507,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     debugPrint('服用時間のアラーム開始: ${alarm['name']}');
     
     // 複数の安全チェックを実行
-    if (!mounted || _disposed) return;
-    if (context.mounted == false) return;
+        if (!mounted || _disposed) return;
+        if (!context.mounted) return;
     
     try {
       // 最終的なmountedチェック
@@ -692,8 +559,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       debugPrint('服用時間のアラーム再生エラー: $e');
       
       // エラー時の安全な状態更新
-      if (!mounted || _disposed) return;
-      if (context.mounted == false) return;
+        if (!mounted || _disposed) return;
+        if (!context.mounted) return;
       
       try {
         // 最終的なmountedチェック
@@ -810,13 +677,13 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       iOS: iosDetails,
     );
 
-    await _notifications.show(
-      alarm.hashCode,
-      alarm['name'],
-      'お薬を飲む時間になりました - 通知をタップしてアプリを開く',
-      details,
-      payload: 'alarm_${alarm.hashCode}',
-    );
+      await _notifications.show(
+        alarm.hashCode,
+        alarm['name'] as String,
+        'お薬を飲む時間になりました - 通知をタップしてアプリを開く',
+        details,
+        payload: 'alarm_${alarm.hashCode}',
+      );
   }
 
   NotificationDetails _getNotificationDetails(String type) {
@@ -991,6 +858,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       context: context,
       builder: (context) => _AddAlarmDialog(
         onAlarmAdded: (alarm) async {
+          // ✅ 変更前スナップショット（メインに委譲）
+          await SnapshotService.saveBeforeChange('アラーム追加_${alarm['name'] ?? '無題'}');
           debugPrint('📝 アラーム追加開始: ${alarm.toString()}');
           
           try {
@@ -1066,6 +935,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         initialAlarm: alarm,
         onAlarmAdded: (updatedAlarm) async {
+          // ✅ 変更前スナップショット（メインに委譲）
+          await SnapshotService.saveBeforeChange('アラーム編集_${updatedAlarm['name'] ?? '無題'}');
           try {
             debugPrint('📝 アラーム編集開始: インデックス $index');
             
@@ -1358,20 +1229,20 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: typeInfo['color'].withOpacity(0.1),
+        color: (typeInfo['color'] as Color).withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: typeInfo['color'].withOpacity(0.3)),
+        border: Border.all(color: (typeInfo['color'] as Color).withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(typeInfo['icon'], style: const TextStyle(fontSize: 12)),
+          Text(typeInfo['icon'] as String, style: const TextStyle(fontSize: 12)),
           const SizedBox(width: 4),
           Text(
-            typeInfo['name'],
+            typeInfo['name'] as String,
             style: TextStyle(
               fontSize: 10,
-              color: typeInfo['color'],
+              color: typeInfo['color'] as Color,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -1452,7 +1323,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     final isRepeatEnabled = alarm['isRepeatEnabled'] ?? false;
     final selectedDays = alarm['selectedDays'] as List<bool>?;
     
-    if (!isRepeatEnabled || repeat == '一度だけ') {
+    if (!(isRepeatEnabled as bool) || repeat == '一度だけ') {
       return '一度だけ';
     }
     
@@ -1467,7 +1338,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       return selectedDayNames.isEmpty ? '曜日未選択' : selectedDayNames.join(',');
     }
     
-    return repeat;
+    return repeat as String;
   }
 
   void _showNotificationSettings() {
@@ -1760,7 +1631,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: _alarms.length,
                       itemBuilder: (context, index) {
-                        debugPrint('🔍 アラーム表示[$index]: ${_alarms[index]['name']}');
+                        if (AlarmOptimization.shouldLogAlarmCheck()) {
+                          debugPrint('🔍 アラーム表示[$index]: ${_alarms[index]['name']}');
+                        }
                         final alarm = _alarms[index];
                         return Card(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -1775,8 +1648,8 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                   Row(
                                     children: [
                                       Icon(
-                                        alarm['enabled'] ? Icons.alarm : Icons.alarm_off,
-                                        color: alarm['enabled'] ? const Color(0xFF2196F3) : Colors.grey,
+                                        (alarm['enabled'] as bool) ? Icons.alarm : Icons.alarm_off,
+                                        color: (alarm['enabled'] as bool) ? const Color(0xFF2196F3) : Colors.grey,
                                         size: 24,
                                       ),
                                       const SizedBox(width: 12),
@@ -1785,7 +1658,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              alarm['name'],
+                                              alarm['name'] as String,
                                               style: const TextStyle(
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
@@ -1803,10 +1676,12 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                         ),
                                       ),
                                       Switch(
-                                        value: alarm['enabled'],
+                                        value: alarm['enabled'] as bool,
                                         onChanged: (value) async {
                                           // ✅ 修正：アラーム切り替えを確実に実行
                                           try {
+                                            // ✅ スナップショット（切替前）
+                                            await SnapshotService.saveBeforeChange('アラーム切替_${alarm['name'] ?? '無題'}');
                                             // 直接アラームを切り替え
                                             alarm['enabled'] = value;
                                             debugPrint('✅ アラーム切り替え完了: ${alarm['name']} = $value');
@@ -1845,9 +1720,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                     spacing: 8,
                                     runSpacing: 4,
                                     children: [
-                                      _buildAlarmTypeChip(alarm['alarmType'] ?? 'sound'),
+                                      _buildAlarmTypeChip(alarm['alarmType'] as String? ?? 'sound'),
                                       if (alarm['volume'] != null)
-                                        _buildVolumeChip(alarm['volume']),
+                                        _buildVolumeChip(alarm['volume'] as int),
                                     ],
                                   ),
                                   const SizedBox(height: 8),
@@ -1858,6 +1733,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                         onPressed: () async {
                                           // ✅ 修正：アラーム削除を確実に実行
                                           try {
+                                            // ✅ スナップショット（削除前）
+                                            final name = _alarms[index]['name'] ?? 'アラーム$index';
+                                            await SnapshotService.saveBeforeChange('アラーム削除_$name');
                                             // 直接アラームを削除
                                             _alarms.removeAt(index);
                                             debugPrint('✅ アラーム削除完了: ${_alarms.length}件残り');
@@ -1934,14 +1812,14 @@ class _AddAlarmDialogState extends State<_AddAlarmDialog> {
   void initState() {
     super.initState();
     if (widget.initialAlarm != null) {
-      _nameController.text = widget.initialAlarm!['name'] ?? '';
-      _selectedAlarmType = widget.initialAlarm!['alarmType'] ?? 'sound';
-      _volume = widget.initialAlarm!['volume'] ?? 80;
-      _isRepeatEnabled = widget.initialAlarm!['isRepeatEnabled'] ?? false;
-      _selectedDays = List<bool>.from(widget.initialAlarm!['selectedDays'] ?? [false, false, false, false, false, false, false]);
+      _nameController.text = (widget.initialAlarm!['name'] as String?) ?? '';
+      _selectedAlarmType = (widget.initialAlarm!['alarmType'] as String?) ?? 'sound';
+      _volume = (widget.initialAlarm!['volume'] as int?) ?? 80;
+      _isRepeatEnabled = (widget.initialAlarm!['isRepeatEnabled'] as bool?) ?? false;
+      _selectedDays = List<bool>.from((widget.initialAlarm!['selectedDays'] as List?) ?? [false, false, false, false, false, false, false]);
       
       // 繰り返し設定の初期化
-      final repeat = widget.initialAlarm!['repeat'] ?? '一度だけ';
+      final repeat = (widget.initialAlarm!['repeat'] as String?) ?? '一度だけ';
       if (_isRepeatEnabled && repeat != '一度だけ') {
         _repeatType = repeat;
       } else {
@@ -1949,7 +1827,7 @@ class _AddAlarmDialogState extends State<_AddAlarmDialog> {
       }
       
       // 時間の設定
-      final timeStr = widget.initialAlarm!['time'] ?? '00:00';
+      final timeStr = (widget.initialAlarm!['time'] as String?) ?? '00:00';
       final timeParts = timeStr.split(':');
       _selectedTime = TimeOfDay(
         hour: int.parse(timeParts[0]),
@@ -2124,7 +2002,7 @@ class _AddAlarmDialogState extends State<_AddAlarmDialog> {
         ),
         ElevatedButton(
           onPressed: () {
-            final alarm = {
+            final alarm = <String, dynamic>{
               'name': _nameController.text.isEmpty ? 'アラーム' : _nameController.text,
               'time': '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}',
               'repeat': _isRepeatEnabled ? _repeatType : '一度だけ',

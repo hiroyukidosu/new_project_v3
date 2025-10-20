@@ -33,6 +33,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 // Local imports
 // import 'firebase_options.dart';
 import 'simple_alarm_app.dart';
+import 'core/snapshot_service.dart';
 
 // 高速化：シンプルなデバッグログ
 void _debugLog(String message) {
@@ -2846,6 +2847,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   double? _customAdherenceResult;
   int? _customDaysResult;
   final TextEditingController _customDaysController = TextEditingController();
+  
+  // ✅ アラームタブのキー（強制再構築用）
+  Key _alarmTabKey = UniqueKey();
+  
+  // ✅ 手動復元機能のための変数
+  DateTime? _lastOperationTime;
+  
+  // ✅ 自動バックアップ機能のための変数
+  Timer? _autoBackupTimer;
+  bool _autoBackupEnabled = true;
  
   // ✅ 修正：データキーの統一とバージョン管理
   static const String _medicationMemosKey = 'medication_memos_v2';
@@ -2861,6 +2872,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   final TextEditingController _memoController = TextEditingController();
   final FocusNode _memoFocusNode = FocusNode();
   bool _isMemoFocused = false;
+  // ✅ 部分更新用のValueNotifier
+  final ValueNotifier<String> _memoTextNotifier = ValueNotifier<String>('');
+  final ValueNotifier<Map<String, Color>> _dayColorsNotifier = ValueNotifier<Map<String, Color>>({});
   
   
   // 曜日設定された薬の服用状況を管理
@@ -2926,11 +2940,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _tabController.addListener(() {
       setState(() {});
     });
+    // ✅ SnapshotServiceにスナップショット保存関数を登録
+    SnapshotService.register((label) => _saveSnapshotBeforeChange(label));
     
    
     
     // PageControllerを初期化
     _medicationPageController = PageController(viewportFraction: 1.0);
+    // ValueNotifier初期値
+    _memoTextNotifier.value = '';
+    _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
     
     // ページネーション初期化
     _initializeScrollListener();
@@ -2981,6 +3000,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       // データ保持テスト
       await _testDataPersistence();
       
+      // ✅ 自動バックアップ機能を初期化
+      _initializeAutoBackup();
+      
       _debugLog('全データ読み込み完了（包括的ローカル復元）');
     } catch (e) {
       _debugLog('データ読み込みエラー: $e');
@@ -3023,8 +3045,207 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       await _saveMedicationDoseStatus();
       
       _debugLog('全データ保存完了（包括的ローカル保存）');
+      
+      // ✅ 操作時間を記録（手動復元用）
+      _lastOperationTime = DateTime.now();
+      
+      // ✅ 操作スナップショットを常に保存（5分以降でも手動復元可能）
+      try {
+        final backupData = await _createSafeBackupData('操作スナップショット');
+        final jsonString = await _safeJsonEncode(backupData);
+        final encryptedData = await _encryptDataAsync(jsonString);
+        final snapshotKey = 'operation_snapshot_latest';
+        await prefs.setString(snapshotKey, encryptedData);
+        await _updateBackupHistory('操作スナップショット', snapshotKey, type: 'snapshot');
+        await prefs.setString('last_snapshot_key', snapshotKey);
+      } catch (e) {
+        debugPrint('操作スナップショット保存エラー: $e');
+      }
     } catch (e) {
       _debugLog('全データ保存エラー: $e');
+    }
+  }
+  
+  // ✅ 自動バックアップ機能の初期化
+  void _initializeAutoBackup() {
+    _scheduleAutoBackup();
+    debugPrint('🔄 自動バックアップ機能を初期化しました');
+  }
+  
+  // ✅ 深夜2:00の自動バックアップをスケジュール
+  void _scheduleAutoBackup() {
+    _autoBackupTimer?.cancel();
+    
+    final now = DateTime.now();
+    // 次の実行時刻を当日20:12（過ぎていれば翌日20:12）に設定
+    final todayTarget = DateTime(now.year, now.month, now.day, 20, 12);
+    final nextRun = now.isBefore(todayTarget)
+        ? todayTarget
+        : DateTime(now.year, now.month, now.day + 1, 20, 12);
+    final duration = nextRun.difference(now);
+    
+    _autoBackupTimer = Timer(duration, () async {
+      if (_autoBackupEnabled) {
+        await _performAutoBackup();
+        // 次の日の深夜2:00をスケジュール
+        _scheduleAutoBackup();
+      }
+    });
+    
+    debugPrint('🔄 自動バックアップをスケジュールしました: ${nextRun.toString()}');
+  }
+  
+  // ✅ 自動バックアップを実行
+  Future<void> _performAutoBackup() async {
+    try {
+      final backupName = '自動バックアップ_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+      debugPrint('🔄 自動バックアップを実行: $backupName');
+      
+      // バックアップデータを作成
+      final backupData = await _createSafeBackupData(backupName);
+      final jsonString = await _safeJsonEncode(backupData);
+      final encryptedData = await _encryptDataAsync(jsonString);
+      
+      // バックアップを保存
+      final prefs = await SharedPreferences.getInstance();
+      final backupKey = 'auto_backup_${DateTime.now().millisecondsSinceEpoch}';
+      await prefs.setString(backupKey, encryptedData);
+      
+      // 履歴を更新（フルとして扱う）
+      await _updateBackupHistory(backupName, backupKey, type: 'full');
+      
+      // 最新バックアップ参照キーを保存
+      await prefs.setString('last_auto_backup_key', backupKey);
+      await prefs.setString('last_full_backup_key', backupKey);
+      
+      debugPrint('✅ 自動バックアップ完了: $backupName');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🔄 深夜2:00の自動バックアップが完了しました'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ 自動バックアップエラー: $e');
+    }
+  }
+  
+  // ✅ 操作後5分以内の手動復元機能
+  Future<void> _showManualRestoreDialog() async {
+    if (!mounted) return;
+    
+    final now = DateTime.now();
+    final canRestore = _lastOperationTime != null && 
+        now.difference(_lastOperationTime!).inMinutes <= 5;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.restore, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('手動復元'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: canRestore ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  canRestore 
+                    ? '✅ 操作後5分以内です\n最後の操作から${now.difference(_lastOperationTime!).inMinutes}分経過'
+                    : '⚠️ 操作後5分を過ぎています\n最後の操作から${_lastOperationTime != null ? now.difference(_lastOperationTime!).inMinutes : 0}分経過',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (canRestore) ...[
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await _performManualRestore();
+                  },
+                  icon: const Icon(Icons.restore),
+                  label: const Text('操作前の状態に復元'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ] else ...[
+                const Text(
+                  '操作後5分以内に復元ボタンを押してください',
+                  style: TextStyle(color: Colors.orange),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // ✅ 手動復元を実行
+  Future<void> _performManualRestore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // ✅ 操作スナップショット（直近保存時に常に更新）を参照
+      final lastBackupKey = prefs.getString('last_snapshot_key');
+      
+      if (lastBackupKey != null) {
+        debugPrint('🔄 手動復元を実行: $lastBackupKey');
+        await _restoreBackup(lastBackupKey);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🔄 操作前の状態に復元しました'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ 復元可能なスナップショットが見つかりません'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 手動復元エラー: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ 復元エラー: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
   
@@ -4472,15 +4693,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           spacing: 8,
           runSpacing: 8,
           children: colors.map((color) => GestureDetector(
-            onTap: () {
-              setState(() {
-                _dayColors[dateKey] = color;
-              });
+            onTap: () async {
+              // ✅ 変更前スナップショット（カレンダー日付色の設定）
+              await _saveSnapshotBeforeChange('日付色変更_$dateKey');
+              _dayColors[dateKey] = color;
+              _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
               _saveDayColors();
               Navigator.pop(context);
               _showSnackBar('色を設定しました');
               // カレンダーを再描画
-              setState(() {});
+              // 部分更新はNotifierで反映済み
             },
             child: Container(
               width: 40,
@@ -4495,15 +4717,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              setState(() {
-                _dayColors.remove(dateKey);
-              });
+            onPressed: () async {
+              // ✅ 変更前スナップショット（カレンダー日付色のリセット）
+              await _saveSnapshotBeforeChange('日付色リセット_$dateKey');
+              _dayColors.remove(dateKey);
+              _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
               _saveDayColors();
               Navigator.pop(context);
               _showSnackBar('色を削除しました');
               // カレンダーを再描画
-              setState(() {});
+              // 部分更新はNotifierで反映済み
             },
             child: const Text('色を削除'),
           ),
@@ -4658,70 +4881,70 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         final isNarrowScreen = screenWidth < 360;
         
         return Column(
-          children: [
+            children: [
             // ✅ スワイプ可能なカレンダーエリア
-            Expanded(
-              flex: 1,
+              Expanded(
+                flex: 1,
               child: NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
                   // スクロール通知を処理
                   return true;
-                },
-                child: SingleChildScrollView(
-                  controller: _calendarScrollController,
+                  },
+                  child: SingleChildScrollView(
+          controller: _calendarScrollController,
                   physics: const ClampingScrollPhysics(),
                   child: Column(
                     children: [
                       Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isNarrowScreen ? 8 : screenWidth * 0.05,
-                          vertical: isSmallScreen ? 4 : 8,
-                        ),
-                        child: Column(
-                          children: [
-                            // メモフィールド
-                            if (_selectedDay != null)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                padding: EdgeInsets.fromLTRB(
-                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                                  0,
-                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                                  isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.grey.withOpacity(0.1),
-                                      spreadRadius: 1,
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          '今日のメモ',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    _buildMemoField(),
-                                  ],
-                                ),
-                              ),
-                            
+          padding: EdgeInsets.symmetric(
+                        horizontal: isNarrowScreen ? 8 : screenWidth * 0.05,
+                        vertical: isSmallScreen ? 4 : 8,
+          ),
+          child: Column(
+            children: [
+                          // メモフィールド
+              if (_selectedDay != null)
+                Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                  padding: EdgeInsets.fromLTRB(
+                                isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                                0,
+                                isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                                isSmallScreen ? 8 : (isNarrowScreen ? 12 : 16),
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '今日のメモ',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      _buildMemoField(),
+                    ],
+                  ),
+                ),
+                        
                             // ✅ カレンダー本体（スワイプ検出を改善）
                             GestureDetector(
                               // ✅ 修正：スワイプを確実に検出
@@ -4784,225 +5007,225 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                 }
                               },
                               child: SizedBox(
-                                height: 350,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFF667eea),
-                                        Color(0xFF764ba2),
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFF667eea).withOpacity(0.3),
-                                        spreadRadius: 1,
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Stack(
-                                    children: [
+                            height: 350,
+                child: Container(
+                decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF667eea),
+                      Color(0xFF764ba2),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF667eea).withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                              child: Stack(
+                                children: [
                                       // カレンダー本体
                                       ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: TableCalendar<dynamic>(
-                                          firstDay: DateTime.utc(2020, 1, 1),
-                                          lastDay: DateTime.utc(2030, 12, 31),
-                                          focusedDay: _focusedDay,
-                                          calendarFormat: CalendarFormat.month,
-                                          eventLoader: _getEventsForDay,
-                                          startingDayOfWeek: StartingDayOfWeek.monday,
-                                          locale: 'ja_JP',
+                  borderRadius: BorderRadius.circular(16),
+                    child: TableCalendar<dynamic>(
+                      firstDay: DateTime.utc(2020, 1, 1),
+                      lastDay: DateTime.utc(2030, 12, 31),
+                      focusedDay: _focusedDay,
+                      calendarFormat: CalendarFormat.month,
+                      eventLoader: _getEventsForDay,
+                      startingDayOfWeek: StartingDayOfWeek.monday,
+                      locale: 'ja_JP',
                                           // ✅ カレンダー独自のジェスチャーを無効化
                                           availableGestures: AvailableGestures.none,
-                                          calendarBuilders: CalendarBuilders(
-                                            defaultBuilder: (context, day, focusedDay) {
-                                              return _buildCalendarDay(day);
-                                            },
-                                            selectedBuilder: (context, day, focusedDay) {
-                                              return _buildCalendarDay(day, isSelected: true);
-                                            },
-                                            todayBuilder: (context, day, focusedDay) {
-                                              return _buildCalendarDay(day, isToday: true);
-                                            },
-                                          ),
-                                          headerStyle: HeaderStyle(
-                                            formatButtonVisible: false,
-                                            titleCentered: true,
-                                            titleTextStyle: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                            leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
-                                            rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
-                                            decoration: const BoxDecoration(
-                                              gradient: LinearGradient(
-                                                begin: Alignment.topCenter,
-                                                end: Alignment.bottomCenter,
-                                                colors: [
-                                                  Color(0xFF667eea),
-                                                  Color(0xFF764ba2),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          daysOfWeekStyle: const DaysOfWeekStyle(
-                                            weekdayStyle: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                              color: Colors.white,
-                                            ),
-                                            weekendStyle: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          calendarStyle: _buildCalendarStyle(),
-                                          onDaySelected: _onDaySelected,
-                                          selectedDayPredicate: (day) {
-                                            return _selectedDates.contains(_normalizeDate(day));
-                                          },
-                                          onPageChanged: (focusedDay) {
-                                            _focusedDay = focusedDay;
-                                          },
-                                        ),
-                                      ),
-                                      
-                                      // 左上：左移動ボタン
-                                      Positioned(
-                                        top: 12,
-                                        left: 12,
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: () {
-                                              _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1);
-                                              setState(() {});
-                                            },
-                                            borderRadius: BorderRadius.circular(20),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withOpacity(0.9),
-                                                borderRadius: BorderRadius.circular(20),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.2),
-                                                    blurRadius: 4,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.arrow_back,
-                                                color: Colors.blue,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      
-                                      // 右上：右移動ボタン
-                                      Positioned(
-                                        top: 12,
-                                        right: 12,
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: () {
-                                              _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1);
-                                              setState(() {});
-                                            },
-                                            borderRadius: BorderRadius.circular(20),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withOpacity(0.9),
-                                                borderRadius: BorderRadius.circular(20),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.2),
-                                                    blurRadius: 4,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.arrow_forward,
-                                                color: Colors.blue,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      
-                                      // 左矢印アイコンの右側：色変更アイコン
-                                      Positioned(
-                                        top: 12,
-                                        left: 60,
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: _changeDayColor,
-                                            borderRadius: BorderRadius.circular(15),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withOpacity(0.9),
-                                                borderRadius: BorderRadius.circular(15),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.2),
-                                                    blurRadius: 3,
-                                                    offset: const Offset(0, 1),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.palette,
-                                                color: Colors.purple,
-                                                size: 16,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 12),
-                            
-                            // 今日の服用状況表示
-                            if (_selectedDay != null)
-                              _buildMedicationStats(),
-                            
-                            const SizedBox(height: 8),
-                            
-                            // 服用記録セクション
-                            if (_selectedDay != null)
-                              _buildMedicationRecords(),
-                            
-                            const SizedBox(height: 20),
-                          ],
+                      calendarBuilders: CalendarBuilders(
+                        defaultBuilder: (context, day, focusedDay) {
+                                        return _buildCalendarDay(day);
+                                      },
+                                      selectedBuilder: (context, day, focusedDay) {
+                                        return _buildCalendarDay(day, isSelected: true);
+                                      },
+                                      todayBuilder: (context, day, focusedDay) {
+                                        return _buildCalendarDay(day, isToday: true);
+                                      },
+                                    ),
+                                    headerStyle: HeaderStyle(
+                        formatButtonVisible: false,
+                        titleCentered: true,
+                                      titleTextStyle: const TextStyle(
+                                        fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                                      leftChevronIcon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                                      rightChevronIcon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                                      decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0xFF667eea),
+                              Color(0xFF764ba2),
+                            ],
+                          ),
                         ),
                       ),
+                      daysOfWeekStyle: const DaysOfWeekStyle(
+                        weekdayStyle: TextStyle(
+                          fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                          color: Colors.white,
+                        ),
+                        weekendStyle: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                                        fontSize: 12,
+                        ),
+                      ),
+                      calendarStyle: _buildCalendarStyle(),
+                      onDaySelected: _onDaySelected,
+                      selectedDayPredicate: (day) {
+                        return _selectedDates.contains(_normalizeDate(day));
+                      },
+                      onPageChanged: (focusedDay) {
+                        _focusedDay = focusedDay;
+                      },
+                  ),
+                ),
+                                
+                                      // 左上：左移動ボタン
+                                Positioned(
+                                  top: 12,
+                                  left: 12,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1);
+                                        setState(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_back,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                
+                                      // 右上：右移動ボタン
+                                Positioned(
+                                  top: 12,
+                                  right: 12,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1);
+                                        setState(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_forward,
+                                          color: Colors.blue,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                
+                                      // 左矢印アイコンの右側：色変更アイコン
+                                Positioned(
+                                  top: 12,
+                                        left: 60,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _changeDayColor,
+                                      borderRadius: BorderRadius.circular(15),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.9),
+                                          borderRadius: BorderRadius.circular(15),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 3,
+                                              offset: const Offset(0, 1),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.palette,
+                                          color: Colors.purple,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                                  ),
+                            ),
+                          ),
+                        ),
+                        
+                          const SizedBox(height: 12),
+                          
+                          // 今日の服用状況表示
+              if (_selectedDay != null)
+                _buildMedicationStats(),
+                          
+              const SizedBox(height: 8),
+                          
+                          // 服用記録セクション
+              if (_selectedDay != null)
+                _buildMedicationRecords(),
+                          
+              const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
                     ],
                   ),
                 ),
               ),
-            ),
+          ),
           ],
         );
       },
@@ -5194,10 +5417,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               itemCount: colors.length + 1, // +1 for "色をリセット"
               itemBuilder: (context, index) {
                 if (index == colors.length) {
-                  // 色をリセットボタン
+                  // 色をリセットボタン（デフォルト色に戻す）
                   return GestureDetector(
                     onTap: () {
                       setState(() {
+                        // デフォルト色（何も指定していない最初の色）に戻す
                         _dayColors.remove(dateStr);
                       });
                       Navigator.of(context).pop();
@@ -6994,7 +7218,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           );
         }
         
-        return const SimpleAlarmApp();
+        return KeyedSubtree(
+          key: _alarmTabKey,  // ✅ キーを設定
+          child: const SimpleAlarmApp(),
+        );
       },
     );
   }
@@ -7584,20 +7811,42 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     showDialog(
       context: context,
       builder: (context) => _MemoDialog(
+        existingMemos: _medicationMemos,
         onMemoAdded: (memo) async {
+          // ✅ 変更前スナップショット
+          await _saveSnapshotBeforeChange('メモ追加_${memo.name.isEmpty ? '無題' : memo.name}');
           try {
+            // タイトルが空なら自動連番で補完
+            MedicationMemo memoToSave = memo;
+            final rawTitle = memo.name.trim();
+            if (rawTitle.isEmpty) {
+              final titles = _medicationMemos.map((m) => m.name).toList();
+              final autoTitle = _generateDefaultTitle(titles);
+              memoToSave = MedicationMemo(
+                id: memo.id,
+                name: autoTitle,
+                type: memo.type,
+                dosage: memo.dosage,
+                notes: memo.notes,
+                createdAt: memo.createdAt,
+                lastTaken: memo.lastTaken,
+                color: memo.color,
+                selectedWeekdays: memo.selectedWeekdays,
+              );
+            }
+
             // メモを保存
-            await AppPreferences.saveMedicationMemo(memo);
+            await AppPreferences.saveMedicationMemo(memoToSave);
             
             // UIを更新
           setState(() {
-            _medicationMemos.add(memo);
+            _medicationMemos.add(memoToSave);
           });
             
             // データを再読み込み
             await _loadMedicationMemos();
             
-          _showSnackBar('${memo.type}を追加しました');
+          _showSnackBar('${memoToSave.type}を追加しました');
           } catch (e) {
             _showSnackBar('メモの追加に失敗しました: $e');
           }
@@ -7610,15 +7859,37 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       context: context,
       builder: (context) => _MemoDialog(
         initialMemo: memo,
+        existingMemos: _medicationMemos,
         onMemoAdded: (updatedMemo) async {
+          // ✅ 変更前スナップショット
+          await _saveSnapshotBeforeChange('メモ編集_${memo.name.isEmpty ? '無題' : memo.name}');
+          // タイトルが空なら自動連番で補完
+          MedicationMemo memoToSave = updatedMemo;
+          final rawTitle = updatedMemo.name.trim();
+          if (rawTitle.isEmpty) {
+            final titles = _medicationMemos.where((m) => m.id != memo.id).map((m) => m.name).toList();
+            final autoTitle = _generateDefaultTitle(titles);
+            memoToSave = MedicationMemo(
+              id: updatedMemo.id,
+              name: autoTitle,
+              type: updatedMemo.type,
+              dosage: updatedMemo.dosage,
+              notes: updatedMemo.notes,
+              createdAt: updatedMemo.createdAt,
+              lastTaken: updatedMemo.lastTaken,
+              color: updatedMemo.color,
+              selectedWeekdays: updatedMemo.selectedWeekdays,
+            );
+          }
+
           setState(() {
             final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
             if (index != -1) {
-              _medicationMemos[index] = updatedMemo;
+              _medicationMemos[index] = memoToSave;
             }
           });
-          await AppPreferences.updateMedicationMemo(updatedMemo);
-          _showSnackBar('${updatedMemo.type}を更新しました');
+          await AppPreferences.updateMedicationMemo(memoToSave);
+          _showSnackBar('${memoToSave.type}を更新しました');
         },
       ),
     );
@@ -7647,6 +7918,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _showSnackBar('${memo.name}の服用を記録しました');
   }
   void _deleteMemo(String id) async {
+    // ✅ 変更前スナップショット
+    final target = _medicationMemos.firstWhere(
+      (m) => m.id == id,
+      orElse: () => MedicationMemo(
+        id: id,
+        name: '無題',
+        type: '薬品',
+        createdAt: DateTime.now(),
+      ),
+    );
+    await _saveSnapshotBeforeChange('メモ削除_${target.name}');
     try {
       // メモを削除
       await AppPreferences.deleteMedicationMemo(id);
@@ -7670,6 +7952,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     } catch (e) {
       _showSnackBar('削除に失敗しました: $e');
     }
+  }
+
+  // 空タイトル時の自動連番生成
+  String _generateDefaultTitle(List<String> existingTitles) {
+    const int maxCount = 999;
+    int count = 1;
+    while (count <= maxCount && existingTitles.contains('メモ$count')) {
+      count++;
+    }
+    return 'メモ$count';
   }
 
   // CSV共有機能の強化（未使用）
@@ -7858,7 +8150,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             children: [
               // 服用済みチェックボックス
               GestureDetector(
-                onTap: () {
+                onTap: () async {
+                  // ✅ 変更前スナップショット（服用メモのチェック切替）
+                  await _saveSnapshotBeforeChange('服用チェック_${memo.name}');
                   setState(() {
                     _updateWeekdayMedicationStatus(memo.id, !isChecked);
                   });
@@ -7964,6 +8258,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
   void _addMedicationToTimeSlot(String medicationName) {
+    // ✅ 変更前スナップショット（非同期だが待たずに実行）
+    _saveSnapshotBeforeChange('薬追加_$medicationName');
     // メモ制限チェック
     if (!_canAddMemo()) {
       _showLimitDialog('メモ');
@@ -7973,15 +8269,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     // 服用メモから薬の詳細情報を取得
     final memo = _medicationMemos.firstWhere(
       (memo) => memo.name == medicationName,
-      orElse: () => MedicationMemo(
+      orElse: () {
+        // 空タイトルへの対応: 自動連番を割り当て
+        final titles = _medicationMemos.map((m) => m.name).toList();
+        final autoTitle = _generateDefaultTitle(titles);
+        return MedicationMemo(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: medicationName,
+          name: medicationName.trim().isEmpty ? autoTitle : medicationName,
         type: '薬',
         color: Colors.blue,
         dosage: '',
         notes: '',
         createdAt: DateTime.now(),
-      ),
+        );
+      },
     );
     
     // 新しい薬をリストに追加
@@ -8218,7 +8519,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
             ] : null,
           ),
-          child: TextField(
+          child: ValueListenableBuilder<String>(
+            valueListenable: _memoTextNotifier,
+            builder: (context, memoText, _) {
+              _memoController.value = _memoController.value.copyWith(text: memoText, selection: TextSelection.collapsed(offset: memoText.length));
+              return TextField(
             controller: _memoController,
             focusNode: _memoFocusNode,
             maxLines: 2, // 2行表示に固定
@@ -8231,12 +8536,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.all(12), // パディング削減
-              suffixIcon: _memoController.text.isNotEmpty
+              suffixIcon: (_memoController.text.isNotEmpty)
                   ? IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _memoController.clear();
-                        });
+                      onPressed: () async {
+                        // ✅ 変更前スナップショット（メモクリア）
+                        if (_selectedDay != null) {
+                          await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                        }
+                        _memoTextNotifier.value = '';
                         _saveMemo();
                       },
                       icon: const Icon(Icons.clear, color: Colors.grey, size: 16),
@@ -8264,11 +8571,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 _isMemoFocused = true;
               });
             },
-            onChanged: (value) {
-              setState(() {
-                // リアルタイムでUIを更新
+            onChanged: (value) async {
+              // ✅ 即座にスナップショット保存（デバウンス前）
+              if (_selectedDay != null) {
+                await _saveSnapshotBeforeChange('メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+              }
+              // その後にデバウンス更新
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 500), () {
+                _memoTextNotifier.value = value;
               });
-              // メモの内容が変更された時の処理
+              _memoTextNotifier.value = value;
               _saveMemo();
             },
             onSubmitted: (value) {
@@ -8277,6 +8590,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             },
             onEditingComplete: () {
               _completeMemo();
+            },
+              );
             },
           ),
         ),
@@ -8300,7 +8615,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {
+                onPressed: () async {
+                  // ✅ 変更前スナップショット（メモクリア）
+                  if (_selectedDay != null) {
+                    await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  }
                   setState(() {
                     _memoController.clear();
                     _isMemoFocused = false;
@@ -9084,7 +9403,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             Text('バックアップ'),
           ],
         ),
-        content: SingleChildScrollView(
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -9095,7 +9416,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  '⏱ バックアップ間隔のおすすめ\n\n'
+                  '⏱ バックアップ間隔\n\n'
                   '・毎日深夜2:00（自動）- フルバックアップ\n'
                   '・操作後5分以内（自動）- 差分バックアップ\n'
                   '・手動保存（任意）- 任意タイミングで保存',
@@ -9103,7 +9424,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton.icon(
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await _createManualBackup();
@@ -9113,10 +9436,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
-              ElevatedButton.icon(
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await _showBackupHistory();
@@ -9126,9 +9452,65 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              FutureBuilder<bool>(
+                future: _hasUndoAvailable(),
+                builder: (context, snapshot) {
+                  final available = snapshot.data ?? false;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: available
+                          ? () async {
+                              Navigator.of(context).pop();
+                              await _undoLastChange();
+                            }
+                          : null,
+                      icon: const Icon(Icons.undo),
+                      label: const Text('1つ前の状態に復元'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: available ? Colors.teal : Colors.grey,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    final prefs = await SharedPreferences.getInstance();
+                    // ✅ 最新フルバックアップを参照
+                    final key = prefs.getString('last_full_backup_key');
+                    if (key != null) {
+                      await _restoreBackup(key);
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('フルバックアップが見つかりません'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.restore_page),
+                  label: const Text('フルバックアップを復元（最新）'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ),
             ],
+            ),
           ),
         ),
         actions: [
@@ -9139,6 +9521,104 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         ],
       ),
     );
+  }
+
+  // ✅ 直前の変更が存在するか（スナップショット有無）
+  Future<bool> _hasUndoAvailable() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastKey = prefs.getString('last_snapshot_key');
+      if (lastKey == null) {
+        debugPrint('⚠️ last_snapshot_key が null');
+        return false;
+      }
+      final data = prefs.getString(lastKey);
+      final available = data != null;
+      if (!available) {
+        debugPrint('⚠️ スナップショット実体が見つかりません: $lastKey');
+      }
+      return available;
+    } catch (e) {
+      debugPrint('❌ スナップショット確認エラー: $e');
+      return false;
+    }
+  }
+
+  // ✅ 変更前スナップショット保存
+  Future<void> _saveSnapshotBeforeChange(String operationType) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final snapshotData = await _createSafeBackupData('変更前_$operationType');
+      final jsonString = await _safeJsonEncode(snapshotData);
+      final encryptedData = await _encryptDataAsync(jsonString);
+      final snapshotKey = 'snapshot_before_$timestamp';
+      final ok1 = await prefs.setString(snapshotKey, encryptedData);
+      final ok2 = await prefs.setString('last_snapshot_key', snapshotKey);
+      if (!(ok1 && ok2)) {
+        debugPrint('⚠️ スナップショット保存フラグがfalse: $ok1, $ok2');
+      }
+      debugPrint('✅ 変更前スナップショット保存完了: $operationType (key: $snapshotKey)');
+    } catch (e) {
+      debugPrint('❌ スナップショット保存エラー: $e');
+    }
+  }
+
+  // ✅ 1つ前の状態に復元（最新スナップショットから）
+  Future<void> _undoLastChange() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastSnapshotKey = prefs.getString('last_snapshot_key');
+      if (lastSnapshotKey == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('復元できる履歴がありません'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      await _restoreBackup(lastSnapshotKey);
+      // 復元に使用したスナップショットは削除（1回使い切り）
+      await prefs.remove(lastSnapshotKey);
+      await prefs.remove('last_snapshot_key');
+      if (mounted) {
+        setState(() {
+          _focusedDay = _selectedDay ?? DateTime.now();
+          // メモフィールドを再同期
+          if (_selectedDay != null) {
+            final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+            // 直近の保存内容を反映
+            SharedPreferences.getInstance().then((p) {
+              final memo = p.getString('memo_$dateStr');
+              _memoController.text = memo ?? '';
+            });
+          }
+          // アラームタブの完全再構築
+          _alarmTabKey = UniqueKey();
+        });
+        // カレンダーと入力を再評価
+        await _updateMedicineInputsForSelectedDate();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('1つ前の状態に復元しました'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('復元に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildBackupRecommendation(String timing, String content, String reason, Color color) {
@@ -9202,19 +9682,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     if (!mounted) return;
     
     // ローディング表示
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-            ),
-            SizedBox(width: 8),
-            Text('バックアップを作成中...'),
-          ],
-        ),
+              ),
+              SizedBox(width: 8),
+              Text('バックアップを作成中...'),
+            ],
+          ),
         duration: Duration(seconds: 1),
       ),
     );
@@ -9240,21 +9720,21 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       
       if (!mounted) return;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
           content: Text('✓ バックアップ「$backupName」を作成しました'),
-          backgroundColor: Colors.green,
+            backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
-        ),
-      );
+          ),
+        );
     } catch (e) {
       debugPrint('バックアップ作成エラー: $e');
       if (!mounted) return;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
           content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
-          backgroundColor: Colors.red,
+            backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
       );
@@ -9263,14 +9743,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
   // ✅ 型安全なバックアップデータ作成
   Future<Map<String, dynamic>> _createSafeBackupData(String backupName) async {
-    return {
-      'name': backupName,
-      'createdAt': DateTime.now().toIso8601String(),
-      'type': 'manual',
+      return {
+        'name': backupName,
+        'createdAt': DateTime.now().toIso8601String(),
+        'type': 'manual',
       'version': '1.0.0', // バージョン情報を追加
       
       // 服用メモ関連（JSON安全）
-      'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
+        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
       'addedMedications': _addedMedications.map((med) => {
         'id': med['id'],
         'name': med['name'],
@@ -9283,10 +9763,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }).toList(),
       
       // 薬品データ（JSON安全）
-      'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
+        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
       
       // 服用データ（MedicationInfo → JSON）
-      'medicationData': _medicationData.map((dateKey, dayData) {
+        'medicationData': _medicationData.map((dateKey, dayData) {
         return MapEntry(
           dateKey,
           dayData.map((medKey, medInfo) {
@@ -9296,7 +9776,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }),
       
       // チェック状態関連（プリミティブ型のみ）
-      'weekdayMedicationStatus': _weekdayMedicationStatus,
+        'weekdayMedicationStatus': _weekdayMedicationStatus,
       'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus.map((dateKey, memoStatus) {
         return MapEntry(
           dateKey,
@@ -9310,42 +9790,48 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           }),
         );
       }),
-      'medicationMemoStatus': _medicationMemoStatus,
+        'medicationMemoStatus': _medicationMemoStatus,
       
       // カレンダー色（Color → int）
-      'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
+        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
       
-      // アラーム関連
+      // アラーム関連（必要な全フィールドを保存）
       'alarmList': _alarmList.map((alarm) => {
-        'name': alarm['name'],
-        'time': alarm['time'],
-        'repeat': alarm['repeat'],
-        'enabled': alarm['enabled'],
-        'alarmType': alarm['alarmType'],
-        'volume': alarm['volume'],
-        'message': alarm['message'],
+        'name': alarm['name']?.toString(),
+        'time': alarm['time']?.toString(),
+        'repeat': alarm['repeat']?.toString(),
+        'enabled': (alarm['enabled'] as bool?) ?? true,
+        'alarmType': alarm['alarmType']?.toString(),
+        'volume': (alarm['volume'] is int)
+            ? alarm['volume'] as int
+            : int.tryParse(alarm['volume']?.toString() ?? '80') ?? 80,
+        'message': alarm['message']?.toString(),
+        'isRepeatEnabled': (alarm['isRepeatEnabled'] as bool?) ?? false,
+        'selectedDays': (alarm['selectedDays'] is List)
+            ? List<bool>.from((alarm['selectedDays'] as List).map((e) => e == true))
+            : [false, false, false, false, false, false, false],
       }).toList(),
       'alarmSettings': Map<String, dynamic>.from(_alarmSettings),
       
       // 統計データ
-      'adherenceRates': _adherenceRates,
-    };
+        'adherenceRates': _adherenceRates,
+      };
   }
 
   // ✅ 安全なJSONエンコード（エラーハンドリング）
   Future<String> _safeJsonEncode(Map<String, dynamic> data) async {
     try {
       return jsonEncode(data);
-    } catch (e) {
-      debugPrint('JSONエンコードエラー: $e');
+      } catch (e) {
+        debugPrint('JSONエンコードエラー: $e');
       debugPrint('問題のあるデータ: ${data.keys}');
       
       // エラーが発生した場合、問題のあるフィールドを特定
-      final safeData = <String, dynamic>{};
+    final safeData = <String, dynamic>{};
       for (final entry in data.entries) {
-        try {
+      try {
           jsonEncode({entry.key: entry.value}); // 個別にテスト
-          safeData[entry.key] = entry.value;
+        safeData[entry.key] = entry.value;
         } catch (fieldError) {
           debugPrint('フィールド ${entry.key} でエラー: $fieldError');
           safeData[entry.key] = null; // 問題のあるフィールドはnullに
@@ -9359,14 +9845,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // ✅ 非同期暗号化
   Future<String> _encryptDataAsync(String data) async {
     // XOR暗号化
-    final key = 'medication_app_backup_key_2024';
-    final encrypted = StringBuffer();
-    for (int i = 0; i < data.length; i++) {
-      encrypted.write(String.fromCharCode(
-        data.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
-      ));
-    }
-    return encrypted.toString();
+      final key = 'medication_app_backup_key_2024';
+      final encrypted = StringBuffer();
+      for (int i = 0; i < data.length; i++) {
+        encrypted.write(String.fromCharCode(
+          data.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
+        ));
+      }
+      return encrypted.toString();
   }
 
   // ✅ 非同期復号化
@@ -9511,7 +9997,31 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ? Map<String, double>.from(backupData['adherenceRates'] as Map)
           : <String, double>{};
       
-      // 9. 一括setState（1回のみ）
+      // 9. アラームをSharedPreferencesに保存
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('alarm_count', restoredAlarmList.length);
+      
+      for (int i = 0; i < restoredAlarmList.length; i++) {
+        final alarm = restoredAlarmList[i];
+        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
+        await prefs.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
+        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+        await prefs.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
+        await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] as bool? ?? true);
+        await prefs.setBool('alarm_${i}_isRepeatEnabled', alarm['isRepeatEnabled'] as bool? ?? false);
+        await prefs.setInt('alarm_${i}_volume', alarm['volume'] as int? ?? 80);
+        
+        // 曜日データ（型安全に復元）
+        final dynamic selectedDaysRaw = alarm['selectedDays'];
+        final List<bool> selectedDays = selectedDaysRaw is List
+            ? List<bool>.from(selectedDaysRaw.map((e) => e == true))
+            : <bool>[false, false, false, false, false, false, false];
+        for (int j = 0; j < 7; j++) {
+          await prefs.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
+        }
+      }
+      
+      // 10. 一括setState（1回のみ）
       if (!mounted) return;
       
       setState(() {
@@ -9526,11 +10036,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _alarmList = restoredAlarmList;
         _alarmSettings = restoredAlarmSettings;
         _adherenceRates = restoredAdherenceRates;
+        
+        // ✅ SimpleAlarmAppを完全に再構築
+        _alarmTabKey = UniqueKey();  // 新しいキーで強制再構築
       });
       
-      // 10. データ保存（復元後）
+      // 11. データ保存（復元後）
       await _saveAllData();
       
+      debugPrint('アラーム復元完了（強制再構築）: ${restoredAlarmList.length}件');
       debugPrint('バックアップ復元完了: ${restoredMemos.length}件のメモ');
     } catch (e) {
       debugPrint('データ復元エラー: $e');
@@ -9542,7 +10056,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
   // ✅ バックアップ履歴の更新（5件制限）
-  Future<void> _updateBackupHistory(String backupName, String backupKey) async {
+  Future<void> _updateBackupHistory(String backupName, String backupKey, {String type = 'manual'}) async {
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('backup_history') ?? '[]';
     final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
@@ -9551,7 +10065,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       'name': backupName,
       'key': backupKey,
       'createdAt': DateTime.now().toIso8601String(),
-      'type': 'manual',
+      'type': type,
     });
     
     // 古い順に自動削除（最大5件まで保持）
@@ -9564,7 +10078,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     await prefs.setString('backup_history', jsonEncode(history));
   }
 
-  // ✅ バックアップ履歴表示機能
+  // ✅ バックアップ履歴表示機能（強化版）
   Future<void> _showBackupHistory() async {
     if (!mounted) return;
     
@@ -9572,10 +10086,34 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     final historyJson = prefs.getString('backup_history') ?? '[]';
     final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
     
-    if (history.isEmpty) {
+    // 自動バックアップも含めて全てのバックアップを取得
+    final allBackups = <Map<String, dynamic>>[];
+    
+    // 手動バックアップ履歴を追加
+    for (final backup in history) {
+      allBackups.add({
+        ...backup,
+        'type': 'manual',
+        'source': '履歴',
+      });
+    }
+    
+    // 自動バックアップを追加
+    final autoBackupKey = prefs.getString('last_auto_backup_key');
+    if (autoBackupKey != null) {
+      allBackups.add({
+        'name': '自動バックアップ（最新）',
+        'key': autoBackupKey,
+        'createdAt': DateTime.now().toIso8601String(),
+        'type': 'auto',
+        'source': '自動',
+      });
+    }
+    
+    if (allBackups.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('バックアップ履歴がありません'),
+          content: Text('バックアップがありません'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -9585,22 +10123,44 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('バックアップ履歴'),
+        title: const Row(
+          children: [
+            Icon(Icons.history, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('バックアップ一覧'),
+          ],
+        ),
         content: SizedBox(
           width: double.maxFinite,
-          height: 400,
+          height: 500,
           child: ListView.builder(
-            itemCount: history.length,
+            itemCount: allBackups.length,
             itemBuilder: (context, index) {
-              final backup = history[history.length - 1 - index]; // 新しい順に表示
+              final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
               final createdAt = DateTime.parse(backup['createdAt'] as String);
+              final isAuto = backup['type'] == 'auto';
               
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 child: ListTile(
-                  leading: const Icon(Icons.backup, color: Colors.orange),
+                  leading: Icon(
+                    isAuto ? Icons.schedule : Icons.backup,
+                    color: isAuto ? Colors.green : Colors.orange,
+                  ),
                   title: Text(backup['name'] as String),
-                  subtitle: Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
+                      Text(
+                        '${backup['source']}バックアップ',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isAuto ? Colors.green : Colors.blue,
+                        ),
+                      ),
+                    ],
+                  ),
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) async {
                       switch (value) {
@@ -9608,7 +10168,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           await _restoreBackup(backup['key'] as String);
                           break;
                         case 'delete':
-                          await _deleteBackup(backup['key'] as String, index);
+                          if (!isAuto) {
+                            await _deleteBackup(backup['key'] as String, index);
+                          }
                           break;
                         case 'preview':
                           await _previewBackup(backup['key'] as String);
@@ -9617,32 +10179,32 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     },
                     itemBuilder: (context) => [
                       const PopupMenuItem(
+                        value: 'restore',
+                        child: Row(
+                          children: [
+                            Icon(Icons.restore, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text('復元'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
                         value: 'preview',
                         child: Row(
                           children: [
-                            Icon(Icons.visibility, color: Colors.blue),
+                            Icon(Icons.visibility, color: Colors.green),
                             SizedBox(width: 8),
                             Text('プレビュー'),
                           ],
                         ),
                       ),
-                      const PopupMenuItem(
-                        value: 'restore',
-                        child: Row(
-                          children: [
-                            Icon(Icons.restore, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text('復元する'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
+                      if (!isAuto) const PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
                             Icon(Icons.delete, color: Colors.red),
                             SizedBox(width: 8),
-                            Text('削除する'),
+                            Text('削除'),
                           ],
                         ),
                       ),
@@ -10040,9 +10602,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 class _MemoDialog extends StatefulWidget {
   final Function(MedicationMemo) onMemoAdded;
   final MedicationMemo? initialMemo;
+  final List<MedicationMemo> existingMemos;
   const _MemoDialog({
     required this.onMemoAdded,
     this.initialMemo,
+    required this.existingMemos,
   });
   @override
   State<_MemoDialog> createState() => _MemoDialogState();
@@ -10060,6 +10624,16 @@ class _MemoDialogState extends State<_MemoDialog> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _memoFocusNode = FocusNode();
   int _dosageFrequency = 1; // 服用回数（1〜6回）
+  
+  // 空タイトル時の自動連番生成（ダイアログ内専用）
+  String _generateDefaultTitle(List<String> existingTitles) {
+    const int maxCount = 999;
+    int count = 1;
+    while (count <= maxCount && existingTitles.contains('メモ$count')) {
+      count++;
+    }
+    return 'メモ$count';
+  }
   
   @override
   void initState() {
@@ -10610,11 +11184,18 @@ class _MemoDialogState extends State<_MemoDialog> {
                       Flexible(
                         child: ElevatedButton(
                         onPressed: () {
-                          if (_nameController.text.trim().isNotEmpty) {
-                            try {
+                          try {
+                            String finalName = _nameController.text.trim();
+                            if (finalName.isEmpty) {
+                              final existingTitles = widget.existingMemos
+                                  .where((m) => m.id != widget.initialMemo?.id)
+                                  .map((m) => m.name)
+                                  .toList();
+                              finalName = _generateDefaultTitle(existingTitles);
+                            }
                             final memo = MedicationMemo(
                               id: widget.initialMemo?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                                name: _nameController.text.trim(),
+                              name: finalName,
                               type: _selectedType,
                                 dosage: _dosageController.text.trim(),
                                 notes: _notesController.text.trim(),
@@ -10628,7 +11209,6 @@ class _MemoDialogState extends State<_MemoDialog> {
                             Navigator.pop(context);
                             } catch (e) {
                                     // エラーハンドリング
-                            }
                           }
                         },
                         style: ElevatedButton.styleFrom(
