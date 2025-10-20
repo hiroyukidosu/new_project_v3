@@ -993,7 +993,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
           debugPrint('📝 アラーム追加: ${alarm.toString()}');
           debugPrint('📝 追加前のアラーム数: ${_alarms.length}');
           
-          // アラームを追加
+          // ✅ 修正：アラームを直接追加（mountedチェックを削除）
           _alarms.add(alarm);
           debugPrint('📝 追加後のアラーム数: ${_alarms.length}');
           
@@ -1001,15 +1001,15 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
           await _saveAlarms();
           debugPrint('✅ アラーム保存完了');
           
-          // UI更新
-          if (mounted && !_disposed) {
+          // ✅ 修正：UI更新（mountedチェックのみ）
+          if (mounted) {
             setState(() {
               debugPrint('✅ UI更新完了: ${_alarms.length}件表示');
             });
           }
           
           // 確認用のスナックバー
-          if (context.mounted) {
+          if (mounted && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('アラーム「${alarm['name']}」を追加しました'),
@@ -1028,9 +1028,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       builder: (context) => _AddAlarmDialog(
         initialAlarm: alarm,
         onAlarmAdded: (updatedAlarm) async {
-          // ✅ 修正：状態チェックを完全に削除してアラーム編集を確実に実行
+          // ✅ 修正：アラーム編集を確実に実行
           try {
-            // 直接アラームを更新（setStateを使わない）
+            // 直接アラームを更新
             _alarms[index] = updatedAlarm;
             // アラーム編集後に自動保存
             await _saveAlarms();
@@ -1038,7 +1038,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
             // 保存後にsetStateでUI更新
             if (mounted) {
               setState(() {
-                // UI更新を強制
+                debugPrint('✅ アラーム編集完了: ${_alarms.length}件表示');
               });
             }
           } catch (e) {
@@ -1048,7 +1048,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
             await _saveAlarms();
             if (mounted) {
               setState(() {
-                // UI更新を強制
+                debugPrint('✅ アラーム編集完了（エラー後）: ${_alarms.length}件表示');
               });
             }
           }
@@ -1584,10 +1584,11 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                       Switch(
                                         value: alarm['enabled'],
                                         onChanged: (value) async {
-                                          // ✅ 修正：状態チェックを完全に削除してアラーム切り替えを確実に実行
+                                          // ✅ 修正：アラーム切り替えを確実に実行
                                           try {
-                                            // 直接アラームを切り替え（setStateを使わない）
+                                            // 直接アラームを切り替え
                                             alarm['enabled'] = value;
+                                            debugPrint('✅ アラーム切り替え完了: ${alarm['name']} = $value');
                                             
                                             // アラーム切り替え後に自動保存
                                             await _saveAlarms();
@@ -1595,7 +1596,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                             // 保存後にsetStateでUI更新
                                             if (mounted) {
                                               setState(() {
-                                                // UI更新を強制
+                                                debugPrint('✅ アラーム切り替えUI更新完了');
                                               });
                                             }
                                           } catch (e) {
@@ -1605,7 +1606,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                             await _saveAlarms();
                                             if (mounted) {
                                               setState(() {
-                                                // UI更新を強制
+                                                debugPrint('✅ アラーム切り替え完了（エラー後）');
                                               });
                                             }
                                           }
@@ -1634,10 +1635,11 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                     children: [
                                       IconButton(
                                         onPressed: () async {
-                                          // ✅ 修正：状態チェックを完全に削除してアラーム削除を確実に実行
+                                          // ✅ 修正：アラーム削除を確実に実行
                                           try {
-                                            // 直接アラームを削除（setStateを使わない）
+                                            // 直接アラームを削除
                                             _alarms.removeAt(index);
+                                            debugPrint('✅ アラーム削除完了: ${_alarms.length}件残り');
                                             
                                             // アラーム削除後に自動保存
                                             await _saveAlarms();
@@ -1645,7 +1647,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                             // 保存後にsetStateでUI更新
                                             if (mounted) {
                                               setState(() {
-                                                // UI更新を強制
+                                                debugPrint('✅ アラーム削除UI更新完了: ${_alarms.length}件表示');
                                               });
                                             }
                                           } catch (e) {
@@ -1655,7 +1657,7 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
                                             await _saveAlarms();
                                             if (mounted) {
                                               setState(() {
-                                                // UI更新を強制
+                                                debugPrint('✅ アラーム削除完了（エラー後）: ${_alarms.length}件表示');
                                               });
                                             }
                                           }
