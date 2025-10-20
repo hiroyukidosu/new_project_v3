@@ -101,17 +101,18 @@ class MedicationMemo extends HiveObject {
   /// JSONから作成
   factory MedicationMemo.fromJson(Map<String, dynamic> json) {
     return MedicationMemo(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      dosage: json['dosage'] as String,
-      notes: json['notes'] as String? ?? '',
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-      isActive: json['isActive'] as bool? ?? true,
-      selectedDays: (json['selectedDays'] as List<dynamic>?)?.cast<int>() ?? [],
-      time: json['time'] as String? ?? '',
-      color: json['color'] as String? ?? '',
-      type: json['type'] as String? ?? '薬品',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      dosage: json['dosage']?.toString() ?? '',
+      notes: json['notes']?.toString() ?? '',
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ?? DateTime.now(),
+      isActive: json['isActive'] is bool ? json['isActive'] as bool : true,
+      selectedDays: (json['selectedDays'] is List) ? 
+                    (json['selectedDays'] as List).map((e) => e is int ? e : 0).toList() : [],
+      time: json['time']?.toString() ?? '',
+      color: json['color']?.toString() ?? '',
+      type: json['type']?.toString() ?? '薬品',
     );
   }
   

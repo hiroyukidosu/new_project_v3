@@ -410,10 +410,10 @@ class SecurityAuditManager {
       final now = DateTime.now();
       
       for (final event in auditLog) {
-        final eventType = event['eventType'] as String? ?? 'unknown';
+        final eventType = event['eventType']?.toString() ?? 'unknown';
         eventTypes[eventType] = (eventTypes[eventType] ?? 0) + 1;
         
-        final timestamp = DateTime.tryParse(event['timestamp'] as String? ?? '');
+        final timestamp = DateTime.tryParse(event['timestamp']?.toString() ?? '');
         if (timestamp != null && now.difference(timestamp).inDays <= 7) {
           recentEvents.add(event);
         }

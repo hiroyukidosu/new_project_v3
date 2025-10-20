@@ -140,8 +140,8 @@ Map<String, double> _calculateAdherenceStats(Map<String, dynamic> medicationData
     if (timeData.isNotEmpty) {
       double totalMinutes = 0;
       for (final time in timeData) {
-        final timeStr = time as String?;
-        if (timeStr != null) {
+        final timeStr = time?.toString();
+        if (timeStr != null && timeStr.isNotEmpty) {
           final parts = timeStr.split(':');
           if (parts.length == 2) {
             final hours = int.tryParse(parts[0]) ?? 0;
@@ -171,8 +171,8 @@ Map<String, dynamic> _analyzeData(List<Map<String, dynamic>> rawData) {
     // 日付範囲の分析
     if (rawData.isNotEmpty) {
       final dates = rawData.map((record) {
-        final dateStr = record['date'] as String?;
-        if (dateStr != null) {
+        final dateStr = record['date']?.toString();
+        if (dateStr != null && dateStr.isNotEmpty) {
           return DateTime.tryParse(dateStr);
         }
         return null;
@@ -191,8 +191,8 @@ Map<String, dynamic> _analyzeData(List<Map<String, dynamic>> rawData) {
     // 服用パターンの分析
     final patterns = <String, int>{};
     for (final record in rawData) {
-      final pattern = record['pattern'] as String?;
-      if (pattern != null) {
+      final pattern = record['pattern']?.toString();
+      if (pattern != null && pattern.isNotEmpty) {
         patterns[pattern] = (patterns[pattern] ?? 0) + 1;
       }
     }
@@ -201,8 +201,8 @@ Map<String, dynamic> _analyzeData(List<Map<String, dynamic>> rawData) {
     // 時間帯の分析
     final timeSlots = <String, int>{};
     for (final record in rawData) {
-      final time = record['time'] as String?;
-      if (time != null) {
+      final time = record['time']?.toString();
+      if (time != null && time.isNotEmpty) {
         final hour = int.tryParse(time.split(':')[0]) ?? 0;
         final slot = _getTimeSlot(hour);
         timeSlots[slot] = (timeSlots[slot] ?? 0) + 1;
@@ -227,8 +227,8 @@ List<Map<String, dynamic>> _processLargeData(List<Map<String, dynamic>> data) {
       final processedRecord = <String, dynamic>{};
       
       // 日付の正規化
-      final dateStr = record['date'] as String?;
-      if (dateStr != null) {
+      final dateStr = record['date']?.toString();
+      if (dateStr != null && dateStr.isNotEmpty) {
         final date = DateTime.tryParse(dateStr);
         if (date != null) {
           processedRecord['date'] = date.toIso8601String();
@@ -240,8 +240,8 @@ List<Map<String, dynamic>> _processLargeData(List<Map<String, dynamic>> data) {
       }
       
       // 時間の正規化
-      final timeStr = record['time'] as String?;
-      if (timeStr != null) {
+      final timeStr = record['time']?.toString();
+      if (timeStr != null && timeStr.isNotEmpty) {
         final parts = timeStr.split(':');
         if (parts.length == 2) {
           final hours = int.tryParse(parts[0]) ?? 0;

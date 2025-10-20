@@ -3316,11 +3316,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // 単一アラームの登録
   Future<void> _registerSingleAlarm(Map<String, dynamic> alarm, int index) async {
     try {
-      // アラームの詳細情報を取得
-      final time = alarm['time'] as String? ?? '09:00';
-      final enabled = alarm['enabled'] as bool? ?? true;
-      final title = alarm['title'] as String? ?? '服用アラーム';
-      final message = alarm['message'] as String? ?? '薬を服用する時間です';
+      // アラームの詳細情報を取得（安全な型変換）
+      final time = alarm['time']?.toString() ?? '09:00';
+      final enabled = alarm['enabled'] is bool ? alarm['enabled'] as bool : true;
+      final title = alarm['title']?.toString() ?? '服用アラーム';
+      final message = alarm['message']?.toString() ?? '薬を服用する時間です';
       
       if (!enabled) {
         debugPrint('アラーム $index は無効化されています');
@@ -6128,11 +6128,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         
         // _addedMedicationsからMedicationInfoを作成
         for (final med in _addedMedications) {
-          medicationData[med['name'] as String] = MedicationInfo(
-            checked: med['taken'] as bool,
-            medicine: med['name'] as String,
-            actualTime: med['takenTime'] as DateTime?,
-            notes: med['notes'] as String? ?? '',
+          final name = med['name']?.toString() ?? '';
+          final taken = med['taken'] is bool ? med['taken'] as bool : false;
+          final takenTime = med['takenTime'] is DateTime ? med['takenTime'] as DateTime? : null;
+          final notes = med['notes']?.toString() ?? '';
+          
+          medicationData[name] = MedicationInfo(
+            checked: taken,
+            medicine: name,
+            actualTime: takenTime,
+            notes: notes,
           );
         }
         
