@@ -55,6 +55,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       await _loadAlarms();
       debugPrint('✅ アラーム読み込み完了: ${_alarms.length}件');
       
+      // データ整合性チェック
+      await _validateAlarmData();
+      
       // 通知の初期化
       _initializeNotifications().catchError((e) {
         debugPrint('通知初期化エラー: $e');
@@ -108,22 +111,47 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         await _prefs!.setInt('alarm_count', _alarms.length);
         debugPrint('アラーム数保存完了: ${_alarms.length}件');
         
-        // 各アラームのデータを個別に保存
+        // 各アラームのデータを個別に保存（型安全性を完全に保証）
         for (int i = 0; i < _alarms.length; i++) {
-          final alarm = _alarms[i];
-          debugPrint('アラーム $i 保存: ${alarm.toString()}');
-          await _prefs!.setString('alarm_${i}_name', alarm['name'] ?? '');
-          await _prefs!.setString('alarm_${i}_time', alarm['time'] ?? '00:00');
-          await _prefs!.setString('alarm_${i}_repeat', alarm['repeat'] ?? '一度だけ');
-          await _prefs!.setBool('alarm_${i}_enabled', alarm['enabled'] ?? true);
-          await _prefs!.setString('alarm_${i}_alarmType', alarm['alarmType'] ?? 'sound');
-          await _prefs!.setInt('alarm_${i}_volume', alarm['volume'] ?? 80);
-          
-          // ✅ 曜日データを保存
-          final selectedDays = alarm['selectedDays'] as List<bool>? ?? 
-                              [false, false, false, false, false, false, false];
-          for (int j = 0; j < 7; j++) {
-            await _prefs!.setBool('alarm_${i}_day_$j', selectedDays[j]);
+          try {
+            final alarm = _alarms[i];
+            debugPrint('アラーム $i 保存: ${alarm.toString()}');
+            
+            // ✅ 文字列フィールドの安全な保存
+            await _prefs!.setString('alarm_${i}_name', alarm['name']?.toString() ?? '');
+            await _prefs!.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
+            await _prefs!.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+            await _prefs!.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
+            
+            // ✅ ブール値の安全な保存
+            final enabled = alarm['enabled'] is bool ? alarm['enabled'] as bool : true;
+            await _prefs!.setBool('alarm_${i}_enabled', enabled);
+            
+            // ✅ 整数値の安全な保存（型キャストエラーの完全防止）
+            int volume = 80; // デフォルト値
+            if (alarm['volume'] is int) {
+              volume = alarm['volume'] as int;
+            } else if (alarm['volume'] is String) {
+              volume = int.tryParse(alarm['volume'] as String) ?? 80;
+              debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換して保存: ${alarm['volume']} -> $volume');
+            } else {
+              debugPrint('⚠️ アラーム $i: volumeの型が不明、デフォルト値80を使用');
+            }
+            await _prefs!.setInt('alarm_${i}_volume', volume);
+            
+            // ✅ 曜日データの安全な保存
+            final selectedDays = alarm['selectedDays'] is List ? 
+                                (alarm['selectedDays'] as List).cast<bool>() : 
+                                [false, false, false, false, false, false, false];
+            for (int j = 0; j < 7; j++) {
+              await _prefs!.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
+            }
+            
+            debugPrint('✅ アラーム $i 保存完了');
+          } catch (e) {
+            debugPrint('❌ アラーム $i 保存エラー: $e');
+            // エラーが発生しても次のアラームの保存を続行
+            continue;
           }
         }
         
@@ -147,31 +175,55 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         final alarmsList = <Map<String, dynamic>>[];
         
         for (int i = 0; i < alarmCount; i++) {
-          // ✅ 型を明示的に指定して安全に取得
-          final name = _prefs!.getString('alarm_${i}_name') ?? '';
-          final time = _prefs!.getString('alarm_${i}_time') ?? '00:00';
-          final repeat = _prefs!.getString('alarm_${i}_repeat') ?? '一度だけ';
-          final enabled = _prefs!.getBool('alarm_${i}_enabled') ?? true;
-          final alarmType = _prefs!.getString('alarm_${i}_alarmType') ?? 'sound';
-          final volume = _prefs!.getInt('alarm_${i}_volume') ?? 80;  // ✅ getIntを使用
-          
-          debugPrint('アラーム $i 読み込み: name=$name, time=$time, repeat=$repeat, enabled=$enabled, alarmType=$alarmType, volume=$volume');
-          
-          // ✅ 必須フィールドが存在する場合のみ追加（nullチェックを削除）
-          if (name.isNotEmpty && time.isNotEmpty) {
-            alarmsList.add({
-              'name': name,
-              'time': time,
-              'repeat': repeat,
-              'enabled': enabled,
-              'alarmType': alarmType,
-              'volume': volume,
-              'isRepeatEnabled': repeat != '一度だけ',  // ✅ 自動的に判定
-              'selectedDays': _loadSelectedDays(i),     // ✅ 曜日データを別途読み込み
-            });
-            debugPrint('アラーム $i 追加完了');
-          } else {
-            debugPrint('アラーム $i は無効なデータのためスキップ');
+          try {
+            // ✅ 型を明示的に指定して安全に取得（完全版）
+            final name = _prefs!.getString('alarm_${i}_name') ?? '';
+            final time = _prefs!.getString('alarm_${i}_time') ?? '00:00';
+            final repeat = _prefs!.getString('alarm_${i}_repeat') ?? '一度だけ';
+            final enabled = _prefs!.getBool('alarm_${i}_enabled') ?? true;
+            final alarmType = _prefs!.getString('alarm_${i}_alarmType') ?? 'sound';
+            
+            // ✅ volumeの型安全性を完全に保証
+            int volume = 80; // デフォルト値
+            try {
+              final volumeValue = _prefs!.getInt('alarm_${i}_volume');
+              if (volumeValue != null) {
+                volume = volumeValue;
+              } else {
+                // 古いデータでStringとして保存されている場合の対応
+                final volumeStr = _prefs!.getString('alarm_${i}_volume');
+                if (volumeStr != null && volumeStr.isNotEmpty) {
+                  volume = int.tryParse(volumeStr) ?? 80;
+                  debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換: $volumeStr -> $volume');
+                }
+              }
+            } catch (e) {
+              debugPrint('⚠️ アラーム $i: volume読み込みエラー、デフォルト値80を使用: $e');
+              volume = 80;
+            }
+            
+            debugPrint('アラーム $i 読み込み: name=$name, time=$time, repeat=$repeat, enabled=$enabled, alarmType=$alarmType, volume=$volume');
+            
+            // ✅ 必須フィールドが存在する場合のみ追加
+            if (name.isNotEmpty && time.isNotEmpty) {
+              alarmsList.add({
+                'name': name,
+                'time': time,
+                'repeat': repeat,
+                'enabled': enabled,
+                'alarmType': alarmType,
+                'volume': volume,  // ✅ int型のまま保存
+                'isRepeatEnabled': repeat != '一度だけ',
+                'selectedDays': _loadSelectedDays(i),
+              });
+              debugPrint('✅ アラーム $i 追加完了');
+            } else {
+              debugPrint('⚠️ アラーム $i は無効なデータのためスキップ');
+            }
+          } catch (e) {
+            debugPrint('❌ アラーム $i 読み込みエラー: $e');
+            // エラーが発生しても次のアラームの処理を続行
+            continue;
           }
         }
         
@@ -207,6 +259,37 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       selectedDays.add(day);
     }
     return selectedDays;
+  }
+
+  // ✅ データ整合性チェック機能を追加
+  Future<void> _validateAlarmData() async {
+    if (_prefs == null) return;
+    
+    try {
+      final alarmCount = _prefs!.getInt('alarm_count') ?? 0;
+      debugPrint('🔍 データ整合性チェック開始: $alarmCount件のアラーム');
+      
+      for (int i = 0; i < alarmCount; i++) {
+        // 各フィールドの型をチェック
+        final name = _prefs!.getString('alarm_${i}_name');
+        final time = _prefs!.getString('alarm_${i}_time');
+        final volume = _prefs!.getInt('alarm_${i}_volume');
+        
+        if (name == null || name.isEmpty) {
+          debugPrint('⚠️ アラーム $i: nameが無効');
+        }
+        if (time == null || time.isEmpty) {
+          debugPrint('⚠️ アラーム $i: timeが無効');
+        }
+        if (volume == null) {
+          debugPrint('⚠️ アラーム $i: volumeが無効（型エラーの可能性）');
+        }
+      }
+      
+      debugPrint('✅ データ整合性チェック完了');
+    } catch (e) {
+      debugPrint('❌ データ整合性チェックエラー: $e');
+    }
   }
 
   @override
