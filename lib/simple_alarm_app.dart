@@ -87,24 +87,30 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       
       // ✅ 修正: 型安全な読み込み（古いStringデータにも対応）
       try {
+        // まずint型で読み込みを試行
         final volumeInt = _prefs!.getInt('notification_volume');
         if (volumeInt != null) {
           _notificationVolume = volumeInt;
+          debugPrint('✅ notification_volume読み込み成功: $_notificationVolume (int型)');
         } else {
-          // 古いStringデータの場合の対応
+          // int型で読み込めない場合、古いStringデータの可能性をチェック
+          debugPrint('⚠️ notification_volumeがint型で読み込めません。古いデータ形式の可能性があります。');
           final volumeStr = _prefs!.getString('notification_volume');
           if (volumeStr != null && volumeStr.isNotEmpty) {
             _notificationVolume = int.tryParse(volumeStr) ?? 80;
             debugPrint('⚠️ volumeを文字列から整数に変換: $volumeStr -> $_notificationVolume');
             // 次回は正しい型で保存されるように即座に保存
             await _prefs!.setInt('notification_volume', _notificationVolume);
+            debugPrint('✅ notification_volumeを正しい型で再保存: $_notificationVolume');
           } else {
             _notificationVolume = 80;
+            debugPrint('⚠️ notification_volumeのデータが見つかりません。デフォルト値80を使用');
           }
         }
       } catch (e) {
-        debugPrint('⚠️ volume読み込みエラー、デフォルト値80を使用: $e');
+        debugPrint('❌ notification_volume読み込みエラー: $e');
         _notificationVolume = 80;
+        debugPrint('⚠️ デフォルト値80を使用し、正しい型で保存します');
         // エラーが出たので正しい型で保存
         await _prefs!.setInt('notification_volume', _notificationVolume);
       }
@@ -293,19 +299,32 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       final alarmCount = _prefs!.getInt('alarm_count') ?? 0;
       debugPrint('🔍 データ整合性チェック開始: $alarmCount件のアラーム');
       
-      // 通知設定の型チェック
-      final notificationVolume = _prefs!.getInt('notification_volume');
-      if (notificationVolume == null) {
-        debugPrint('⚠️ notification_volumeが無効（型エラーの可能性）');
-        // 古いStringデータをチェック
-        final volumeStr = _prefs!.getString('notification_volume');
-        if (volumeStr != null) {
-          debugPrint('⚠️ notification_volumeが文字列として保存されています: $volumeStr');
-          // 正しい型で再保存
-          final volumeInt = int.tryParse(volumeStr) ?? 80;
-          await _prefs!.setInt('notification_volume', volumeInt);
-          debugPrint('✅ notification_volumeを正しい型で再保存: $volumeInt');
+      // 通知設定の型チェック（強化版）
+      debugPrint('🔍 notification_volumeの型チェック開始');
+      try {
+        final notificationVolume = _prefs!.getInt('notification_volume');
+        if (notificationVolume != null) {
+          debugPrint('✅ notification_volume: $notificationVolume (int型)');
+        } else {
+          debugPrint('⚠️ notification_volumeがint型で読み込めません');
+          // 古いStringデータをチェック
+          final volumeStr = _prefs!.getString('notification_volume');
+          if (volumeStr != null) {
+            debugPrint('⚠️ notification_volumeが文字列として保存されています: $volumeStr');
+            // 正しい型で再保存
+            final volumeInt = int.tryParse(volumeStr) ?? 80;
+            await _prefs!.setInt('notification_volume', volumeInt);
+            debugPrint('✅ notification_volumeを正しい型で再保存: $volumeInt');
+          } else {
+            debugPrint('⚠️ notification_volumeのデータが見つかりません。デフォルト値80で保存');
+            await _prefs!.setInt('notification_volume', 80);
+          }
         }
+      } catch (e) {
+        debugPrint('❌ notification_volume型チェックエラー: $e');
+        // エラーが発生した場合、デフォルト値で保存
+        await _prefs!.setInt('notification_volume', 80);
+        debugPrint('✅ notification_volumeをデフォルト値80で保存');
       }
       
       for (int i = 0; i < alarmCount; i++) {
