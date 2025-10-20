@@ -951,7 +951,7 @@ class AppPreferences {
     return results;
   }
   
-  // デバッグ用：すべてのキーを表示
+  // デバッグ用：すべてのキーを表示（型安全版）
   static void debugAllKeys() {
     if (_preferences == null) {
       debugPrint('AppPreferences: 初期化されていません');
@@ -961,8 +961,48 @@ class AppPreferences {
     final keys = _preferences!.getKeys();
     debugPrint('AppPreferences: 保存されているキー数: ${keys.length}');
     for (final key in keys) {
-      final value = _preferences!.getString(key);
-      debugPrint('  $key: $value');
+      // ✅ 修正: 型安全な値取得
+      try {
+        // まずintで試す
+        final intValue = _preferences!.getInt(key);
+        if (intValue != null) {
+          debugPrint('  $key: $intValue (int)');
+          continue;
+        }
+        
+        // 次にStringで試す
+        final stringValue = _preferences!.getString(key);
+        if (stringValue != null) {
+          debugPrint('  $key: $stringValue (String)');
+          continue;
+        }
+        
+        // 次にboolで試す
+        final boolValue = _preferences!.getBool(key);
+        if (boolValue != null) {
+          debugPrint('  $key: $boolValue (bool)');
+          continue;
+        }
+        
+        // 次にdoubleで試す
+        final doubleValue = _preferences!.getDouble(key);
+        if (doubleValue != null) {
+          debugPrint('  $key: $doubleValue (double)');
+          continue;
+        }
+        
+        // 次にStringListで試す
+        final listValue = _preferences!.getStringList(key);
+        if (listValue != null) {
+          debugPrint('  $key: $listValue (StringList)');
+          continue;
+        }
+        
+        // どの型でも取得できない場合
+        debugPrint('  $key: (unknown type)');
+      } catch (e) {
+        debugPrint('  $key: (error: $e)');
+      }
     }
   }
 
