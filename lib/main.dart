@@ -9358,14 +9358,41 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
   // ✅ 非同期暗号化
   Future<String> _encryptDataAsync(String data) async {
-    // 簡易暗号化（実際の実装ではより強力な暗号化を使用）
-    return base64Encode(utf8.encode(data));
+    // XOR暗号化
+    final key = 'medication_app_backup_key_2024';
+    final encrypted = StringBuffer();
+    for (int i = 0; i < data.length; i++) {
+      encrypted.write(String.fromCharCode(
+        data.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
+      ));
+    }
+    return encrypted.toString();
   }
 
   // ✅ 非同期復号化
   Future<String> _decryptDataAsync(String encryptedData) async {
-    // 簡易復号化
-    return utf8.decode(base64Decode(encryptedData));
+    // XOR暗号化の復号化
+    final key = 'medication_app_backup_key_2024';
+    final decrypted = StringBuffer();
+    for (int i = 0; i < encryptedData.length; i++) {
+      decrypted.write(String.fromCharCode(
+        encryptedData.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
+      ));
+    }
+    return decrypted.toString();
+  }
+
+  // ✅ データ復号化機能
+  String _decryptData(String encryptedData) {
+    // XOR暗号化の復号化
+    final key = 'medication_app_backup_key_2024';
+    final decrypted = StringBuffer();
+    for (int i = 0; i < encryptedData.length; i++) {
+      decrypted.write(String.fromCharCode(
+        encryptedData.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
+      ));
+    }
+    return decrypted.toString();
   }
 
   // ✅ 非同期データ復元（最適化版）
@@ -9518,7 +9545,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _updateBackupHistory(String backupName, String backupKey) async {
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('backup_history') ?? '[]';
-    final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson));
+    final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
     
     history.add({
       'name': backupName,
@@ -9531,7 +9558,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     if (history.length > 5) {
       // 古いバックアップデータを削除
       final oldBackup = history.removeAt(0);
-      await prefs.remove(oldBackup['key']);
+      await prefs.remove(oldBackup['key'] as String);
     }
     
     await prefs.setString('backup_history', jsonEncode(history));
@@ -9543,7 +9570,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('backup_history') ?? '[]';
-    final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson));
+    final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
     
     if (history.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -9566,25 +9593,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             itemCount: history.length,
             itemBuilder: (context, index) {
               final backup = history[history.length - 1 - index]; // 新しい順に表示
-              final createdAt = DateTime.parse(backup['createdAt']);
+              final createdAt = DateTime.parse(backup['createdAt'] as String);
               
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 child: ListTile(
                   leading: const Icon(Icons.backup, color: Colors.orange),
-                  title: Text(backup['name']),
+                  title: Text(backup['name'] as String),
                   subtitle: Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) async {
                       switch (value) {
                         case 'restore':
-                          await _restoreBackup(backup['key']);
+                          await _restoreBackup(backup['key'] as String);
                           break;
                         case 'delete':
-                          await _deleteBackup(backup['key'], index);
+                          await _deleteBackup(backup['key'] as String, index);
                           break;
                         case 'preview':
-                          await _previewBackup(backup['key']);
+                          await _previewBackup(backup['key'] as String);
                           break;
                       }
                     },
@@ -9654,7 +9681,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return;
       }
       
-      final decryptedData = _decryptData(encryptedData);
+      final decryptedData = await _decryptDataAsync(encryptedData);
       final backupData = jsonDecode(decryptedData);
       
       if (mounted) {
@@ -9666,7 +9693,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('名前: ${backupData['name']}'),
+                  Text('名前: ${backupData['name'] as String}'),
                   Text('作成日時: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(backupData['createdAt']))}'),
                   const SizedBox(height: 8),
                   const Text('📊 バックアップ内容:', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -9795,7 +9822,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       
       // 履歴から削除
       final historyJson = prefs.getString('backup_history') ?? '[]';
-      final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson));
+      final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
       history.removeAt(history.length - 1 - index);
       await prefs.setString('backup_history', jsonEncode(history));
       
