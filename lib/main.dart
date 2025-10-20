@@ -951,7 +951,7 @@ class AppPreferences {
     return results;
   }
   
-  // デバッグ用：すべてのキーを表示（型安全版）
+  // デバッグ用：すべてのキーを表示（完全型安全版）
   static void debugAllKeys() {
     if (_preferences == null) {
       debugPrint('AppPreferences: 初期化されていません');
@@ -961,48 +961,77 @@ class AppPreferences {
     final keys = _preferences!.getKeys();
     debugPrint('AppPreferences: 保存されているキー数: ${keys.length}');
     for (final key in keys) {
-      // ✅ 修正: 型安全な値取得
+      bool found = false;
+      
+      // ✅ 修正: 各型を個別のtry-catchで安全にチェック
+      
+      // 1. int型をチェック
       try {
-        // まずintで試す
         final intValue = _preferences!.getInt(key);
         if (intValue != null) {
           debugPrint('  $key: $intValue (int)');
-          continue;
+          found = true;
         }
-        
-        // 次にStringで試す
+      } catch (e) {
+        // int型ではない、次の型を試す
+      }
+      
+      if (found) continue;
+      
+      // 2. String型をチェック
+      try {
         final stringValue = _preferences!.getString(key);
         if (stringValue != null) {
           debugPrint('  $key: $stringValue (String)');
-          continue;
+          found = true;
         }
-        
-        // 次にboolで試す
+      } catch (e) {
+        // String型ではない、次の型を試す
+      }
+      
+      if (found) continue;
+      
+      // 3. bool型をチェック
+      try {
         final boolValue = _preferences!.getBool(key);
         if (boolValue != null) {
           debugPrint('  $key: $boolValue (bool)');
-          continue;
+          found = true;
         }
-        
-        // 次にdoubleで試す
+      } catch (e) {
+        // bool型ではない、次の型を試す
+      }
+      
+      if (found) continue;
+      
+      // 4. double型をチェック
+      try {
         final doubleValue = _preferences!.getDouble(key);
         if (doubleValue != null) {
           debugPrint('  $key: $doubleValue (double)');
-          continue;
+          found = true;
         }
-        
-        // 次にStringListで試す
+      } catch (e) {
+        // double型ではない、次の型を試す
+      }
+      
+      if (found) continue;
+      
+      // 5. StringList型をチェック
+      try {
         final listValue = _preferences!.getStringList(key);
         if (listValue != null) {
           debugPrint('  $key: $listValue (StringList)');
-          continue;
+          found = true;
         }
-        
-        // どの型でも取得できない場合
-        debugPrint('  $key: (unknown type)');
       } catch (e) {
-        debugPrint('  $key: (error: $e)');
+        // StringList型ではない
       }
+      
+      if (found) continue;
+      
+      // どの型でも取得できない場合
+      debugPrint('  $key: (unknown type)');
     }
   }
 
