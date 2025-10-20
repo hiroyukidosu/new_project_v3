@@ -84,7 +84,31 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       _isAlarmEnabled = _prefs!.getBool('alarm_enabled') ?? true;
       _selectedNotificationType = _prefs!.getString('notification_type') ?? 'sound';
       _selectedAlarmSound = _prefs!.getString('alarm_sound') ?? 'default';
-      _notificationVolume = _prefs!.getInt('notification_volume') ?? 80;
+      
+      // ✅ 修正: 型安全な読み込み（古いStringデータにも対応）
+      try {
+        final volumeInt = _prefs!.getInt('notification_volume');
+        if (volumeInt != null) {
+          _notificationVolume = volumeInt;
+        } else {
+          // 古いStringデータの場合の対応
+          final volumeStr = _prefs!.getString('notification_volume');
+          if (volumeStr != null && volumeStr.isNotEmpty) {
+            _notificationVolume = int.tryParse(volumeStr) ?? 80;
+            debugPrint('⚠️ volumeを文字列から整数に変換: $volumeStr -> $_notificationVolume');
+            // 次回は正しい型で保存されるように即座に保存
+            await _prefs!.setInt('notification_volume', _notificationVolume);
+          } else {
+            _notificationVolume = 80;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ volume読み込みエラー、デフォルト値80を使用: $e');
+        _notificationVolume = 80;
+        // エラーが出たので正しい型で保存
+        await _prefs!.setInt('notification_volume', _notificationVolume);
+      }
+      
       debugPrint('✅ 設定読み込み完了');
       // ⚠️ ここでは_loadAlarms()を呼ばない（_initializeApp()で明示的に呼ぶ）
     }
@@ -261,13 +285,28 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     return selectedDays;
   }
 
-  // ✅ データ整合性チェック機能を追加
+  // ✅ データ整合性チェック機能を追加（強化版）
   Future<void> _validateAlarmData() async {
     if (_prefs == null) return;
     
     try {
       final alarmCount = _prefs!.getInt('alarm_count') ?? 0;
       debugPrint('🔍 データ整合性チェック開始: $alarmCount件のアラーム');
+      
+      // 通知設定の型チェック
+      final notificationVolume = _prefs!.getInt('notification_volume');
+      if (notificationVolume == null) {
+        debugPrint('⚠️ notification_volumeが無効（型エラーの可能性）');
+        // 古いStringデータをチェック
+        final volumeStr = _prefs!.getString('notification_volume');
+        if (volumeStr != null) {
+          debugPrint('⚠️ notification_volumeが文字列として保存されています: $volumeStr');
+          // 正しい型で再保存
+          final volumeInt = int.tryParse(volumeStr) ?? 80;
+          await _prefs!.setInt('notification_volume', volumeInt);
+          debugPrint('✅ notification_volumeを正しい型で再保存: $volumeInt');
+        }
+      }
       
       for (int i = 0; i < alarmCount; i++) {
         // 各フィールドの型をチェック
@@ -283,6 +322,15 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         }
         if (volume == null) {
           debugPrint('⚠️ アラーム $i: volumeが無効（型エラーの可能性）');
+          // 古いStringデータをチェック
+          final volumeStr = _prefs!.getString('alarm_${i}_volume');
+          if (volumeStr != null) {
+            debugPrint('⚠️ アラーム $i: volumeが文字列として保存されています: $volumeStr');
+            // 正しい型で再保存
+            final volumeInt = int.tryParse(volumeStr) ?? 80;
+            await _prefs!.setInt('alarm_${i}_volume', volumeInt);
+            debugPrint('✅ アラーム $i: volumeを正しい型で再保存: $volumeInt');
+          }
         }
       }
       
