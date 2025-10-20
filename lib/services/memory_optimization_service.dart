@@ -116,7 +116,7 @@ class MemoryOptimizationService {
   // 特定の日付のデータを取得（メモリ効率化版）
   static Future<Map<String, dynamic>?> getDayData(DateTime date) async {
     final key = _dateKey(date);
-    return await getData(key, () => _loadDayDataFromDb(date));
+    return await getData<Map<String, dynamic>>(key, () => _loadDayDataFromDb(date));
   }
   
   // 日付キーの生成

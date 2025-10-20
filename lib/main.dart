@@ -10,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
 // Core optimization imports
-import 'core/alarm_optimization.dart';
 
 // Third-party package imports
 import 'package:table_calendar/table_calendar.dart';
@@ -28,7 +27,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:expandable/expandable.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 // import 'package:isar/isar.dart';
 

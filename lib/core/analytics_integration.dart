@@ -1,5 +1,4 @@
 // import 'package:firebase_analytics/firebase_analytics.dart';
-import '../utils/logger.dart';
 
 /// アナリティクスの統合 - Firebase Analytics
 class AnalyticsIntegration {

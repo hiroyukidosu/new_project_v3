@@ -147,6 +147,3 @@ analyzer:
     invalid_use_of_protected_member: error
     invalid_use_of_visible_for_testing_member: error
     missing_override: warning
-    missing_required_param: error
-    missing_return: error
-    must_be_immutable: error

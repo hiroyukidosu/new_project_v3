@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import '../utils/logger.dart';
 
 /// 非同期処理の改善 - 優先度付きロード

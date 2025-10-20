@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'performance_optimizer.dart';
 import '../utils/logger.dart';
 
 /// 高度なメモリリーク対策 - 完全なリソース解放

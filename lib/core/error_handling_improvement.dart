@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/logger.dart';
@@ -257,10 +258,9 @@ mixin ErrorHandlingMixin<T extends StatefulWidget> on State<T> {
   }
   
   /// ユーザーフレンドリーなエラー表示
-  void showError(String context, dynamic error, {VoidCallback? onRetry}) {
+  void showError(String errorContext, dynamic error, {VoidCallback? onRetry}) {
     ErrorHandler.showUserFriendlyError(
-      context,
-      context,
+      errorContext,
       error,
       onRetry: onRetry,
     );

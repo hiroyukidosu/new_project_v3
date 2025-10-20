@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../utils/app_dimensions.dart';
-import '../utils/logger.dart';
 
 // 最適化されたスクロールウィジェット
 class OptimizedScrollWidgets {

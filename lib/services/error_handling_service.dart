@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../utils/logger.dart';
@@ -120,7 +121,7 @@ class ErrorHandlingService {
   }
   
   // エラー詳細の表示
-  static void _showErrorDetails(BuildContext context, dynamic error, String? context) {
+  static void _showErrorDetails(BuildContext context, dynamic error, String? errorContext) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -148,7 +149,7 @@ class ErrorHandlingService {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _copyErrorToClipboard(error, context);
+              _copyErrorToClipboard(error, errorContext);
             },
             child: const Text('コピー'),
           ),
@@ -158,7 +159,7 @@ class ErrorHandlingService {
   }
   
   // エラー情報のクリップボードコピー
-  static void _copyErrorToClipboard(dynamic error, String? context) {
+  static void _copyErrorToClipboard(dynamic error, String? errorContext) {
     // クリップボードへのコピー実装
     Logger.info('エラー情報をクリップボードにコピー');
   }
