@@ -9197,247 +9197,322 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ バックアップ実行機能（1回で完了するように最適化）
+  // ✅ 統合されたバックアップ作成メソッド（1回で完了）
   Future<void> _performBackup(String backupName) async {
+    if (!mounted) return;
+    
     // ローディング表示
-    if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 8),
+            Text('バックアップを作成中...'),
+          ],
+        ),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
+      
+      // 1. バックアップデータを直接作成（型安全な変換）
+      final backupData = await _createSafeBackupData(backupName);
+      
+      // 2. JSONエンコード（エラーハンドリング付き）
+      final jsonString = await _safeJsonEncode(backupData);
+      
+      // 3. 暗号化（非同期）
+      final encryptedData = await _encryptDataAsync(jsonString);
+      
+      // 4. 保存（1回で完了）
+      await prefs.setString(backupKey, encryptedData);
+      
+      // 5. 履歴更新
+      await _updateBackupHistory(backupName, backupKey);
+      
+      if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 8),
-              Text('バックアップを作成中...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text('✓ バックアップ「$backupName」を作成しました'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('バックアップ作成エラー: $e');
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
-    
-    try {
-      // ✅ 改善：1回でバックアップを完了
-      await _createAndSaveBackupInOneStep(backupName);
+  }
+
+  // ✅ 型安全なバックアップデータ作成
+  Future<Map<String, dynamic>> _createSafeBackupData(String backupName) async {
+    return {
+      'name': backupName,
+      'createdAt': DateTime.now().toIso8601String(),
+      'type': 'manual',
+      'version': '1.0.0', // バージョン情報を追加
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('バックアップ「$backupName」を作成しました'),
-            backgroundColor: Colors.green,
-          ),
+      // 服用メモ関連（JSON安全）
+      'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
+      'addedMedications': _addedMedications.map((med) => {
+        'id': med['id'],
+        'name': med['name'],
+        'type': med['type'],
+        'dosage': med['dosage'],
+        'color': (med['color'] as Color).value, // Color → int
+        'notes': med['notes'],
+        'isChecked': med['isChecked'] ?? false,
+        'takenTime': med['takenTime']?.toIso8601String(),
+      }).toList(),
+      
+      // 薬品データ（JSON安全）
+      'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
+      
+      // 服用データ（MedicationInfo → JSON）
+      'medicationData': _medicationData.map((dateKey, dayData) {
+        return MapEntry(
+          dateKey,
+          dayData.map((medKey, medInfo) {
+            return MapEntry(medKey, medInfo.toJson());
+          }),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('バックアップの作成に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
+      }),
+      
+      // チェック状態関連（プリミティブ型のみ）
+      'weekdayMedicationStatus': _weekdayMedicationStatus,
+      'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus.map((dateKey, memoStatus) {
+        return MapEntry(
+          dateKey,
+          memoStatus.map((memoId, doseStatus) {
+            return MapEntry(
+              memoId,
+              doseStatus.map((doseIndex, isChecked) {
+                return MapEntry(doseIndex.toString(), isChecked);
+              }),
+            );
+          }),
         );
-      }
-    }
+      }),
+      'medicationMemoStatus': _medicationMemoStatus,
+      
+      // カレンダー色（Color → int）
+      'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
+      
+      // アラーム関連
+      'alarmList': _alarmList.map((alarm) => {
+        'name': alarm['name'],
+        'time': alarm['time'],
+        'repeat': alarm['repeat'],
+        'enabled': alarm['enabled'],
+        'alarmType': alarm['alarmType'],
+        'volume': alarm['volume'],
+        'message': alarm['message'],
+      }).toList(),
+      'alarmSettings': Map<String, dynamic>.from(_alarmSettings),
+      
+      // 統計データ
+      'adherenceRates': _adherenceRates,
+    };
   }
 
-  // ✅ 1回でバックアップを完了するメソッド
-  Future<void> _createAndSaveBackupInOneStep(String backupName) async {
+  // ✅ 安全なJSONエンコード（エラーハンドリング）
+  Future<String> _safeJsonEncode(Map<String, dynamic> data) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
-      
-      // バックアップデータを直接作成
-      final backupData = {
-        'name': backupName,
-        'createdAt': DateTime.now().toIso8601String(),
-        'type': 'manual',
-        // 服用メモ関連
-        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
-        'addedMedications': _addedMedications,
-        'medicationData': _medicationData.map((dateKey, dayData) {
-          final dayDataJson = <String, dynamic>{};
-          for (final medEntry in dayData.entries) {
-            dayDataJson[medEntry.key] = medEntry.value.toJson();
-          }
-          return MapEntry(dateKey, dayDataJson);
-        }),
-        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
-        // チェック状態関連
-        'weekdayMedicationStatus': _weekdayMedicationStatus,
-        'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus,
-        'medicationMemoStatus': _medicationMemoStatus,
-        // カレンダー色関連（Colorオブジェクトをintに変換）
-        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
-        // アラーム関連
-        'alarmList': _alarmList,
-        'alarmSettings': _alarmSettings,
-        // その他の状態
-        'adherenceRates': _adherenceRates,
-      };
-      
-      // JSONエンコード
-      final jsonString = jsonEncode(backupData);
-      
-      // 暗号化（簡易版）
-      final encryptedData = await _encryptDataAsync(jsonString);
-      
-      // 保存
-      await prefs.setString(backupKey, encryptedData);
-      
-      // 履歴更新
-      await _updateBackupHistory(backupName, backupKey);
-      
+      return jsonEncode(data);
     } catch (e) {
-      debugPrint('1回バックアップ作成エラー: $e');
-      rethrow;
-    }
-  }
-
-  // ✅ 非同期でバックアップデータを作成（JSONエンコード対応）
-  Future<Map<String, dynamic>> _createBackupDataAsync(String backupName) async {
-    try {
-      // ✅ 修正：JSONエンコード可能な形式に変換
-      final medicationDataJson = <String, Map<String, dynamic>>{};
-      for (final entry in _medicationData.entries) {
-        final dateKey = entry.key;
-        final dayData = entry.value;
-        final dayDataJson = <String, dynamic>{};
-        
-        for (final medEntry in dayData.entries) {
-          final medKey = medEntry.key;
-          final medInfo = medEntry.value;
-          dayDataJson[medKey] = medInfo.toJson();
-        }
-        
-        medicationDataJson[dateKey] = dayDataJson;
-      }
+      debugPrint('JSONエンコードエラー: $e');
+      debugPrint('問題のあるデータ: ${data.keys}');
       
-      return {
-        'name': backupName,
-        'createdAt': DateTime.now().toIso8601String(),
-        'type': 'manual',
-        // 服用メモ関連
-        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
-        'addedMedications': _addedMedications,
-        'medicationData': medicationDataJson, // ✅ 修正：JSONエンコード可能な形式
-        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
-        // チェック状態関連
-        'weekdayMedicationStatus': _weekdayMedicationStatus,
-        'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus,
-        'medicationMemoStatus': _medicationMemoStatus,
-        // カレンダー色関連（Colorオブジェクトをintに変換）
-        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
-        // アラーム関連
-        'alarmList': _alarmList,
-        'alarmSettings': _alarmSettings,
-        // その他の状態
-        'adherenceRates': _adherenceRates,
-      };
-    } catch (e) {
-      debugPrint('バックアップデータ作成エラー: $e');
-      rethrow;
-    }
-  }
-
-  // ✅ 非同期でバックアップを保存（JSONエンコードエラーハンドリング）
-  Future<void> _saveBackupAsync(Map<String, dynamic> backupData, String backupName) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
-      
-      // ✅ 修正：JSONエンコードのエラーハンドリング
-      String jsonString;
-      try {
-        jsonString = jsonEncode(backupData);
-      } catch (e) {
-        debugPrint('JSONエンコードエラー: $e');
-        // エンコードできないオブジェクトを除外して再試行
-        final safeBackupData = _createSafeBackupData(backupData);
-        jsonString = jsonEncode(safeBackupData);
-      }
-      
-      // 非同期で暗号化
-      final encryptedData = await _encryptDataAsync(jsonString);
-      
-      // 非同期で保存
-      await prefs.setString(backupKey, encryptedData);
-      
-      // 非同期で履歴更新
-      await _updateBackupHistory(backupName, backupKey);
-    } catch (e) {
-      debugPrint('バックアップ保存エラー: $e');
-      rethrow;
-    }
-  }
-
-  // ✅ 安全なバックアップデータを作成（エンコードできないオブジェクトを除外）
-  Map<String, dynamic> _createSafeBackupData(Map<String, dynamic> originalData) {
-    final safeData = <String, dynamic>{};
-    
-    for (final entry in originalData.entries) {
-      try {
-        // 各値をテストしてエンコード可能かチェック
-        jsonEncode(entry.value);
-        safeData[entry.key] = entry.value;
-      } catch (e) {
-        debugPrint('エンコードできないオブジェクトを除外: ${entry.key} - $e');
-        // エンコードできないオブジェクトは除外
-        if (entry.key == 'medicationData') {
-          safeData[entry.key] = <String, dynamic>{};
-        } else if (entry.key == 'dayColors') {
-          safeData[entry.key] = <String, int>{};
-        } else {
-          safeData[entry.key] = null;
+      // エラーが発生した場合、問題のあるフィールドを特定
+      final safeData = <String, dynamic>{};
+      for (final entry in data.entries) {
+        try {
+          jsonEncode({entry.key: entry.value}); // 個別にテスト
+          safeData[entry.key] = entry.value;
+        } catch (fieldError) {
+          debugPrint('フィールド ${entry.key} でエラー: $fieldError');
+          safeData[entry.key] = null; // 問題のあるフィールドはnullに
         }
       }
+      
+      return jsonEncode(safeData);
     }
-    
-    return safeData;
   }
 
-  // ✅ 非同期でデータを暗号化
+  // ✅ 非同期暗号化
   Future<String> _encryptDataAsync(String data) async {
-    // 重い処理を非同期で実行
-    return await Future(() {
-      final key = 'medication_app_backup_key_2024';
-      final encrypted = StringBuffer();
-      for (int i = 0; i < data.length; i++) {
-        encrypted.write(String.fromCharCode(
-          data.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
-        ));
+    // 簡易暗号化（実際の実装ではより強力な暗号化を使用）
+    return base64Encode(utf8.encode(data));
+  }
+
+  // ✅ 非同期復号化
+  Future<String> _decryptDataAsync(String encryptedData) async {
+    // 簡易復号化
+    return utf8.decode(base64Decode(encryptedData));
+  }
+
+  // ✅ 非同期データ復元（最適化版）
+  Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
+    try {
+      // バージョンチェック
+      final version = backupData['version'] as String?;
+      if (version == null) {
+        debugPrint('警告: バックアップバージョン情報がありません');
       }
-      return encrypted.toString();
-    });
+      
+      // 1. 服用メモの復元
+      final restoredMemos = (backupData['medicationMemos'] as List? ?? [])
+          .map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>))
+          .toList();
+      
+      // 2. 追加薬品の復元（Color変換）
+      final restoredAddedMedications = (backupData['addedMedications'] as List? ?? [])
+          .map((med) => {
+            'id': med['id'],
+            'name': med['name'],
+            'type': med['type'],
+            'dosage': med['dosage'],
+            'color': Color(med['color'] as int), // int → Color
+            'notes': med['notes'],
+            'isChecked': med['isChecked'] ?? false,
+            'takenTime': med['takenTime'] != null 
+                ? DateTime.parse(med['takenTime'] as String)
+                : null,
+          })
+          .cast<Map<String, dynamic>>()
+          .toList();
+      
+      // 3. 薬品データの復元
+      final restoredMedicines = (backupData['medicines'] as List? ?? [])
+          .map((json) => MedicineData.fromJson(json as Map<String, dynamic>))
+          .toList();
+      
+      // 4. 服用データの復元（JSON → MedicationInfo）
+      final restoredMedicationData = <String, Map<String, MedicationInfo>>{};
+      if (backupData['medicationData'] != null) {
+        final medicationDataMap = backupData['medicationData'] as Map<String, dynamic>;
+        for (final entry in medicationDataMap.entries) {
+          final dateKey = entry.key;
+          final dayData = entry.value as Map<String, dynamic>;
+          final medicationInfoMap = <String, MedicationInfo>{};
+          
+          for (final medEntry in dayData.entries) {
+            final medKey = medEntry.key;
+            final medData = medEntry.value as Map<String, dynamic>;
+            medicationInfoMap[medKey] = MedicationInfo.fromJson(medData);
+          }
+          
+          restoredMedicationData[dateKey] = medicationInfoMap;
+        }
+      }
+      
+      // 5. チェック状態の復元
+      final restoredWeekdayStatus = <String, Map<String, bool>>{};
+      if (backupData['weekdayMedicationStatus'] != null) {
+        final statusMap = backupData['weekdayMedicationStatus'] as Map<String, dynamic>;
+        for (final entry in statusMap.entries) {
+          restoredWeekdayStatus[entry.key] = Map<String, bool>.from(entry.value as Map);
+        }
+      }
+      
+      final restoredWeekdayDoseStatus = <String, Map<String, Map<int, bool>>>{};
+      if (backupData['weekdayMedicationDoseStatus'] != null) {
+        final doseStatusMap = backupData['weekdayMedicationDoseStatus'] as Map<String, dynamic>;
+        for (final dateEntry in doseStatusMap.entries) {
+          final dateKey = dateEntry.key;
+          final memoStatusMap = dateEntry.value as Map<String, dynamic>;
+          final memoStatus = <String, Map<int, bool>>{};
+          
+          for (final memoEntry in memoStatusMap.entries) {
+            final memoId = memoEntry.key;
+            final doseStatusMap = memoEntry.value as Map<String, dynamic>;
+            final doseStatus = <int, bool>{};
+            
+            for (final doseEntry in doseStatusMap.entries) {
+              final doseIndex = int.parse(doseEntry.key);
+              doseStatus[doseIndex] = doseEntry.value as bool;
+            }
+            
+            memoStatus[memoId] = doseStatus;
+          }
+          
+          restoredWeekdayDoseStatus[dateKey] = memoStatus;
+        }
+      }
+      
+      final restoredMemoStatus = backupData['medicationMemoStatus'] != null
+          ? Map<String, bool>.from(backupData['medicationMemoStatus'] as Map)
+          : <String, bool>{};
+      
+      // 6. カレンダー色の復元（int → Color）
+      final restoredDayColors = <String, Color>{};
+      if (backupData['dayColors'] != null) {
+        final colorsMap = backupData['dayColors'] as Map<String, dynamic>;
+        for (final entry in colorsMap.entries) {
+          restoredDayColors[entry.key] = Color(entry.value as int);
+        }
+      }
+      
+      // 7. アラームの復元
+      final restoredAlarmList = (backupData['alarmList'] as List? ?? [])
+          .map((alarm) => Map<String, dynamic>.from(alarm as Map))
+          .toList();
+      
+      final restoredAlarmSettings = backupData['alarmSettings'] != null
+          ? Map<String, dynamic>.from(backupData['alarmSettings'] as Map)
+          : <String, dynamic>{};
+      
+      // 8. 統計データの復元
+      final restoredAdherenceRates = backupData['adherenceRates'] != null
+          ? Map<String, double>.from(backupData['adherenceRates'] as Map)
+          : <String, double>{};
+      
+      // 9. 一括setState（1回のみ）
+      if (!mounted) return;
+      
+      setState(() {
+        _medicationMemos = restoredMemos;
+        _addedMedications = restoredAddedMedications;
+        _medicines = restoredMedicines;
+        _medicationData = restoredMedicationData;
+        _weekdayMedicationStatus = restoredWeekdayStatus;
+        _weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
+        _medicationMemoStatus = restoredMemoStatus;
+        _dayColors = restoredDayColors;
+        _alarmList = restoredAlarmList;
+        _alarmSettings = restoredAlarmSettings;
+        _adherenceRates = restoredAdherenceRates;
+      });
+      
+      // 10. データ保存（復元後）
+      await _saveAllData();
+      
+      debugPrint('バックアップ復元完了: ${restoredMemos.length}件のメモ');
+    } catch (e) {
+      debugPrint('データ復元エラー: $e');
+      rethrow;
+    }
   }
 
-  // ✅ データ暗号化機能
-  String _encryptData(String data) {
-    // 簡単なXOR暗号化（実際のアプリではAES暗号化を推奨）
-    final key = 'medication_app_backup_key_2024';
-    final encrypted = StringBuffer();
-    for (int i = 0; i < data.length; i++) {
-      encrypted.write(String.fromCharCode(
-        data.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
-      ));
-    }
-    return encrypted.toString();
-  }
 
-  // ✅ データ復号化機能
-  String _decryptData(String encryptedData) {
-    // XOR暗号化の復号化
-    final key = 'medication_app_backup_key_2024';
-    final decrypted = StringBuffer();
-    for (int i = 0; i < encryptedData.length; i++) {
-      decrypted.write(String.fromCharCode(
-        encryptedData.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
-      ));
-    }
-    return decrypted.toString();
-  }
+
 
   // ✅ バックアップ履歴の更新（5件制限）
   Future<void> _updateBackupHistory(String backupName, String backupKey) async {
@@ -9635,7 +9710,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ バックアップ復元機能（非同期で軽く最適化）
+  // ✅ バックアップ復元機能（最適化版）
   Future<void> _restoreBackup(String backupKey) async {
     // ローディング表示
     if (mounted) {
@@ -9673,7 +9748,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return;
       }
       
-      // 非同期でデータを復元
+      // ✅ 新しい最適化された復元処理を使用
       await _restoreDataAsync(backupData);
       
       if (mounted) {
@@ -9708,117 +9783,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return jsonDecode(decryptedData);
   }
 
-  // ✅ 非同期でデータを復号化
-  Future<String> _decryptDataAsync(String encryptedData) async {
-    // 重い処理を非同期で実行
-    return await Future(() {
-      final key = 'medication_app_backup_key_2024';
-      final decrypted = StringBuffer();
-      for (int i = 0; i < encryptedData.length; i++) {
-        decrypted.write(String.fromCharCode(
-          encryptedData.codeUnitAt(i) ^ key.codeUnitAt(i % key.length)
-        ));
-      }
-      return decrypted.toString();
-    });
-  }
 
-  // ✅ 非同期でデータを復元
-  Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
-    // データの復元（型安全な処理）- 全データを復元対象に
-    // ✅ 修正：setState()を呼ぶ前に全データを復元し、一度にUI更新
-    final List<MedicationMemo> restoredMemos = (backupData['medicationMemos'] as List)
-        .map((json) => MedicationMemo.fromJson(json))
-        .toList();
-    final List<Map<String, dynamic>> restoredAddedMedications = List<Map<String, dynamic>>.from(backupData['addedMedications']);
-    
-    // 薬品データの復元
-    List<MedicineData> restoredMedicines = [];
-    if (backupData['medicines'] != null) {
-      restoredMedicines = (backupData['medicines'] as List)
-          .map((json) => MedicineData.fromJson(json))
-          .toList();
-    }
-    
-    // ✅ 修正：MedicationInfo型の安全な復元処理
-    final Map<String, Map<String, MedicationInfo>> restoredMedicationData = <String, Map<String, MedicationInfo>>{};
-    if (backupData['medicationData'] != null) {
-      final medicationDataMap = backupData['medicationData'] as Map<String, dynamic>;
-      for (final entry in medicationDataMap.entries) {
-        final dateKey = entry.key;
-        final dayData = entry.value as Map<String, dynamic>;
-        final medicationInfoMap = <String, MedicationInfo>{};
-        
-        for (final medEntry in dayData.entries) {
-          final medKey = medEntry.key;
-          final medData = medEntry.value as Map<String, dynamic>;
-          medicationInfoMap[medKey] = MedicationInfo.fromJson(medData);
-        }
-        
-        restoredMedicationData[dateKey] = medicationInfoMap;
-      }
-    }
-    
-    // チェック状態の復元
-    final Map<String, Map<String, bool>> restoredWeekdayStatus = {};
-    if (backupData['weekdayMedicationStatus'] != null) {
-      restoredWeekdayStatus.addAll(Map<String, Map<String, bool>>.from(backupData['weekdayMedicationStatus']));
-    }
-    
-    final Map<String, Map<String, Map<int, bool>>> restoredWeekdayDoseStatus = {};
-    if (backupData['weekdayMedicationDoseStatus'] != null) {
-      restoredWeekdayDoseStatus.addAll(Map<String, Map<String, Map<int, bool>>>.from(backupData['weekdayMedicationDoseStatus']));
-    }
-    
-    final Map<String, bool> restoredMemoStatus = {};
-    if (backupData['medicationMemoStatus'] != null) {
-      restoredMemoStatus.addAll(Map<String, bool>.from(backupData['medicationMemoStatus']));
-    }
-    
-    // ✅ 修正：dayColorsの安全な復元処理
-    final Map<String, Color> restoredDayColors = <String, Color>{};
-    if (backupData['dayColors'] != null) {
-      final dayColorsMap = backupData['dayColors'] as Map<String, dynamic>;
-      for (final entry in dayColorsMap.entries) {
-        restoredDayColors[entry.key] = Color(entry.value as int);
-      }
-    }
-    
-    // アラーム関連の復元
-    final List<Map<String, dynamic>> restoredAlarmList = [];
-    if (backupData['alarmList'] != null) {
-      restoredAlarmList.addAll(List<Map<String, dynamic>>.from(backupData['alarmList']));
-    }
-    
-    final Map<String, dynamic> restoredAlarmSettings = {};
-    if (backupData['alarmSettings'] != null) {
-      restoredAlarmSettings.addAll(Map<String, dynamic>.from(backupData['alarmSettings']));
-    }
-    
-    // その他の状態の復元
-    final Map<String, double> restoredAdherenceRates = {};
-    if (backupData['adherenceRates'] != null) {
-      restoredAdherenceRates.addAll(Map<String, double>.from(backupData['adherenceRates']));
-    }
-    
-    // ✅ 修正：一度に全データを復元してsetState()を1回だけ呼ぶ
-    setState(() {
-      _medicationMemos = restoredMemos;
-      _addedMedications = restoredAddedMedications;
-      _medicines = restoredMedicines;
-      _medicationData = restoredMedicationData;
-      _weekdayMedicationStatus = restoredWeekdayStatus;
-      _weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
-      _medicationMemoStatus = restoredMemoStatus;
-      _dayColors = restoredDayColors;
-      _alarmList = restoredAlarmList;
-      _alarmSettings = restoredAlarmSettings;
-      _adherenceRates = restoredAdherenceRates;
-    });
-    
-    // ✅ 修正：復元後にデータを保存（1回だけ）
-    await _saveAllData();
-  }
 
   // ✅ バックアップ削除機能
   Future<void> _deleteBackup(String backupKey, int index) async {
