@@ -984,72 +984,134 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     });
   }
 
+  // ✅ 修正1: アラーム追加メソッドを完全に作り直し
   void _addAlarm() {
     debugPrint('📝 アラーム追加ダイアログを表示');
     showDialog(
       context: context,
       builder: (context) => _AddAlarmDialog(
         onAlarmAdded: (alarm) async {
-          debugPrint('📝 アラーム追加: ${alarm.toString()}');
-          debugPrint('📝 追加前のアラーム数: ${_alarms.length}');
+          debugPrint('📝 アラーム追加開始: ${alarm.toString()}');
           
-          // ✅ 修正：アラームを直接追加（mountedチェックを削除）
-          _alarms.add(alarm);
-          debugPrint('📝 追加後のアラーム数: ${_alarms.length}');
-          
-          // 保存
-          await _saveAlarms();
-          debugPrint('✅ アラーム保存完了');
-          
-          // ✅ 修正：UI更新（mountedチェックのみ）
-          if (mounted) {
-            setState(() {
-              debugPrint('✅ UI更新完了: ${_alarms.length}件表示');
-            });
-          }
-          
-          // 確認用のスナックバー
-          if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('アラーム「${alarm['name']}」を追加しました'),
-                duration: const Duration(seconds: 2),
-              ),
-            );
+          try {
+            // ✅ 型安全性を確保：volumeを確実にint型に変換
+            final safeAlarm = Map<String, dynamic>.from(alarm);
+            if (safeAlarm['volume'] is String) {
+              safeAlarm['volume'] = int.tryParse(safeAlarm['volume'] as String) ?? 80;
+            } else if (safeAlarm['volume'] is! int) {
+              safeAlarm['volume'] = 80;
+            }
+            
+            // ✅ その他の必須フィールドも確実に設定
+            safeAlarm['enabled'] = safeAlarm['enabled'] ?? true;
+            safeAlarm['alarmType'] = safeAlarm['alarmType'] ?? 'sound';
+            safeAlarm['isRepeatEnabled'] = safeAlarm['isRepeatEnabled'] ?? false;
+            safeAlarm['selectedDays'] = safeAlarm['selectedDays'] ?? [false, false, false, false, false, false, false];
+            
+            debugPrint('📝 型安全なアラーム: $safeAlarm');
+            debugPrint('📝 追加前のアラーム数: ${_alarms.length}');
+            
+            // ✅ アラームリストに追加
+            _alarms.add(safeAlarm);
+            debugPrint('📝 追加後のアラーム数: ${_alarms.length}');
+            
+            // ✅ まずUIを更新（即座に表示）
+            if (mounted && !_disposed) {
+              setState(() {
+                debugPrint('✅ UI更新完了: ${_alarms.length}件表示');
+              });
+            }
+            
+            // ✅ その後にデータを保存
+            await _saveAlarms();
+            debugPrint('✅ アラーム保存完了');
+            
+            // ✅ 保存後に再度データを読み込んで確認
+            await _loadAlarms();
+            debugPrint('✅ アラーム再読み込み完了: ${_alarms.length}件');
+            
+            // ✅ 確認用のスナックバー
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('アラーム「${safeAlarm['name']}」を追加しました'),
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } catch (e, stackTrace) {
+            debugPrint('❌ アラーム追加エラー: $e');
+            debugPrint('スタックトレース: $stackTrace');
+            
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('アラームの追加に失敗しました: $e'),
+                  duration: const Duration(seconds: 3),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           }
         },
       ),
     );
   }
 
+  // ✅ 修正2: アラーム編集メソッドを完全に作り直し
   void _editAlarm(int index, Map<String, dynamic> alarm) {
     showDialog(
       context: context,
       builder: (context) => _AddAlarmDialog(
         initialAlarm: alarm,
         onAlarmAdded: (updatedAlarm) async {
-          // ✅ 修正：アラーム編集を確実に実行
           try {
-            // 直接アラームを更新
-            _alarms[index] = updatedAlarm;
-            // アラーム編集後に自動保存
-            await _saveAlarms();
+            debugPrint('📝 アラーム編集開始: インデックス $index');
             
-            // 保存後にsetStateでUI更新
-            if (mounted) {
+            // ✅ 型安全性を確保
+            final safeAlarm = Map<String, dynamic>.from(updatedAlarm);
+            if (safeAlarm['volume'] is String) {
+              safeAlarm['volume'] = int.tryParse(safeAlarm['volume'] as String) ?? 80;
+            } else if (safeAlarm['volume'] is! int) {
+              safeAlarm['volume'] = 80;
+            }
+            
+            // ✅ アラームを更新
+            _alarms[index] = safeAlarm;
+            debugPrint('✅ アラーム更新完了');
+            
+            // ✅ まずUIを更新
+            if (mounted && !_disposed) {
               setState(() {
-                debugPrint('✅ アラーム編集完了: ${_alarms.length}件表示');
+                debugPrint('✅ UI更新完了');
               });
             }
-          } catch (e) {
-            debugPrint('アラーム編集エラー: $e');
-            // エラーが発生してもアラームを更新
-            _alarms[index] = updatedAlarm;
+            
+            // ✅ データを保存
             await _saveAlarms();
-            if (mounted) {
-              setState(() {
-                debugPrint('✅ アラーム編集完了（エラー後）: ${_alarms.length}件表示');
-              });
+            debugPrint('✅ アラーム保存完了');
+            
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('アラーム「${safeAlarm['name']}」を更新しました'),
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ アラーム編集エラー: $e');
+            
+            if (mounted && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('アラームの編集に失敗しました: $e'),
+                  duration: const Duration(seconds: 3),
+                  backgroundColor: Colors.red,
+                ),
+              );
             }
           }
         },
@@ -1057,6 +1119,165 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     );
   }
 
+  // ✅ 修正3: アラーム保存メソッドを強化
+  Future<void> _saveAlarms() async {
+    debugPrint('💾 アラーム保存開始: ${_alarms.length}件');
+    if (_prefs == null) {
+      debugPrint('⚠️ SharedPreferencesがnullのため保存をスキップ');
+      return;
+    }
+    
+    try {
+      // ✅ アラーム数を保存
+      await _prefs!.setInt('alarm_count', _alarms.length);
+      debugPrint('✅ アラーム数保存完了: ${_alarms.length}件');
+      
+      // ✅ 各アラームのデータを個別に保存（完全な型安全性）
+      for (int i = 0; i < _alarms.length; i++) {
+        try {
+          final alarm = _alarms[i];
+          debugPrint('💾 アラーム $i 保存: ${alarm['name']}');
+          
+          // ✅ 文字列フィールド
+          await _prefs!.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
+          await _prefs!.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
+          await _prefs!.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+          await _prefs!.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
+          
+          // ✅ ブール値
+          final enabled = alarm['enabled'] is bool ? alarm['enabled'] as bool : true;
+          await _prefs!.setBool('alarm_${i}_enabled', enabled);
+          
+          final isRepeatEnabled = alarm['isRepeatEnabled'] is bool ? alarm['isRepeatEnabled'] as bool : false;
+          await _prefs!.setBool('alarm_${i}_isRepeatEnabled', isRepeatEnabled);
+          
+          // ✅ 整数値（volumeの型安全性を完全保証）
+          int volume = 80;
+          if (alarm['volume'] is int) {
+            volume = alarm['volume'] as int;
+          } else if (alarm['volume'] is String) {
+            volume = int.tryParse(alarm['volume'] as String) ?? 80;
+            debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換: ${alarm['volume']} -> $volume');
+          } else if (alarm['volume'] is double) {
+            volume = (alarm['volume'] as double).round();
+          }
+          await _prefs!.setInt('alarm_${i}_volume', volume);
+          debugPrint('✅ アラーム $i volume保存: $volume');
+          
+          // ✅ 曜日データ
+          final selectedDays = alarm['selectedDays'] is List ? 
+                              (alarm['selectedDays'] as List).cast<bool>() : 
+                              [false, false, false, false, false, false, false];
+          for (int j = 0; j < 7; j++) {
+            await _prefs!.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
+          }
+          
+          debugPrint('✅ アラーム $i 保存完了');
+        } catch (e) {
+          debugPrint('❌ アラーム $i 保存エラー: $e');
+          continue;
+        }
+      }
+      
+      // ✅ 保存完了を確認
+      final savedCount = _prefs!.getInt('alarm_count') ?? 0;
+      debugPrint('✅ 保存確認: $savedCount件のアラームが保存されました');
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ アラームデータ保存エラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+    }
+  }
+
+  // ✅ 修正4: アラーム読み込みメソッドを強化
+  Future<void> _loadAlarms() async {
+    debugPrint('📂 アラーム読み込み開始');
+    if (_prefs == null) {
+      debugPrint('⚠️ SharedPreferencesがnullのため読み込みをスキップ');
+      return;
+    }
+    
+    try {
+      final alarmCount = _prefs!.getInt('alarm_count') ?? 0;
+      debugPrint('📂 保存されているアラーム数: $alarmCount件');
+      
+      if (alarmCount == 0) {
+        debugPrint('ℹ️ アラームデータなし');
+        if (mounted && !_disposed) {
+          setState(() {
+            _alarms = [];
+          });
+        }
+        return;
+      }
+      
+      final alarmsList = <Map<String, dynamic>>[];
+      
+      for (int i = 0; i < alarmCount; i++) {
+        try {
+          // ✅ 各フィールドを型安全に取得
+          final name = _prefs!.getString('alarm_${i}_name') ?? 'アラーム';
+          final time = _prefs!.getString('alarm_${i}_time') ?? '00:00';
+          final repeat = _prefs!.getString('alarm_${i}_repeat') ?? '一度だけ';
+          final enabled = _prefs!.getBool('alarm_${i}_enabled') ?? true;
+          final alarmType = _prefs!.getString('alarm_${i}_alarmType') ?? 'sound';
+          final isRepeatEnabled = _prefs!.getBool('alarm_${i}_isRepeatEnabled') ?? false;
+          
+          // ✅ volumeの完全な型安全性
+          int volume = 80;
+          final volumeInt = _prefs!.getInt('alarm_${i}_volume');
+          if (volumeInt != null) {
+            volume = volumeInt;
+          } else {
+            final volumeStr = _prefs!.getString('alarm_${i}_volume');
+            if (volumeStr != null && volumeStr.isNotEmpty) {
+              volume = int.tryParse(volumeStr) ?? 80;
+              debugPrint('⚠️ アラーム $i: volumeを文字列から整数に変換: $volumeStr -> $volume');
+            }
+          }
+          
+          // ✅ 曜日データを読み込み
+          final selectedDays = <bool>[];
+          for (int j = 0; j < 7; j++) {
+            selectedDays.add(_prefs!.getBool('alarm_${i}_day_$j') ?? false);
+          }
+          
+          debugPrint('📂 アラーム $i 読み込み: name=$name, time=$time, volume=$volume');
+          
+          // ✅ アラームをリストに追加
+          alarmsList.add({
+            'name': name,
+            'time': time,
+            'repeat': repeat,
+            'enabled': enabled,
+            'alarmType': alarmType,
+            'volume': volume,
+            'isRepeatEnabled': isRepeatEnabled,
+            'selectedDays': selectedDays,
+          });
+          
+          debugPrint('✅ アラーム $i 追加完了');
+        } catch (e) {
+          debugPrint('❌ アラーム $i 読み込みエラー: $e');
+          continue;
+        }
+      }
+      
+      debugPrint('📂 読み込み完了: ${alarmsList.length}件のアラーム');
+      
+      // ✅ UI更新
+      if (mounted && !_disposed) {
+        setState(() {
+          _alarms = alarmsList;
+        });
+        debugPrint('✅ setState完了: _alarms.length=${_alarms.length}');
+      }
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ アラームデータ読み込みエラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+    }
+  }
 
   String _getNotificationTypeName(String type) {
     switch (type) {
