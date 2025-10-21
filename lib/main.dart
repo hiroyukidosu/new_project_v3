@@ -1257,7 +1257,7 @@ class AppPreferences {
       final box = Hive.box<MedicationMemo>('medication_memos');
       final memos = box.values.toList();
       
-      debugPrint('✅ 服用メモ読み込み成功: ${memos.length}件');
+        debugPrint('✅ 服用メモ読み込み成功: ${memos.length}件');
       
       // ✅ 2. データが空でない場合、SharedPreferencesにもバックアップ
       if (memos.isNotEmpty) {
@@ -3187,8 +3187,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _setupControllerListeners();
         
         // 5. 初期化完了フラグを設定（最後に設定）
-        _isInitialized = true;
-        
+      _isInitialized = true;
+      
         // 6. UIを強制更新
         if (mounted) {
           setState(() {
@@ -3203,8 +3203,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         
         // エラー時も初期化完了フラグを設定（アプリが動作するようにする）
         _isInitialized = true;
-        if (mounted) {
-          setState(() {});
+      if (mounted) {
+        setState(() {});
         }
       }
     });
@@ -5088,8 +5088,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 .toList();
             debugPrint('✅ SharedPreferencesから復元: ${memos.length}件 ($key)');
             return memos;
-          }
-        } catch (e) {
+      }
+    } catch (e) {
           debugPrint('⚠️ キー $key の読み込みエラー: $e');
           continue;
         }
@@ -5218,7 +5218,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           debugPrint('⚠️ データが空です。${attempt + 1}回目の試行を実行します...');
           await Future.delayed(Duration(milliseconds: 500 * attempt));
         }
-      } catch (e) {
+    } catch (e) {
         debugPrint('❌ 服用メモ読み込みエラー（試行$attempt回目）: $e');
         
         if (attempt == maxRetries) {
@@ -5261,15 +5261,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               for (final memo in memos) {
                 await box.put(memo.id, memo);
               }
-              
-              setState(() {
-                _medicationMemos = memos;
-              });
-              
+      
+      setState(() {
+        _medicationMemos = memos;
+      });
+      
               debugPrint('✅ バックアップから復元成功: ${memos.length}件 ($key)');
-              
+      
               // 成功メッセージを表示
-              if (mounted) {
+      if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('バックアップから${memos.length}件のメモを復元しました'),
@@ -5279,8 +5279,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 );
               }
               return;
-            }
-          } catch (e) {
+      }
+    } catch (e) {
             debugPrint('⚠️ バックアップ解析エラー ($key): $e');
             continue;
           }
@@ -7655,11 +7655,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                             ),
                                           ),
                                           const SizedBox(width: 12),
-                                          const Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
                                                   '⚠️ 服用スケジュール未設定',
                                                   style: TextStyle(
                                                     fontSize: 18, 
@@ -7670,9 +7670,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                                 SizedBox(height: 4),
                                                 Text(
                                                   '曜日を設定してください',
-                                                  style: TextStyle(
-                                                    fontSize: 14, 
-                                                    color: Colors.orange, 
+                                              style: TextStyle(
+                                                fontSize: 14, 
+                                                color: Colors.orange, 
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
@@ -7879,19 +7879,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   controller: _statsScrollController,
                   physics: const BouncingScrollPhysics(),
                   child: Column(
-                    children: [
-                      // 遵守率グラフ
-                      _buildAdherenceChart(),
-                      const SizedBox(height: 20),
-                      // 薬品別使用状況グラフ
-                      _buildMedicationUsageChart(),
-                      const SizedBox(height: 20),
-                      // 期間別遵守率カード
-                      ..._adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
+                  children: [
+                    // 遵守率グラフ
+                    _buildAdherenceChart(),
+                    const SizedBox(height: 20),
+                    // 薬品別使用状況グラフ
+                    _buildMedicationUsageChart(),
+                    const SizedBox(height: 20),
+                    // 期間別遵守率カード
+                    ..._adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
                       const SizedBox(height: 20),
                       // 任意の日数の遵守率カード
-                      _buildCustomAdherenceCard(),
-                    ],
+                    _buildCustomAdherenceCard(),
+                  ],
                   ),
                 ),
               ),
@@ -7925,7 +7925,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // ✅ 任意の日数の遵守率カード
+  // ✅ 任意の日数の遵守率カード（別画面へのナビゲーション）
   Widget _buildCustomAdherenceCard() {
     return Card(
       child: Padding(
@@ -7933,45 +7933,133 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Row(
+              children: [
+                const Icon(Icons.analytics, color: Colors.blue, size: 24),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
               '任意の日数の遵守率',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _customDaysController,
-                    focusNode: _customDaysFocusNode,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '日数を入力（1-365日）',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.calendar_today),
-                      helperText: '1-365日まで設定可能',
-                    ),
-                    onChanged: (value) {
-                      // 入力時のスクロールを防ぐ
-                    },
+                      Text(
+                        '指定した期間の遵守率を分析',
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                ElevatedButton(
+                ElevatedButton.icon(
                   onPressed: () {
-                    final days = int.tryParse(_customDaysController.text);
-                    if (days != null && days >= 1 && days <= 365) {
-                      _calculateCustomAdherence(days);
-                    } else {
-                      _showSnackBar('1から365の範囲で日数を入力してください');
-                    }
+                    _showCustomAdherenceDialog();
                   },
-                  child: const Text('計算'),
+                  icon: const Icon(Icons.calculate),
+                  label: const Text('分析'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
             ),
             if (_customAdherenceResult != null) ...[
-              const SizedBox(height: 16),
+            const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _customAdherenceResult! >= 80
+                      ? Colors.green.withOpacity(0.1)
+                      : _customAdherenceResult! >= 60
+                          ? Colors.orange.withOpacity(0.1)
+                          : Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _customAdherenceResult! >= 80
+                        ? Colors.green
+                        : _customAdherenceResult! >= 60
+                            ? Colors.orange
+                            : Colors.red,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+              children: [
+                    Text(
+                      '${_customDaysResult}日間の遵守率',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_customAdherenceResult!.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: _customAdherenceResult! >= 80
+                            ? Colors.green
+                            : _customAdherenceResult! >= 60
+                                ? Colors.orange
+                                : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // ✅ カスタム遵守率ダイアログ表示
+  void _showCustomAdherenceDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.analytics, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text('任意の日数の遵守率'),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '分析したい期間の日数を入力してください',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                    controller: _customDaysController,
+                      focusNode: _customDaysFocusNode,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: '日数（1-365日）',
+                        hintText: '例: 30',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.calendar_today),
+                        helperText: '過去何日間のデータを分析しますか？',
+                    ),
+                    onChanged: (value) {
+                        // 入力値の検証
+                      },
+                    ),
+                    const SizedBox(height: 20),
+            if (_customAdherenceResult != null) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -8020,6 +8108,30 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ],
         ),
       ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('キャンセル'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final days = int.tryParse(_customDaysController.text);
+                    if (days != null && days >= 1 && days <= 365) {
+                      _calculateCustomAdherence(days);
+                      setDialogState(() {}); // ダイアログ内の状態を更新
+                    } else {
+                      _showSnackBar('1から365の範囲で日数を入力してください');
+                    }
+                  },
+                  child: const Text('分析実行'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
   
@@ -8069,12 +8181,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
       
       final rate = (takenDoses / totalDoses * 100);
-      
+     
       // 結果をカード内に表示
       setState(() {
         _customAdherenceResult = rate;
         _customDaysResult = days;
       });
+      
+      // ダイアログを閉じる
+      Navigator.of(context).pop();
       
     } catch (e) {
       _showSnackBar('カスタム遵守率の計算に失敗しました: $e');
@@ -8469,7 +8584,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
           // ✅ 改善版：メモを保存（多重バックアップ付き）
           await _saveMedicationMemoWithBackup(memoToSave);
-          
+
           setState(() {
             final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
             if (index != -1) {
