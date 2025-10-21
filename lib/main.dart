@@ -34,6 +34,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 // import 'firebase_options.dart';
 import 'simple_alarm_app.dart';
 import 'core/snapshot_service.dart';
+import 'utils/locale_helper.dart';
 
 // 高速化：シンプルなデバッグログ
 void _debugLog(String message) {
@@ -42,25 +43,86 @@ void _debugLog(String message) {
   }
 }
 
-// 高速化：シンプルなLogger
+// 高速化：シンプルなLogger（本番環境でのログ削減）
 class Logger {
+  static int _logCount = 0;
+  static const int _maxLogsPerSession = 50; // 本番環境でのログ数制限
+  
   static void info(String message) {
-    if (kDebugMode) debugPrint('[INFO] $message');
+    if (_shouldLog()) debugPrint('[INFO] $message');
   }
   static void error(String message, [dynamic error]) {
-    if (kDebugMode) debugPrint('[ERROR] $message: $error');
+    if (_shouldLog()) debugPrint('[ERROR] $message: $error');
   }
   static void warning(String message) {
-    if (kDebugMode) debugPrint('[WARNING] $message');
+    if (_shouldLog()) debugPrint('[WARNING] $message');
   }
   static void debug(String message) {
-    if (kDebugMode) debugPrint('[DEBUG] $message');
+    if (kDebugMode && _shouldLog()) debugPrint('[DEBUG] $message');
+  }
+  
+  // 本番環境でのログ数を制限
+  static bool _shouldLog() {
+    if (kDebugMode) return true;
+    _logCount++;
+    return _logCount <= _maxLogsPerSession;
+  }
+  
+  // 重要なログ（本番環境でも出力）
+  static void critical(String message) {
+    debugPrint('[CRITICAL] $message');
   }
 }
 
 // 高速化：PrefsHelper削除
 
-// 高速化：エラーハンドリング削除
+// 高速化：エラーハンドリング強化
+class AppErrorHandler {
+  static void handleError(dynamic error, StackTrace? stackTrace, {String? context}) {
+    // エラーログを出力
+    Logger.error('エラー発生', error);
+    
+    // ユーザーフレンドリーなエラーメッセージを生成
+    final userMessage = _getUserFriendlyMessage(error);
+    
+    // Firebase Crashlyticsに送信（初期化済みの場合）
+    try {
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+    } catch (e) {
+      // Crashlyticsが利用できない場合は無視
+    }
+    
+    // デバッグ環境でのみ詳細ログを出力
+    if (kDebugMode) {
+      debugPrint('エラー詳細: $error');
+      if (stackTrace != null) {
+        debugPrint('スタックトレース: $stackTrace');
+      }
+    }
+  }
+  
+  static String _getUserFriendlyMessage(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    
+    if (errorString.contains('network') || errorString.contains('connection')) {
+      return 'ネットワーク接続を確認してください';
+    }
+    
+    if (errorString.contains('permission') || errorString.contains('権限')) {
+      return '必要な権限が許可されていません';
+    }
+    
+    if (errorString.contains('storage') || errorString.contains('保存')) {
+      return 'データの保存に失敗しました';
+    }
+    
+    if (errorString.contains('load') || errorString.contains('読み込み')) {
+      return 'データの読み込みに失敗しました';
+    }
+    
+    return '予期しないエラーが発生しました。アプリを再起動してください';
+  }
+}
 
 // 高速化：ローディングオーバーレイ削除
 
@@ -84,6 +146,12 @@ class AppConstants {
   static const String weekdayMedicationStatusKey = 'weekday_medication_status_v2';
   static const String addedMedicationsKey = 'added_medications_v2';
   static const String backupSuffix = '_backup';
+  
+  // カレンダー関連定数
+  static const String calendarMarksKey = 'calendar_marks';
+  static const Duration calendarScrollAnimationDuration = Duration(milliseconds: 300);
+  static const double calendarScrollSensitivity = 3.0;
+  static const double calendarScrollVelocityThreshold = 300.0;
 }
 
 // ✅ 修正：統一されたUI定数（マジックナンバー削減）
@@ -1203,79 +1271,82 @@ class AppPreferences {
 /// アプリケーションのエントリーポイント
 /// 初期化処理とエラーハンドリングを設定
 void main() async {
-  // ✅ 修正：Zone mismatchエラーを防ぐため、ensureInitialized()をrunZonedGuarded内で実行
-  runZonedGuarded(() async {
-    // Flutter bindingsの初期化を同じゾーン内で実行
+  // ✅ パフォーマンス最適化：最小限の初期化のみ実行
   WidgetsFlutterBinding.ensureInitialized();
- 
-    // Firebase初期化（統合版）
-    try {
+  
+  // ✅ 日付のローカライゼーション初期化（LocaleDataException対策）
+  await LocaleHelper.initializeLocale('ja_JP');
+  
+  // アプリを先に起動（1秒以内）
+  runApp(const MedicationAlarmApp());
+  
+  // 重い初期化処理は非同期で実行
+  Future.microtask(() async {
+    await _initializeAppAsync();
+  });
+}
+
+/// 非同期初期化処理（パフォーマンス最適化）
+Future<void> _initializeAppAsync() async {
+  try {
+    // Firebase初期化（必須でない場合は遅延実行）
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-      _debugLog('Firebase初期化完了');
     
-      // Crashlytics初期化
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-      _debugLog('Firebase Crashlytics初期化完了');
+    // Crashlytics初期化
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
     
-      // テスト用の初期ログ
-      await FirebaseCrashlytics.instance.log('アプリ起動 - Firebase Crashlytics有効');
-  } catch (e) {
-    debugPrint('Firebase初期化エラー: $e');
-      // CrashlyticsHelperは初期化前なので直接debugPrint
-      debugPrint('Crashlytics初期化前のエラー: $e');
-  }
-
-    // Firebase Crashlyticsのエラーハンドリングを設定（安全な初期化）
-    try {
-      FlutterError.onError = (errorDetails) {
-    try {
+    // エラーハンドリング設定
+    FlutterError.onError = (errorDetails) {
       FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
-    } catch (e) {
-          debugPrint('Crashlyticsエラーレポート失敗: $e');
-    }
-  };
-
-  // プラットフォームエラーハンドリング
-  PlatformDispatcher.instance.onError = (error, stack) {
-    try {
+    };
+    
+    PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    } catch (e) {
-          debugPrint('Crashlyticsプラットフォームエラーレポート失敗: $e');
-    }
-    return true;
-  };
-    } catch (e) {
-      debugPrint('Crashlyticsエラーハンドリング設定失敗: $e');
-    }
-
-    // Firebase初期化は上記で完了済み
-
-    // アプリ初期化と起動
-    try {
-    await _initializeApp();
-      // ✅ 修正：自動バックアップ機能を初期化（コメントアウト）
-      // await _initializeAutoBackup();
-    runApp(const MedicationAlarmApp());
+      return true;
+    };
+    
+    // その他の重い初期化処理
+    await _initializeHeavyServices();
+    
   } catch (e) {
-    debugPrint('アプリ初期化エラー: $e');
-      // 初期化に失敗してもアプリは起動する
-      try {
-        // エラーをCrashlyticsに送信（初期化済みの場合）
-      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
-    } catch (crashlyticsError) {
-        debugPrint('Crashlyticsエラーレポート失敗: $crashlyticsError');
+    // 初期化失敗時はログのみ出力（アプリは継続動作）
+    if (kDebugMode) {
+      debugPrint('非同期初期化エラー: $e');
     }
-    runApp(const MedicationAlarmApp());
   }
-  }, (error, stack) {
-    try {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    } catch (e) {
-      debugPrint('Zoneエラーレポート失敗: $e');
-    }
-  });
+}
+
+/// 重いサービスの初期化
+Future<void> _initializeHeavyServices() async {
+  try {
+    // Hive初期化
+    await Hive.initFlutter();
+    
+    // タイムゾーン初期化
+    tz.initializeTimeZones();
+    
+    // その他の重い初期化処理
+    await _initializeDataServices();
+    
+  } catch (e) {
+    debugPrint('重いサービス初期化エラー: $e');
+  }
+}
+
+/// データサービスの初期化
+Future<void> _initializeDataServices() async {
+  try {
+    // SharedPreferences初期化
+    await SharedPreferences.getInstance();
+    
+    // その他のデータサービス初期化
+    // ...
+    
+  } catch (e) {
+    debugPrint('データサービス初期化エラー: $e');
+  }
 }
 
 
@@ -5040,7 +5111,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       calendarFormat: CalendarFormat.month,
                       eventLoader: _getEventsForDay,
                       startingDayOfWeek: StartingDayOfWeek.monday,
-                      locale: 'ja_JP',
+                      locale: 'ja_JP', // 日本語ロケール（initializeDateFormattingで初期化済み）
                                           // ✅ カレンダー独自のジェスチャーを無効化
                                           availableGestures: AvailableGestures.none,
                       calendarBuilders: CalendarBuilders(

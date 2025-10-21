@@ -12,6 +12,7 @@ void main() {
         type: '薬',
         selectedDays: [1, 2, 3],
         createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       
       expect(memo.id, equals('test_id'));
@@ -29,6 +30,7 @@ void main() {
         type: '薬',
         selectedDays: [1, 2, 3],
         createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       
       final json = memo.toJson();
@@ -49,6 +51,7 @@ void main() {
         type: '薬',
         selectedDays: [1, 2, 3],
         createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       
       final updatedMemo = originalMemo.copyWith(
