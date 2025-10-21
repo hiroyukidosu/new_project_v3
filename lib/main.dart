@@ -8026,11 +8026,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Row(
+              title: Row(
                 children: [
-                  Icon(Icons.analytics, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Text('任意の日数の遵守率'),
+                  const Icon(Icons.analytics, color: Colors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      '任意の日数の遵守率',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ],
               ),
               content: SizedBox(
@@ -8040,7 +8045,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   children: [
                     const Text(
                       '分析したい期間の日数を入力してください',
-                      style: TextStyle(fontSize: 16),
+                      style: TextStyle(fontSize: 14),
                     ),
                     const SizedBox(height: 20),
                     TextField(
@@ -8084,7 +8089,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     Text(
                       '${_customDaysResult}日間の遵守率',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -8092,7 +8097,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     Text(
                       '${_customAdherenceResult!.toStringAsFixed(1)}%',
                       style: TextStyle(
-                        fontSize: 32,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: _customAdherenceResult! >= 80
                             ? Colors.green
@@ -8138,6 +8143,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // ✅ カスタム遵守率計算
   void _calculateCustomAdherence(int days) async {
     try {
+      // 現在のスクロール位置を保存
+      final currentScrollPosition = _statsScrollController.hasClients 
+          ? _statsScrollController.offset 
+          : 0.0;
+      
       // キーボードを閉じる
       _customDaysFocusNode.unfocus();
       FocusScope.of(context).unfocus();
@@ -8190,6 +8200,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       
       // ダイアログを閉じる
       Navigator.of(context).pop();
+      
+      // スクロール位置を復元（統計ページの一番下に戻る）
+      if (_statsScrollController.hasClients) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _statsScrollController.animateTo(
+            _statsScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOut,
+          );
+        });
+      }
       
     } catch (e) {
       _showSnackBar('カスタム遵守率の計算に失敗しました: $e');
