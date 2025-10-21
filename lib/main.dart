@@ -2943,6 +2943,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   final TextEditingController _memoController = TextEditingController();
   final FocusNode _memoFocusNode = FocusNode();
   bool _isMemoFocused = false;
+  bool _memoSnapshotSaved = false; // メモ変更時のスナップショット保存フラグ
   // ✅ 部分更新用のValueNotifier
   final ValueNotifier<String> _memoTextNotifier = ValueNotifier<String>('');
   final ValueNotifier<Map<String, Color>> _dayColorsNotifier = ValueNotifier<Map<String, Color>>({});
@@ -3717,6 +3718,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // アラームの追加（指定パス方式）
   Future<void> addAlarm(Map<String, dynamic> alarm) async {
     try {
+      // ✅ 追加：変更前スナップショット
+      await _saveSnapshotBeforeChange('アラーム追加_${alarm['name']}');
       setState(() {
         _alarmList.add(alarm);
       });
@@ -3737,6 +3740,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> removeAlarm(int index) async {
     try {
       if (index >= 0 && index < _alarmList.length) {
+        // ✅ 追加：変更前スナップショット
+        final alarm = _alarmList[index];
+        await _saveSnapshotBeforeChange('アラーム削除_${alarm['name']}');
         setState(() {
           _alarmList.removeAt(index);
         });
@@ -3755,6 +3761,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> updateAlarm(int index, Map<String, dynamic> updatedAlarm) async {
     try {
       if (index >= 0 && index < _alarmList.length) {
+        // ✅ 追加：変更前スナップショット
+        final alarm = _alarmList[index];
+        await _saveSnapshotBeforeChange('アラーム編集_${alarm['name']}');
         setState(() {
           _alarmList[index] = updatedAlarm;
         });
@@ -3776,6 +3785,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         final alarm = _alarmList[index];
         final newEnabled = !(alarm['enabled'] as bool? ?? true);
         
+        // ✅ 追加：変更前スナップショット
+        await _saveSnapshotBeforeChange('アラーム切替_${alarm['name']}_${newEnabled ? '有効' : '無効'}');
         setState(() {
           alarm['enabled'] = newEnabled;
         });
@@ -4636,6 +4647,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         await _updateMedicineInputsForSelectedDate();
         await _loadCurrentData();
       }
+      
+      // メモスナップショット保存フラグをリセット
+      _memoSnapshotSaved = false;
     } catch (e) {
       _showSnackBar('日付の選択に失敗しました: $e');
     }
@@ -5490,11 +5504,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 if (index == colors.length) {
                   // 色をリセットボタン（デフォルト色に戻す）
                   return GestureDetector(
-                    onTap: () {
+                    onTap: () async {
+                      // ✅ 追加：変更前スナップショット
+                      await _saveSnapshotBeforeChange('カレンダー色リセット_$dateStr');
                       setState(() {
                         // デフォルト色（何も指定していない最初の色）に戻す
                         _dayColors.remove(dateStr);
+                        _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
                       });
+                      await _saveDayColors(); // データ保存
                       Navigator.of(context).pop();
                     },
                     child: Container(
@@ -5529,10 +5547,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 final isSelected = _dayColors[dateStr] == color;
                 
                 return GestureDetector(
-                  onTap: () {
+                  onTap: () async {
+                    // ✅ 追加：変更前スナップショット
+                    await _saveSnapshotBeforeChange('カレンダー色変更_${dateStr}_$name');
                     setState(() {
                       _dayColors[dateStr] = color;
+                      _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
                     });
+                    await _saveDayColors(); // データ保存
                     Navigator.of(context).pop();
                   },
                   child: Container(
@@ -6006,8 +6028,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       label: '${memo.name}の服用記録 ${index + 1}回目',
                       hint: 'タップして服用状態を切り替え',
                     child: GestureDetector(
-                      onTap: () {
+                      onTap: () async {
                         if (_selectedDay != null) {
+                          // ✅ 追加：変更前スナップショット
+                          await _saveSnapshotBeforeChange('服用回数チェック_${memo.name}_${index + 1}回目_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                           final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
                           setState(() {
                             // 日付別の服用メモ状態を更新
@@ -6023,9 +6047,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             _medicationMemoStatus[memo.id] = checkedCount == totalCount;
                           });
                           // データ保存
-                          _saveAllData();
+                          await _saveAllData();
                           // 統計を再計算
-                          _calculateAdherenceStats();
+                          await _calculateAdherenceStats();
                         }
                       },
                       child: Container(
@@ -6788,14 +6812,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             children: [
               // 完全に作り直された服用済みチェックボックス
               GestureDetector(
-                onTap: () {
+                onTap: () async {
+                  // ✅ 追加：変更前スナップショット（状態変更前）
+                  if (_selectedDay != null) {
+                    await _saveSnapshotBeforeChange('服用チェック_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  }
+                  
                   // 強制的に状態を更新
                   setState(() {
                     medication['isChecked'] = !isChecked;
                   });
                   
-                  // データを保存
-                  _saveCurrentDataDebounced();
+                  // データを即座に保存（遅延なし）
+                  _saveCurrentData();
                   
                   // カレンダーマークを更新
                   _updateCalendarMarks();
@@ -6885,11 +6914,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
               // 削除ボタン
               IconButton(
-                onPressed: () {
+                onPressed: () async {
+                  // ✅ 追加：変更前スナップショット
+                  if (_selectedDay != null) {
+                    await _saveSnapshotBeforeChange('服用記録削除_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  }
                   setState(() {
                     _addedMedications.remove(medication);
                   });
-                  _saveCurrentDataDebounced();
+                  // データを即座に保存（遅延なし）
+                  _saveCurrentData();
                 },
                 icon: const Icon(Icons.delete, color: Colors.red),
                 tooltip: '削除',
@@ -7909,15 +7943,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             // メモを保存
             await AppPreferences.saveMedicationMemo(memoToSave);
             
-            // UIを更新
-          setState(() {
-            _medicationMemos.add(memoToSave);
-          });
+            // UIを更新（データ再読み込みは不要）
+            setState(() {
+              _medicationMemos.add(memoToSave);
+              // 新しく追加されたメモを表示リストにも追加
+              _displayedMemos.add(memoToSave);
+            });
             
-            // データを再読み込み
-            await _loadMedicationMemos();
+            // データを保存
+            await _saveAllData();
             
-          _showSnackBar('${memoToSave.type}を追加しました');
+            _showSnackBar('服用メモを追加しました');
           } catch (e) {
             _showSnackBar('メモの追加に失敗しました: $e');
           }
@@ -7958,9 +7994,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             if (index != -1) {
               _medicationMemos[index] = memoToSave;
             }
+            // 表示リストも更新
+            final displayedIndex = _displayedMemos.indexWhere((m) => m.id == memo.id);
+            if (displayedIndex != -1) {
+              _displayedMemos[displayedIndex] = memoToSave;
+            }
           });
           await AppPreferences.updateMedicationMemo(memoToSave);
-          _showSnackBar('${memoToSave.type}を更新しました');
+          _showSnackBar('服用メモを更新しました');
         },
       ),
     );
@@ -8005,8 +8046,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       await AppPreferences.deleteMedicationMemo(id);
       
       // UIを更新
-    setState(() {
-      _medicationMemos.removeWhere((memo) => memo.id == id);
+      setState(() {
+        _medicationMemos.removeWhere((memo) => memo.id == id);
+        _displayedMemos.removeWhere((memo) => memo.id == id);
         // 関連データも削除
         _medicationMemoStatus.remove(id);
         _weekdayMedicationStatus.remove(id);
@@ -8642,18 +8684,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 _isMemoFocused = true;
               });
             },
-            onChanged: (value) async {
-              // ✅ 即座にスナップショット保存（デバウンス前）
-              if (_selectedDay != null) {
-                await _saveSnapshotBeforeChange('メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
-              }
-              // その後にデバウンス更新
+            onChanged: (value) {
+              // デバウンス処理でスナップショット保存を制限
               _debounce?.cancel();
-              _debounce = Timer(const Duration(milliseconds: 500), () {
+              _debounce = Timer(const Duration(milliseconds: 500), () async {
+                // デバウンス後にスナップショット保存（1回だけ）
+                if (_selectedDay != null && !_memoSnapshotSaved) {
+                  await _saveSnapshotBeforeChange('メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  _memoSnapshotSaved = true;
+                }
                 _memoTextNotifier.value = value;
+                _saveMemo();
               });
+              // 即座にUIを更新
               _memoTextNotifier.value = value;
-              _saveMemo();
             },
             onSubmitted: (value) {
               // キーボードの決定ボタンで完了
@@ -8728,6 +8772,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   void _completeMemo() {
     setState(() {
       _isMemoFocused = false;
+      _memoSnapshotSaved = false; // スナップショット保存フラグをリセット
     });
     // カーソルの選択を外す
     FocusScope.of(context).unfocus();
@@ -9659,28 +9704,38 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (mounted) {
         setState(() {
           _focusedDay = _selectedDay ?? DateTime.now();
-          // メモフィールドを再同期
+          // ✅ 追加：メモフィールドを再同期
           if (_selectedDay != null) {
             final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
             // 直近の保存内容を反映
             SharedPreferences.getInstance().then((p) {
               final memo = p.getString('memo_$dateStr');
               _memoController.text = memo ?? '';
+              _memoTextNotifier.value = memo ?? '';
             });
           }
-          // アラームタブの完全再構築
+          // ✅ 追加：アラームタブの完全再構築
           _alarmTabKey = UniqueKey();
+          // ✅ 追加：カレンダー色の再同期
+          _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
         });
-        // カレンダーと入力を再評価
+        // ✅ 追加：カレンダーと入力を再評価
         await _updateMedicineInputsForSelectedDate();
+        await _loadMemoForSelectedDate();
+        // ✅ 追加：統計の再計算
+        await _calculateAdherenceStats();
+        // ✅ 追加：服用記録の表示を強制更新
+        _updateCalendarMarks();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('1つ前の状態に復元しました'),
+            content: Text('✓ 1つ前の状態に復元しました'),
             backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
+      debugPrint('❌ 復元エラー: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
