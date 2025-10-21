@@ -3047,6 +3047,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   // ✅ 統計タブ用のScrollController
   final ScrollController _statsScrollController = ScrollController();
   
+  // ✅ 任意の日数の遵守率機能用の変数
+  double? _customAdherenceResult;
+  int? _customDaysResult;
+  final TextEditingController _customDaysController = TextEditingController();
+  final FocusNode _customDaysFocusNode = FocusNode();
+  
   
   // ✅ 手動復元機能のための変数
   DateTime? _lastOperationTime;
@@ -4524,6 +4530,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _medicationHistoryScrollController.dispose();
     _statsScrollController.dispose();
     _medicationPageController.dispose();
+    _customDaysController.dispose();
+    _customDaysFocusNode.dispose();
     
     // ✅ 修正：購入サービスも解放
     InAppPurchaseService.dispose();
@@ -7880,6 +7888,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       const SizedBox(height: 20),
                       // 期間別遵守率カード
                       ..._adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
+                      const SizedBox(height: 20),
+                      // 任意の日数の遵守率カード
+                      _buildCustomAdherenceCard(),
                     ],
                   ),
                 ),
@@ -7913,6 +7924,163 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       ),
     );
   }
+  
+  // ✅ 任意の日数の遵守率カード
+  Widget _buildCustomAdherenceCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '任意の日数の遵守率',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customDaysController,
+                    focusNode: _customDaysFocusNode,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '日数を入力（1-365日）',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.calendar_today),
+                      helperText: '1-365日まで設定可能',
+                    ),
+                    onChanged: (value) {
+                      // 入力時のスクロールを防ぐ
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    final days = int.tryParse(_customDaysController.text);
+                    if (days != null && days >= 1 && days <= 365) {
+                      _calculateCustomAdherence(days);
+                    } else {
+                      _showSnackBar('1から365の範囲で日数を入力してください');
+                    }
+                  },
+                  child: const Text('計算'),
+                ),
+              ],
+            ),
+            if (_customAdherenceResult != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _customAdherenceResult! >= 80
+                      ? Colors.green.withOpacity(0.1)
+                      : _customAdherenceResult! >= 60
+                          ? Colors.orange.withOpacity(0.1)
+                          : Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _customAdherenceResult! >= 80
+                        ? Colors.green
+                        : _customAdherenceResult! >= 60
+                            ? Colors.orange
+                            : Colors.red,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '${_customDaysResult}日間の遵守率',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_customAdherenceResult!.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: _customAdherenceResult! >= 80
+                            ? Colors.green
+                            : _customAdherenceResult! >= 60
+                                ? Colors.orange
+                                : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // ✅ カスタム遵守率計算
+  void _calculateCustomAdherence(int days) async {
+    try {
+      // キーボードを閉じる
+      _customDaysFocusNode.unfocus();
+      FocusScope.of(context).unfocus();
+      
+      final now = DateTime.now();
+      int totalDoses = 0;
+      int takenDoses = 0;
+      
+      for (int i = 0; i < days; i++) {
+        final date = now.subtract(Duration(days: i));
+        final dateStr = DateFormat('yyyy-MM-dd').format(date);
+        final dayData = _medicationData[dateStr];
+        
+        // 動的薬リストの統計
+        if (dayData != null) {
+          for (final timeSlot in dayData.values) {
+            if (timeSlot.medicine.isNotEmpty) {
+              totalDoses++;
+              if (timeSlot.checked) takenDoses++;
+            }
+          }
+        }
+        
+        // 服用メモのチェック状況を統計に反映
+        final weekday = date.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+        final weekdayMemos = _medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
+        
+        for (final memo in weekdayMemos) {
+          totalDoses++;
+          // 日付別の服用メモ状態を確認
+          if (_weekdayMedicationStatus[dateStr]?[memo.id] == true) {
+            takenDoses++;
+          }
+        }
+      }
+      
+      // データがない場合の警告
+      if (totalDoses == 0) {
+        _showSnackBar('指定した期間に服薬データがありません');
+        return;
+      }
+      
+      final rate = (takenDoses / totalDoses * 100);
+      
+      // 結果をカード内に表示
+      setState(() {
+        _customAdherenceResult = rate;
+        _customDaysResult = days;
+      });
+      
+    } catch (e) {
+      _showSnackBar('カスタム遵守率の計算に失敗しました: $e');
+    }
+  }
+  
   // 遵守率グラフ
   Widget _buildAdherenceChart() {
     if (_adherenceRates.isEmpty) {
