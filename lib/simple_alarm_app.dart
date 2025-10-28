@@ -998,8 +998,10 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         return '音＋バイブ';
       case 'vibration':
         return 'バイブ';
+      case 'silent':
+        return 'サイレント';
       default:
-        return '音';
+        return 'デフォルト';
     }
   }
 
@@ -1069,19 +1071,6 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     } catch (e, stackTrace) {
       debugPrint('❌ アラームデータ保存エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
-    }
-  }
-
-  String _getNotificationTypeName(String type) {
-    switch (type) {
-      case 'sound':
-        return '音';
-      case 'sound_vibration':
-        return '音＋バイブ';
-      case 'vibration':
-        return 'バイブ';
-      default:
-        return '音';
     }
   }
 
@@ -1172,21 +1161,6 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     } catch (e, stackTrace) {
       debugPrint('❌ アラームデータ読み込みエラー: $e');
       debugPrint('スタックトレース: $stackTrace');
-    }
-  }
-
-  String _getNotificationTypeName(String type) {
-    switch (type) {
-      case 'sound':
-        return '音';
-      case 'sound_vibration':
-        return '音＋バイブ';
-      case 'vibration':
-        return 'バイブ';
-      case 'silent':
-        return 'サイレント';
-      default:
-        return 'デフォルト';
     }
   }
 
