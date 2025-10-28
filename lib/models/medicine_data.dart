@@ -1,86 +1,76 @@
-// 薬データのモデルクラス
+// Flutter core imports
+import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
+
+/// 薬のデータモデル
+/// 薬の名前、用量、頻度、メモを管理
 class MedicineData {
-  final String id;
   final String name;
   final String dosage;
-  final String type;
-  final List<int> selectedDays;
-  final Map<String, bool> status;
-  final DateTime createdAt;
-  final DateTime? updatedAt;
-
-  const MedicineData({
-    required this.id,
+  final String frequency;
+  final String notes;
+  final String category;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final Color color;
+  MedicineData({
     required this.name,
-    required this.dosage,
-    required this.type,
-    required this.selectedDays,
-    required this.status,
-    required this.createdAt,
-    this.updatedAt,
-  });
+    this.dosage = '',
+    this.frequency = '',
+    this.notes = '',
+    this.category = '処方薬',
+    this.startDate,
+    this.endDate,
+    Color? color,
+  }) : color = color ?? Colors.blue;
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'dosage': dosage,
+        'frequency': frequency,
+        'notes': notes,
+        'category': category,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'color': color.value,
+      };
+  factory MedicineData.fromJson(Map<String, dynamic> json) => MedicineData(
+        name: json['name'] ?? '',
+        dosage: json['dosage'] ?? '',
+        frequency: json['frequency'] ?? '',
+        notes: json['notes'] ?? '',
+        category: json['category'] ?? '処方薬',
+        startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
+        endDate: json['endDate'] != null ? DateTime.parse(json['endDate']) : null,
+        color: Color(json['color'] ?? Colors.blue.value),
+      );
+}
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'dosage': dosage,
-      'type': type,
-      'selectedDays': selectedDays,
-      'status': status,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
-  }
-
-  factory MedicineData.fromJson(Map<String, dynamic> json) {
+// MedicineDataのHiveアダプター
+class MedicineDataAdapter extends TypeAdapter<MedicineData> {
+  @override
+  final int typeId = 1;
+  @override
+  MedicineData read(BinaryReader reader) {
     return MedicineData(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      dosage: json['dosage'] as String,
-      type: json['type'] as String,
-      selectedDays: List<int>.from(json['selectedDays'] as List),
-      status: Map<String, bool>.from(json['status'] as Map),
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] != null 
-          ? DateTime.parse(json['updatedAt'] as String) 
-          : null,
+      name: reader.readString(),
+      dosage: reader.readString(),
+      frequency: reader.readString(),
+      notes: reader.readString(),
+      category: reader.readString(),
+      startDate: reader.read() as DateTime?,
+      endDate: reader.read() as DateTime?,
+      color: Color(reader.readInt()),
     );
   }
-
-  MedicineData copyWith({
-    String? id,
-    String? name,
-    String? dosage,
-    String? type,
-    List<int>? selectedDays,
-    Map<String, bool>? status,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return MedicineData(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      dosage: dosage ?? this.dosage,
-      type: type ?? this.type,
-      selectedDays: selectedDays ?? this.selectedDays,
-      status: status ?? this.status,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is MedicineData && other.id == id;
-  }
-
-  @override
-  int get hashCode => id.hashCode;
-
-  @override
-  String toString() {
-    return 'MedicineData(id: $id, name: $name, dosage: $dosage, type: $type)';
+  void write(BinaryWriter writer, MedicineData obj) {
+    writer.writeString(obj.name);
+    writer.writeString(obj.dosage);
+    writer.writeString(obj.frequency);
+    writer.writeString(obj.notes);
+    writer.writeString(obj.category);
+    writer.write(obj.startDate);
+    writer.write(obj.endDate);
+    writer.writeInt(obj.color.value);
   }
 }

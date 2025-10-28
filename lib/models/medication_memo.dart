@@ -1,132 +1,96 @@
+// Flutter core imports
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
-part 'medication_memo.g.dart';
-
-/// メディケーションメモのモデル
-@HiveType(typeId: 0)
-class MedicationMemo extends HiveObject {
-  @HiveField(0)
+// 薬のメモデータモデル
+class MedicationMemo {
   final String id;
-  
-  @HiveField(1)
   final String name;
-  
-  @HiveField(2)
+  final String type; // '薬品' or 'サプリメント'
   final String dosage;
-  
-  @HiveField(3)
   final String notes;
-  
-  @HiveField(4)
   final DateTime createdAt;
-  
-  @HiveField(5)
-  final DateTime updatedAt;
-  
-  @HiveField(6)
-  final bool isActive;
-  
-  @HiveField(7)
-  final List<int> selectedDays;
-  
-  @HiveField(8)
-  final String time;
-  
-  @HiveField(9)
-  final String color;
-  
-  @HiveField(10)
-  final String type;
+  final DateTime? lastTaken;
+  final Color color;
+  final List<int> selectedWeekdays; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+  final int dosageFrequency; // 服用回数（1〜6回）
   
   MedicationMemo({
     required this.id,
     required this.name,
-    required this.dosage,
+    required this.type,
+    this.dosage = '',
     this.notes = '',
     required this.createdAt,
-    required this.updatedAt,
-    this.isActive = true,
-    this.selectedDays = const [],
-    this.time = '',
-    this.color = '',
-    this.type = '薬品',
-  });
+    this.lastTaken,
+    Color? color,
+    this.selectedWeekdays = const [],
+    this.dosageFrequency = 1,
+  }) : color = color ?? Colors.blue;
   
-  /// コピーコンストラクタ
-  MedicationMemo copyWith({
-    String? id,
-    String? name,
-    String? dosage,
-    String? notes,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-    bool? isActive,
-    List<int>? selectedDays,
-    String? time,
-    String? color,
-    String? type,
-  }) {
+  // JSON変換（後方互換性）
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type,
+        'dosage': dosage,
+        'notes': notes,
+        'createdAt': createdAt.toIso8601String(),
+        'lastTaken': lastTaken?.toIso8601String(),
+        'color': color.value,
+        'selectedWeekdays': selectedWeekdays,
+        'dosageFrequency': dosageFrequency,
+      };
+      
+  factory MedicationMemo.fromJson(Map<String, dynamic> json) => MedicationMemo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        type: json['type'] ?? '薬品',
+        dosage: json['dosage'] ?? '',
+        notes: json['notes'] ?? '',
+        createdAt: DateTime.parse(json['createdAt']),
+        lastTaken: json['lastTaken'] != null ? DateTime.parse(json['lastTaken']) : null,
+        color: Color(json['color'] ?? Colors.blue.value),
+        selectedWeekdays: List<int>.from(json['selectedWeekdays'] ?? []),
+        dosageFrequency: json['dosageFrequency'] ?? 1,
+      );
+}
+
+// MedicationMemoのHiveアダプター
+class MedicationMemoAdapter extends TypeAdapter<MedicationMemo> {
+  @override
+  final int typeId = 2;
+
+  @override
+  MedicationMemo read(BinaryReader reader) {
     return MedicationMemo(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      dosage: dosage ?? this.dosage,
-      notes: notes ?? this.notes,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      isActive: isActive ?? this.isActive,
-      selectedDays: selectedDays ?? this.selectedDays,
-      time: time ?? this.time,
-      color: color ?? this.color,
-      type: type ?? this.type,
+      id: reader.readString(),
+      name: reader.readString(),
+      type: reader.readString(),
+      dosage: reader.readString(),
+      notes: reader.readString(),
+      createdAt: DateTime.parse(reader.readString()),
+      lastTaken: reader.readBool() ? DateTime.parse(reader.readString()) : null,
+      color: Color(reader.readInt()),
+      selectedWeekdays: List<int>.from(reader.readList()),
+      dosageFrequency: reader.readInt(),
     );
   }
-  
-  /// JSON変換
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'dosage': dosage,
-      'notes': notes,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
-      'isActive': isActive,
-      'selectedDays': selectedDays,
-      'time': time,
-      'color': color,
-      'type': type,
-    };
-  }
-  
-  /// JSONから作成
-  factory MedicationMemo.fromJson(Map<String, dynamic> json) {
-    return MedicationMemo(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-      dosage: json['dosage']?.toString() ?? '',
-      notes: json['notes']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ?? DateTime.now(),
-      isActive: json['isActive'] is bool ? json['isActive'] as bool : true,
-      selectedDays: (json['selectedDays'] is List) ? 
-                    (json['selectedDays'] as List).map((e) => e is int ? e : 0).toList() : [],
-      time: json['time']?.toString() ?? '',
-      color: json['color']?.toString() ?? '',
-      type: json['type']?.toString() ?? '薬品',
-    );
-  }
-  
+
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is MedicationMemo && other.id == id;
-  }
-  
-  @override
-  int get hashCode => id.hashCode;
-  
-  @override
-  String toString() {
-    return 'MedicationMemo(id: $id, name: $name, dosage: $dosage, isActive: $isActive)';
+  void write(BinaryWriter writer, MedicationMemo obj) {
+    writer.writeString(obj.id);
+    writer.writeString(obj.name);
+    writer.writeString(obj.type);
+    writer.writeString(obj.dosage);
+    writer.writeString(obj.notes);
+    writer.writeString(obj.createdAt.toIso8601String());
+    writer.writeBool(obj.lastTaken != null);
+    if (obj.lastTaken != null) {
+      writer.writeString(obj.lastTaken!.toIso8601String());
+    }
+    writer.writeInt(obj.color.value);
+    writer.writeList(obj.selectedWeekdays);
+    writer.writeInt(obj.dosageFrequency);
   }
 }

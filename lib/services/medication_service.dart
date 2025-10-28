@@ -1,195 +1,160 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hive/hive.dart';
-import '../models/medication_memo.dart';
-import '../models/medicine_data.dart';
-import '../utils/logger.dart';
+// Dart core imports
+import 'dart:io';
 
-// 服用データ管理サービス
+// Third-party package imports
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
+
+// Local imports
+import '../models/medication_info.dart';
+import '../models/medicine_data.dart';
+
+// 薬物管理サービス
 class MedicationService {
-  static SharedPreferences? _prefs;
-  static Box? _hiveBox;
+  static Box<Map>? _medicationBox;
+  static Box<MedicineData>? _medicineDatabase;
+  static Box<Map>? _adherenceStats;
+  static Box<dynamic>? _settingsBox;
+  static bool _isInitialized = false;
+  static const String _csvFileName = '服薬記録.csv';
   
-  // 初期化
   static Future<void> initialize() async {
-    _prefs = await SharedPreferences.getInstance();
-    _hiveBox = await Hive.openBox('medication_data');
-    Logger.info('MedicationService初期化完了');
-  }
-  
-  // バッチ処理でのデータ保存（最適化版）
-  static Future<void> saveAllDataOptimized({
-    required Map<String, dynamic> medicationData,
-    required Map<String, dynamic> memoData,
-    required Map<String, dynamic> settingsData,
-  }) async {
+    if (_isInitialized) return;
     try {
-      final batch = <String, String>{};
-      
-      // データをバッチに追加
-      batch['medication_data'] = jsonEncode(medicationData);
-      batch['memo_data'] = jsonEncode(memoData);
-      batch['settings_data'] = jsonEncode(settingsData);
-      batch['last_saved'] = DateTime.now().toIso8601String();
-      
-      // バックアップも同時に作成
-      final backupBatch = <String, String>{};
-      for (final entry in batch.entries) {
-        backupBatch['${entry.key}_backup'] = entry.value;
+      final directory = await getApplicationDocumentsDirectory();
+      await Hive.initFlutter(directory.path);
+      if (!Hive.isAdapterRegistered(0)) {
+        Hive.registerAdapter(MedicationInfoAdapter());
       }
-      
-      // 並列保存
-      await Future.wait([
-        _saveBatch(batch),
-        _saveBatch(backupBatch),
-        _saveToHive(medicationData),
-      ]);
-      
-      Logger.info('バッチデータ保存完了');
+      if (!Hive.isAdapterRegistered(1)) {
+        Hive.registerAdapter(MedicineDataAdapter());
+      }
+      _medicationBox = await Hive.openBox<Map>('medicationData');
+      _medicineDatabase = await Hive.openBox<MedicineData>('medicineDatabase');
+      _adherenceStats = await Hive.openBox<Map>('adherenceStats');
+      _settingsBox = await Hive.openBox('settings');
+      _isInitialized = true;
     } catch (e) {
-      Logger.error('バッチデータ保存エラー', e);
+      _isInitialized = false;
       rethrow;
     }
   }
   
-  // バッチ保存の実装
-  static Future<void> _saveBatch(Map<String, String> batch) async {
-    for (final entry in batch.entries) {
-      await _prefs!.setString(entry.key, entry.value);
+  static Future<void> _ensureInitialized() async {
+    if (!_isInitialized) {
+      await initialize();
     }
   }
   
-  // Hiveへの保存
-  static Future<void> _saveToHive(Map<String, dynamic> data) async {
-    await _hiveBox!.put('medication_data', data);
-  }
-  
-  // 服用メモの保存
-  static Future<void> saveMedicationMemo(MedicationMemo memo) async {
+  static Future<Map<String, Map<String, MedicationInfo>>> loadMedicationData() async {
     try {
-      final json = memo.toJson();
-      await _prefs!.setString('medication_memo_${memo.id}', jsonEncode(json));
-      await _prefs!.setString('medication_memo_${memo.id}_backup', jsonEncode(json));
-      Logger.info('服用メモ保存完了: ${memo.name}');
+      await _ensureInitialized();
+      if (_medicationBox == null) return {};
+      return _medicationBox!.toMap().cast<String, Map>().map(
+            (key, value) => MapEntry(
+              key,
+              value.map((k, v) => MapEntry(k, MedicationInfo.fromJson(Map<String, dynamic>.from(v)))),
+            ),
+          );
     } catch (e) {
-      Logger.error('服用メモ保存エラー', e);
-      rethrow;
+      return {};
     }
   }
   
-  // 服用メモの読み込み
-  static Future<MedicationMemo?> loadMedicationMemo(String id) async {
+  static Future<List<MedicineData>> loadMedicines() async {
     try {
-      final jsonStr = _prefs!.getString('medication_memo_$id');
-      if (jsonStr != null) {
-        final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return MedicationMemo.fromJson(json);
-      }
-      return null;
+      await _ensureInitialized();
+      if (_medicineDatabase == null) return [];
+      return _medicineDatabase!.values.toList();
     } catch (e) {
-      Logger.error('服用メモ読み込みエラー', e);
-      return null;
-    }
-  }
-  
-  // 全服用メモの読み込み
-  static Future<List<MedicationMemo>> loadAllMedicationMemos() async {
-    try {
-      final keys = _prefs!.getKeys().where((key) => key.startsWith('medication_memo_') && !key.contains('_backup'));
-      final memos = <MedicationMemo>[];
-      
-      for (final key in keys) {
-        final memo = await loadMedicationMemo(key.replaceFirst('medication_memo_', ''));
-        if (memo != null) {
-          memos.add(memo);
-        }
-      }
-      
-      Logger.info('全服用メモ読み込み完了: ${memos.length}件');
-      return memos;
-    } catch (e) {
-      Logger.error('全服用メモ読み込みエラー', e);
       return [];
     }
   }
   
-  // 薬データの保存
-  static Future<void> saveMedicineData(MedicineData medicine) async {
+  static Future<Map<String, double>> loadAdherenceStats() async {
     try {
-      final json = medicine.toJson();
-      await _prefs!.setString('medicine_${medicine.id}', jsonEncode(json));
-      await _prefs!.setString('medicine_${medicine.id}_backup', jsonEncode(json));
-      Logger.info('薬データ保存完了: ${medicine.name}');
+      await _ensureInitialized();
+      if (_adherenceStats == null) return {};
+      return Map<String, double>.from(_adherenceStats!.get('rates') ?? {});
     } catch (e) {
-      Logger.error('薬データ保存エラー', e);
-      rethrow;
+      return {};
     }
   }
   
-  // 薬データの読み込み
-  static Future<MedicineData?> loadMedicineData(String id) async {
+  static Future<void> saveMedicationData(Map<String, Map<String, MedicationInfo>> data) async {
     try {
-      final jsonStr = _prefs!.getString('medicine_$id');
-      if (jsonStr != null) {
-        final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return MedicineData.fromJson(json);
+      await _ensureInitialized();
+      if (_medicationBox == null) return;
+      await _medicationBox!.putAll(
+        data.map((key, value) => MapEntry(key, value.map((k, v) => MapEntry(k, v.toJson())))),
+      );
+      await _medicationBox!.flush();
+    } catch (e) {
+    }
+  }
+  
+  static Future<void> saveMedicine(MedicineData medicine) async {
+    try {
+      await _ensureInitialized();
+      if (_medicineDatabase == null) return;
+      await _medicineDatabase!.put(medicine.name, medicine);
+      await _medicineDatabase!.flush();
+    } catch (e) {
+    }
+  }
+  
+  static Future<void> deleteMedicine(String name) async {
+    try {
+      await _ensureInitialized();
+      if (_medicineDatabase == null) return;
+      await _medicineDatabase!.delete(name);
+      await _medicineDatabase!.flush();
+    } catch (e) {
+    }
+  }
+  
+  static Future<void> saveAdherenceStats(Map<String, double> stats) async {
+    try {
+      await _ensureInitialized();
+      if (_adherenceStats == null) return;
+      await _adherenceStats!.put('rates', stats);
+      await _adherenceStats!.flush();
+    } catch (e) {
+    }
+  }
+  
+  static Future<void> saveSettings(Map<String, dynamic> settings) async {
+    try {
+      await _ensureInitialized();
+      if (_settingsBox == null) return;
+      await _settingsBox!.putAll(settings);
+      await _settingsBox!.flush();
+    } catch (e) {
+    }
+  }
+  
+  static Future<Map<String, dynamic>> loadSettings() async {
+    try {
+      await _ensureInitialized();
+      if (_settingsBox == null) return {};
+      return Map<String, dynamic>.from(_settingsBox!.toMap());
+    } catch (e) {
+      return {};
+    }
+  }
+  
+  static Future<void> saveCsvRecord(String dateStr, String timeSlot, String medicine, String status) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/$_csvFileName');
+      final now = DateFormat('yyyy年MM月dd日 HH:mm:ss', 'ja_JP').format(DateTime.now());
+      final record = '$dateStr,$timeSlot,${medicine.isEmpty ? "未入力" : medicine},$status,$now\n';
+      if (!await file.exists()) {
+        await file.writeAsString('日付,時間帯,薬の種類,服薬状況,記録時間\n');
       }
-      return null;
+      await file.writeAsString(record, mode: FileMode.append);
     } catch (e) {
-      Logger.error('薬データ読み込みエラー', e);
-      return null;
-    }
-  }
-  
-  // 統計データの計算（メモ化対応）
-  static Map<String, double> _cachedStats = {};
-  static DateTime? _lastStatsCalculation;
-  
-  static Map<String, double> calculateAdherenceStats(List<MedicationMemo> memos) {
-    final now = DateTime.now();
-    
-    // キャッシュが有効な場合は返す
-    if (_cachedStats.isNotEmpty && 
-        _lastStatsCalculation != null && 
-        now.difference(_lastStatsCalculation!).inMinutes < 5) {
-      return _cachedStats;
-    }
-    
-    // 統計計算
-    final stats = <String, double>{};
-    for (final memo in memos) {
-      final adherenceRate = _calculateMemoAdherence(memo);
-      stats[memo.id] = adherenceRate;
-    }
-    
-    // キャッシュ更新
-    _cachedStats = stats;
-    _lastStatsCalculation = now;
-    
-    Logger.info('統計データ計算完了: ${stats.length}件');
-    return stats;
-  }
-  
-  static double _calculateMemoAdherence(MedicationMemo memo) {
-    // 遵守率の計算ロジック
-    // 実装は既存のロジックを移植
-    return 0.0; // プレースホルダー
-  }
-  
-  // キャッシュの無効化
-  static void invalidateStatsCache() {
-    _cachedStats.clear();
-    _lastStatsCalculation = null;
-    Logger.debug('統計キャッシュを無効化しました');
-  }
-  
-  // リソースの解放
-  static Future<void> dispose() async {
-    try {
-      await _hiveBox?.close();
-      Logger.info('MedicationServiceリソース解放完了');
-    } catch (e) {
-      Logger.error('MedicationServiceリソース解放エラー', e);
     }
   }
 }
