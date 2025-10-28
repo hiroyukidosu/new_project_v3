@@ -1002,6 +1002,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         return '音';
     }
   }
+
+  // アラーム保存メソッド
+  Future<void> _saveAlarms() async {
     if (_prefs == null) {
       debugPrint('⚠️ SharedPreferencesがnullのため保存をスキップ');
       return;
@@ -1081,6 +1084,9 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
         return '音';
     }
   }
+
+  // アラーム読み込みメソッド
+  Future<void> _loadAlarms() async {
     debugPrint('📂 アラーム読み込み開始');
     if (_prefs == null) {
       debugPrint('⚠️ SharedPreferencesがnullのため読み込みをスキップ');

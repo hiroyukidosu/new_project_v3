@@ -29,6 +29,17 @@ class AppConstants {
   static const double calendarScrollVelocityThreshold = 300.0;
 }
 
+// 通知タイプの列挙型
+enum NotificationType {
+  sound('音'),
+  soundVibration('音＋バイブ'),
+  vibration('バイブ'),
+  silent('サイレント');
+
+  const NotificationType(this.displayName);
+  final String displayName;
+}
+
 // 統一されたUI定数（マジックナンバー削減）
 class AppDimensions {
   // 高さ
