@@ -1120,7 +1120,15 @@ class AppPreferences {
         await _preferences!.setInt('alarm_${i}_volume', alarm['volume'] ?? 80);
       }
       
-      debugPrint('アラームデータを保存しました: ${alarms.length}件');
+      // ✅ バックアップも同時に保存
+      final alarmsJson = jsonEncode(alarms);
+      await Future.wait([
+        _preferences!.setString('alarms_backup', alarmsJson),
+        _preferences!.setString('alarms_backup2', alarmsJson),
+        _preferences!.setString('alarms_backup3', alarmsJson),
+      ]);
+      
+      debugPrint('アラームデータを保存しました: ${alarms.length}件（バックアップ含む）');
       return true;
     } catch (e) {
       debugPrint('アラームデータ保存エラー: $e');
@@ -1152,6 +1160,29 @@ class AppPreferences {
             'alarmType': alarmType ?? 'sound',
             'volume': volume ?? 80,
           });
+        }
+      }
+      
+      // ✅ データが見つからない場合、バックアップから復元
+      if (alarmsList.isEmpty) {
+        debugPrint('アラームデータが見つかりません。バックアップから復元を試みます...');
+        final backupKeys = ['alarms_backup', 'alarms_backup2', 'alarms_backup3'];
+        
+        for (final key in backupKeys) {
+          final backupJson = _preferences!.getString(key);
+          if (backupJson != null && backupJson.isNotEmpty) {
+            try {
+              final List<dynamic> decodedList = jsonDecode(backupJson);
+              final restoredAlarms = decodedList
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList();
+              debugPrint('✅ バックアップから復元: ${restoredAlarms.length}件 ($key)');
+              return restoredAlarms;
+            } catch (e) {
+              debugPrint('⚠️ バックアップ解析エラー ($key): $e');
+              continue;
+            }
+          }
         }
       }
       
@@ -1340,6 +1371,10 @@ class AppPreferences {
       final box = Hive.box<MedicationMemo>('medication_memos');
       await box.delete(memoId);
       debugPrint('服用メモを削除しました: $memoId');
+      
+      // ✅ バックアップを更新
+      await _backupMemosToSharedPreferences();
+      
       return true;
     } catch (e) {
       debugPrint('服用メモ削除エラー: $e');
@@ -1353,6 +1388,10 @@ class AppPreferences {
       final box = Hive.box<MedicationMemo>('medication_memos');
       await box.put(memo.id, memo);
       debugPrint('服用メモを更新しました: ${memo.name}');
+      
+      // ✅ バックアップを更新
+      await _backupMemosToSharedPreferences();
+      
       return true;
     } catch (e) {
       debugPrint('服用メモ更新エラー: $e');
@@ -3018,7 +3057,9 @@ class MedicationHomePage extends StatefulWidget {
 class _MedicationHomePageState extends State<MedicationHomePage> with TickerProviderStateMixin {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  final Set<DateTime> _selectedDates = <DateTime>{};
+  Set<DateTime> _selectedDates = <DateTime>{};
+  // ✅ カレンダーメモ用の変数
+  Map<String, String> _calendarMemos = {};
   // 動的に追加される薬のリスト
   List<Map<String, dynamic>> _addedMedications = [];
   late TabController _tabController;
@@ -4026,15 +4067,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         };
       }
       
-      final success1 = await prefs.setString('calendar_marks', jsonEncode(marksJson));
-      final success2 = await prefs.setString('calendar_marks_backup', jsonEncode(marksJson));
-      final success3 = await prefs.setInt('calendar_marks_count', _selectedDates.length);
+      final jsonString = jsonEncode(marksJson);
       
-      if (success1 && success2 && success3) {
-        debugPrint('カレンダーマーク保存完了: ${_selectedDates.length}件');
-      } else {
-        debugPrint('カレンダーマーク保存に失敗');
-      }
+      // ✅ バックアップも同時に保存（複数のキーで保存）
+      await Future.wait([
+        prefs.setString('calendar_marks', jsonString),
+        prefs.setString('calendar_marks_backup', jsonString),
+        prefs.setString('calendar_marks_backup2', jsonString),
+        prefs.setString('calendar_marks_backup3', jsonString),
+        prefs.setInt('calendar_marks_count', _selectedDates.length),
+      ]);
+      
+      debugPrint('カレンダーマーク保存完了: ${_selectedDates.length}件（バックアップ含む）');
     } catch (e) {
       debugPrint('カレンダーマーク保存エラー: $e');
     }
@@ -4044,26 +4088,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _loadCalendarMarks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? marksStr;
       
-      final keys = ['calendar_marks', 'calendar_marks_backup'];
+      // ✅ 複数のバックアップキーから試行
+      final keys = [
+        'calendar_marks',
+        'calendar_marks_backup',
+        'calendar_marks_backup2',
+        'calendar_marks_backup3'
+      ];
       
       for (final key in keys) {
-        try {
-          marksStr = prefs.getString(key);
-          if (marksStr != null && marksStr.isNotEmpty) {
-            debugPrint('カレンダーマーク読み込み成功: $key');
-            break;
-          }
-        } catch (e) {
-          debugPrint('キー $key の読み込みエラー: $e');
-          continue;
-        }
-      }
-      
-      if (marksStr != null && marksStr.isNotEmpty) {
-        try {
-          final marksJson = jsonDecode(marksStr) as Map<String, dynamic>;
+        final jsonString = prefs.getString(key);
+        if (jsonString != null && jsonString.isNotEmpty) {
+          try {
+            final marksJson = jsonDecode(jsonString) as Map<String, dynamic>;
           _selectedDates.clear();
           
           for (final entry in marksJson.entries) {
@@ -4072,15 +4110,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             _selectedDates.add(_normalizeDate(date));
           }
           
-          debugPrint('カレンダーマーク読み込み完了: ${_selectedDates.length}件');
+            debugPrint('カレンダーマーク読み込み完了: ${_selectedDates.length}件 ($key)');
+            return;
         } catch (e) {
-          debugPrint('カレンダーマークJSONデコードエラー: $e');
-          _selectedDates.clear();
+            debugPrint('カレンダーマーク解析エラー ($key): $e');
+            continue;
         }
-      } else {
+        }
+      }
+      
         debugPrint('カレンダーマークが見つかりません');
         _selectedDates.clear();
-      }
     } catch (e) {
       debugPrint('カレンダーマーク読み込みエラー: $e');
       _selectedDates.clear();
@@ -4162,19 +4202,30 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _saveDayColors() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final colorsJson = <String, dynamic>{};
       
+      if (_dayColors.isEmpty) {
+        await prefs.remove('day_colors');
+        await prefs.remove('day_colors_backup');
+        await prefs.remove('day_colors_backup2');
+        await prefs.remove('day_colors_backup3');
+        debugPrint('日別色設定をクリアしました');
+      } else {
+        final colorsJson = <String, int>{};
       for (final entry in _dayColors.entries) {
         colorsJson[entry.key] = entry.value.value;
       }
       
-      final success1 = await prefs.setString('day_colors', jsonEncode(colorsJson));
-      final success2 = await prefs.setString('day_colors_backup', jsonEncode(colorsJson));
-      
-      if (success1 && success2) {
-        debugPrint('日別色設定保存完了: ${_dayColors.length}件');
-      } else {
-        debugPrint('日別色設定保存に失敗');
+        final jsonString = jsonEncode(colorsJson);
+        
+        // ✅ バックアップも同時に保存
+        await Future.wait([
+          prefs.setString('day_colors', jsonString),
+          prefs.setString('day_colors_backup', jsonString),
+          prefs.setString('day_colors_backup2', jsonString),
+          prefs.setString('day_colors_backup3', jsonString),
+        ]);
+        
+        debugPrint('日別色設定保存完了: ${_dayColors.length}件（バックアップ含む）');
       }
     } catch (e) {
       debugPrint('日別色設定保存エラー: $e');
@@ -4185,36 +4236,27 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _loadDayColors() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? colorsStr;
       
-      final keys = ['day_colors', 'day_colors_backup'];
+      // ✅ 複数のバックアップキーから試行
+      final keys = ['day_colors', 'day_colors_backup', 'day_colors_backup2', 'day_colors_backup3'];
       
       for (final key in keys) {
-        try {
-          colorsStr = prefs.getString(key);
-          if (colorsStr != null && colorsStr.isNotEmpty) {
-            debugPrint('日別色設定読み込み成功: $key');
-            break;
-          }
+        final jsonString = prefs.getString(key);
+        if (jsonString != null && jsonString.isNotEmpty) {
+          try {
+            final Map<String, dynamic> decoded = jsonDecode(jsonString);
+            _dayColors = decoded.map((key, value) => MapEntry(key, Color(value)));
+            debugPrint('日別色設定読み込み完了: ${_dayColors.length}件 ($key)');
+            return;
         } catch (e) {
-          debugPrint('キー $key の読み込みエラー: $e');
+            debugPrint('日別色設定解析エラー ($key): $e');
           continue;
         }
       }
+      }
       
-      if (colorsStr != null && colorsStr.isNotEmpty) {
-        try {
-          final Map<String, dynamic> decoded = jsonDecode(colorsStr);
-          _dayColors = decoded.map((key, value) => MapEntry(key, Color(value)));
-          debugPrint('日別色設定読み込み完了: ${_dayColors.length}件');
-        } catch (e) {
-          debugPrint('日別色設定JSONデコードエラー: $e');
-          _dayColors = {};
-        }
-      } else {
         debugPrint('日別色設定が見つかりません');
         _dayColors = {};
-      }
     } catch (e) {
       debugPrint('日別色設定読み込みエラー: $e');
       _dayColors = {};
@@ -4334,14 +4376,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         doseStatusJson[dateStr] = memoStatusJson;
       }
       
-      final success1 = await prefs.setString('medication_dose_status', jsonEncode(doseStatusJson));
-      final success2 = await prefs.setString('medication_dose_status_backup', jsonEncode(doseStatusJson));
+      final jsonString = jsonEncode(doseStatusJson);
       
-      if (success1 && success2) {
-        debugPrint('服用回数別状態保存完了');
-      } else {
-        debugPrint('服用回数別状態保存に失敗');
-      }
+      // ✅ バックアップも同時に保存（複数のキーで保存）
+      await Future.wait([
+        prefs.setString('medication_dose_status', jsonString),
+        prefs.setString('medication_dose_status_backup', jsonString),
+        prefs.setString('medication_dose_status_backup2', jsonString),
+        prefs.setString('medication_dose_status_backup3', jsonString),
+      ]);
+      
+      debugPrint('服用チェック状態保存完了: ${_weekdayMedicationDoseStatus.length}件（バックアップ含む）');
     } catch (e) {
       debugPrint('服用回数別状態保存エラー: $e');
     }
@@ -4351,8 +4396,29 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _loadMedicationDoseStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final doseStatusStr = prefs.getString('medication_dose_status') ?? 
-                           prefs.getString('medication_dose_status_backup') ?? '{}';
+      
+      // ✅ 複数のバックアップキーから試行
+      final keys = [
+        'medication_dose_status',
+        'medication_dose_status_backup',
+        'medication_dose_status_backup2',
+        'medication_dose_status_backup3'
+      ];
+      
+      String? doseStatusStr;
+      for (final key in keys) {
+        doseStatusStr = prefs.getString(key);
+        if (doseStatusStr != null && doseStatusStr.isNotEmpty) {
+          debugPrint('服用チェック状態読み込み成功: $key');
+          break;
+        }
+      }
+      
+      if (doseStatusStr == null || doseStatusStr.isEmpty) {
+        debugPrint('服用チェック状態が見つかりません');
+        return;
+      }
+      
       final doseStatusJson = jsonDecode(doseStatusStr) as Map<String, dynamic>;
       
       _weekdayMedicationDoseStatus.clear();
@@ -4681,8 +4747,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         weekdayStatusJson[dateEntry.key] = dateEntry.value;
       }
       
-      await prefs.setString('weekday_medication_status', jsonEncode(weekdayStatusJson));
+      final jsonString = jsonEncode(weekdayStatusJson);
+      
+      // ✅ バックアップも同時に保存（複数のキーで保存）
+      await Future.wait([
+        prefs.setString('weekday_medication_status', jsonString),
+        prefs.setString('weekday_medication_status_backup', jsonString),
+        prefs.setString('weekday_medication_status_backup2', jsonString),
+        prefs.setString('weekday_medication_status_backup3', jsonString),
+      ]);
+      
+      debugPrint('曜日別服用状態保存完了: ${_weekdayMedicationStatus.length}件（バックアップ含む）');
     } catch (e) {
+      debugPrint('曜日別服用状態保存エラー: $e');
     }
   }
   
@@ -4735,17 +4812,38 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _loadWeekdayMedicationStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final weekdayStatusJson = prefs.getString('weekday_medication_status');
       
-      if (weekdayStatusJson != null) {
+      // ✅ 複数のバックアップキーから試行
+      final keys = [
+        'weekday_medication_status',
+        'weekday_medication_status_backup',
+        'weekday_medication_status_backup2',
+        'weekday_medication_status_backup3'
+      ];
+      
+      String? weekdayStatusJson;
+      for (final key in keys) {
+        weekdayStatusJson = prefs.getString(key);
+        if (weekdayStatusJson != null && weekdayStatusJson.isNotEmpty) {
+          debugPrint('曜日別服用状態読み込み成功: $key');
+          break;
+        }
+      }
+      
+      if (weekdayStatusJson != null && weekdayStatusJson.isNotEmpty) {
         final Map<String, dynamic> weekdayStatusData = jsonDecode(weekdayStatusJson);
         _weekdayMedicationStatus.clear();
         
         for (final dateEntry in weekdayStatusData.entries) {
           _weekdayMedicationStatus[dateEntry.key] = Map<String, bool>.from(dateEntry.value);
         }
+        
+        debugPrint('曜日別服用状態読み込み完了: ${_weekdayMedicationStatus.length}件');
+      } else {
+        debugPrint('曜日別服用状態が見つかりません');
       }
     } catch (e) {
+      debugPrint('曜日別服用状態読み込みエラー: $e');
     }
   }
   
@@ -7070,15 +7168,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         memoStatusJson[entry.key] = entry.value;
       }
       
-      // 🔴 最重要：awaitを確実に付けて保存
-      await AppPreferences.saveString('medicationMemoStatus', jsonEncode(memoStatusJson));
-      await AppPreferences.saveString('medication_memo_status', jsonEncode(memoStatusJson));
-      await AppPreferences.saveString('memo_status_backup', jsonEncode(memoStatusJson));
-      await AppPreferences.saveString('last_memo_save', DateTime.now().toIso8601String());
+      final jsonString = jsonEncode(memoStatusJson);
       
-      debugPrint('メモ状態保存完了: ${memoStatusJson.length}件（完全版）');
+      // ✅ バックアップも同時に保存（複数のキーで保存）
+      await Future.wait([
+        AppPreferences.saveString('medicationMemoStatus', jsonString),
+        AppPreferences.saveString('medication_memo_status', jsonString),
+        AppPreferences.saveString('medication_memo_status_backup', jsonString),
+        AppPreferences.saveString('medication_memo_status_backup2', jsonString),
+        AppPreferences.saveString('medication_memo_status_backup3', jsonString),
+        AppPreferences.saveString('memo_status_backup', jsonString),
+        AppPreferences.saveString('last_memo_save', DateTime.now().toIso8601String()),
+      ]);
+      
+      debugPrint('メモステータス保存完了: ${memoStatusJson.length}件（バックアップ含む）');
     } catch (e) {
-      debugPrint('メモ状態保存エラー: $e');
+      debugPrint('メモステータス保存エラー: $e');
     }
   }
   
@@ -7087,13 +7192,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     try {
       String? memoStatusStr;
       
-      // 🔴 最重要：複数キーから読み込み（優先順位付き）
-      final keys = ['medicationMemoStatus', 'medication_memo_status', 'memo_status_backup'];
+      // ✅ 複数のバックアップキーから試行
+      final keys = [
+        'medicationMemoStatus',
+        'medication_memo_status',
+        'medication_memo_status_backup',
+        'medication_memo_status_backup2',
+        'medication_memo_status_backup3',
+        'memo_status_backup'
+      ];
       
       for (final key in keys) {
         memoStatusStr = AppPreferences.getString(key);
         if (memoStatusStr != null && memoStatusStr.isNotEmpty) {
-          debugPrint('メモ状態読み込み成功: $key（完全版）');
+          debugPrint('メモステータス読み込み成功: $key');
           break;
         }
       }
@@ -7101,7 +7213,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (memoStatusStr != null && memoStatusStr.isNotEmpty) {
         final memoStatusJson = jsonDecode(memoStatusStr) as Map<String, dynamic>;
         _medicationMemoStatus = memoStatusJson.map((key, value) => MapEntry(key, value as bool));
-        debugPrint('メモ状態読み込み完了: ${_medicationMemoStatus.length}件');
+        debugPrint('メモステータス読み込み完了: ${_medicationMemoStatus.length}件');
         
         // 🔴 最重要：UIに反映
         if (mounted) {
@@ -7110,7 +7222,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           });
         }
       } else {
-        debugPrint('メモ状態データが見つかりません（初期値を使用）');
+        debugPrint('メモステータスが見つかりません');
         _medicationMemoStatus = {};
       }
     } catch (e) {
@@ -10288,10 +10400,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final jsonString = await _safeJsonEncode(snapshotData);
       final encryptedData = await _encryptDataAsync(jsonString);
       final snapshotKey = 'snapshot_before_$timestamp';
+      
+      // ✅ スナップショットデータを保存
       final ok1 = await prefs.setString(snapshotKey, encryptedData);
+      
+      // ✅ 最新スナップショットのキーを保存（復元時に使用）
       final ok2 = await prefs.setString('last_snapshot_key', snapshotKey);
-      if (!(ok1 && ok2)) {
-        debugPrint('⚠️ スナップショット保存フラグがfalse: $ok1, $ok2');
+      
+      // ✅ 固定キーでも保存（復元時の互換性のため）
+      final ok3 = await prefs.setString('operation_snapshot_latest', encryptedData);
+      
+      if (!(ok1 && ok2 && ok3)) {
+        debugPrint('⚠️ スナップショット保存フラグがfalse: $ok1, $ok2, $ok3');
       }
       debugPrint('✅ 変更前スナップショット保存完了: $operationType (key: $snapshotKey)');
     } catch (e) {
@@ -10303,8 +10423,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _undoLastChange() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final lastSnapshotKey = prefs.getString('last_snapshot_key');
-      if (lastSnapshotKey == null) {
+      
+      // ✅ 複数のキーから復元を試行
+      String? snapshotKey;
+      final keys = [
+        prefs.getString('last_snapshot_key'),
+        'operation_snapshot_latest',
+      ];
+      
+      for (final key in keys) {
+        if (key != null && prefs.getString(key) != null) {
+          snapshotKey = key;
+          debugPrint('✅ スナップショットキー発見: $key');
+          break;
+        }
+      }
+      
+      if (snapshotKey == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -10316,10 +10451,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return;
       }
 
-      await _restoreBackup(lastSnapshotKey);
+      await _restoreBackup(snapshotKey);
       // 復元に使用したスナップショットは削除（1回使い切り）
-      await prefs.remove(lastSnapshotKey);
+      await prefs.remove(snapshotKey);
       await prefs.remove('last_snapshot_key');
+      await prefs.remove('operation_snapshot_latest');
       if (mounted) {
         setState(() {
           _focusedDay = _selectedDay ?? DateTime.now();
@@ -10540,6 +10676,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       // カレンダー色（Color → int）
         'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
       
+      // ✅ カレンダーマーク（選択された日付）
+      'selectedDates': _selectedDates.map((date) => date.toIso8601String()).toList(),
+      
+      // ✅ カレンダーメモ
+      'calendarMemos': _calendarMemos,
+      
       // アラーム関連（必要な全フィールドを保存）
       'alarmList': _alarmList.map((alarm) => {
         'name': alarm['name']?.toString(),
@@ -10728,6 +10870,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
+      // ✅ カレンダーマーク（カレンダーメモ）の復元
+      final restoredSelectedDates = <DateTime>[];
+      if (backupData['selectedDates'] != null) {
+        final datesList = backupData['selectedDates'] as List;
+        for (final dateStr in datesList) {
+          try {
+            restoredSelectedDates.add(DateTime.parse(dateStr as String));
+          } catch (e) {
+            debugPrint('日付解析エラー: $dateStr');
+          }
+        }
+      }
+      
+      // ✅ カレンダーメモの復元
+      final restoredCalendarMemos = <String, String>{};
+      if (backupData['calendarMemos'] != null) {
+        final memosMap = backupData['calendarMemos'] as Map<String, dynamic>;
+        for (final entry in memosMap.entries) {
+          restoredCalendarMemos[entry.key] = entry.value as String;
+        }
+      }
+      
       // 7. アラームの復元
       final restoredAlarmList = (backupData['alarmList'] as List? ?? [])
           .map((alarm) => Map<String, dynamic>.from(alarm as Map))
@@ -10778,6 +10942,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
         _medicationMemoStatus = restoredMemoStatus;
         _dayColors = restoredDayColors;
+        _selectedDates = Set<DateTime>.from(restoredSelectedDates);  // ✅ カレンダーマークの復元
+        _calendarMemos = restoredCalendarMemos;  // ✅ カレンダーメモの復元
         _alarmList = restoredAlarmList;
         _alarmSettings = restoredAlarmSettings;
         _adherenceRates = restoredAdherenceRates;

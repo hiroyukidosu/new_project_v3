@@ -990,9 +990,18 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     );
   }
 
-  // ✅ 修正3: アラーム保存メソッドを強化
-  Future<void> _saveAlarms() async {
-    debugPrint('💾 アラーム保存開始: ${_alarms.length}件');
+  String _getNotificationTypeName(String type) {
+    switch (type) {
+      case 'sound':
+        return '音';
+      case 'sound_vibration':
+        return '音＋バイブ';
+      case 'vibration':
+        return 'バイブ';
+      default:
+        return '音';
+    }
+  }
     if (_prefs == null) {
       debugPrint('⚠️ SharedPreferencesがnullのため保存をスキップ');
       return;
@@ -1060,8 +1069,18 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     }
   }
 
-  // ✅ 修正4: アラーム読み込みメソッドを強化
-  Future<void> _loadAlarms() async {
+  String _getNotificationTypeName(String type) {
+    switch (type) {
+      case 'sound':
+        return '音';
+      case 'sound_vibration':
+        return '音＋バイブ';
+      case 'vibration':
+        return 'バイブ';
+      default:
+        return '音';
+    }
+  }
     debugPrint('📂 アラーム読み込み開始');
     if (_prefs == null) {
       debugPrint('⚠️ SharedPreferencesがnullのため読み込みをスキップ');
