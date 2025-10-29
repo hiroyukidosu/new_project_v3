@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../models/medication_memo.dart';
 import '../utils/constants.dart';
 
-// 薬のカードウィジェット
 class MedicationCard extends StatelessWidget {
   final MedicationMemo memo;
   final VoidCallback onTap;
@@ -92,7 +91,6 @@ class MedicationCard extends StatelessWidget {
   }
 }
 
-// 曜日選択ウィジェット
 class WeekdaySelector extends StatelessWidget {
   final List<int> selectedDays;
   final ValueChanged<List<int>> onChanged;
@@ -109,7 +107,6 @@ class WeekdaySelector extends StatelessWidget {
     
     return Wrap(
       spacing: AppDimensions.smallSpacing,
-      runSpacing: AppDimensions.smallSpacing,
       children: List.generate(7, (index) {
         final isSelected = selectedDays.contains(index);
         return GestureDetector(
@@ -127,7 +124,7 @@ class WeekdaySelector extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppDimensions.buttonBorderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.smallBorderRadius),
               border: Border.all(
                 color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3),
                 width: 1,
@@ -137,9 +134,8 @@ class WeekdaySelector extends StatelessWidget {
               child: Text(
                 weekdays[index],
                 style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.grey[700],
+                  color: isSelected ? Colors.white : Colors.grey[600],
                   fontWeight: FontWeight.bold,
-                  fontSize: AppDimensions.mediumText,
                 ),
               ),
             ),

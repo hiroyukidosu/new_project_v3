@@ -1,13 +1,10 @@
-// Dart core imports
-import 'dart:async';
-
 // Flutter core imports
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 // Local imports
 import '../services/trial_service.dart';
 
-// トライアル制限警告ダイアログ
 class TrialLimitDialog extends StatelessWidget {
   final String featureName;
   
@@ -109,7 +106,6 @@ class TrialLimitDialog extends StatelessWidget {
   }
 }
 
-// トライアル期間メッセージ表示画面
 class TrialMessageScreen extends StatefulWidget {
   final VoidCallback onComplete;
   const TrialMessageScreen({super.key, required this.onComplete});
