@@ -1,13 +1,14 @@
 // Dart core imports
 import 'dart:convert';
 
-// Third-party package imports
+// Flutter core imports
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Local imports
 import '../utils/logger.dart';
 
-// 統一されたデータ管理システム
+// ✅ 修正：統一されたデータ管理システム
 class DataManager {
   static final Map<String, bool> _dirtyFlags = <String, bool>{};
   static bool _isSaving = false;
@@ -113,24 +114,20 @@ class DataManager {
     return {};
   }
   
-  // 個別保存メソッド（差分保存用）
+  // 個別保存メソッド
   static Future<void> _saveMemos() async {
-    // メモ保存ロジック
-    Logger.debug('メモデータ保存');
+    // メモ保存の実装
   }
   
   static Future<void> _saveMedications() async {
-    // 薬データ保存ロジック
-    Logger.debug('薬データ保存');
+    // 薬物保存の実装
   }
   
   static Future<void> _saveAlarms() async {
-    // アラームデータ保存ロジック
-    Logger.debug('アラームデータ保存');
+    // アラーム保存の実装
   }
   
   static Future<void> _saveSettings() async {
-    // 設定データ保存ロジック
-    Logger.debug('設定データ保存');
+    // 設定保存の実装
   }
 }

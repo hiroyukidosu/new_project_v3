@@ -45,7 +45,6 @@ class MedicineData {
       );
 }
 
-// MedicineDataのHiveアダプター
 class MedicineDataAdapter extends TypeAdapter<MedicineData> {
   @override
   final int typeId = 1;

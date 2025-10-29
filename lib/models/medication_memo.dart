@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
-// 薬のメモデータモデル
+// Hive最適化版のMedicationMemo（大量データ対応）
 class MedicationMemo {
   final String id;
   final String name;
@@ -56,7 +56,6 @@ class MedicationMemo {
       );
 }
 
-// MedicationMemoのHiveアダプター
 class MedicationMemoAdapter extends TypeAdapter<MedicationMemo> {
   @override
   final int typeId = 2;

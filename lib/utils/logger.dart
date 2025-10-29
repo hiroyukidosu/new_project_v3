@@ -1,13 +1,6 @@
 // Flutter core imports
 import 'package:flutter/foundation.dart';
 
-// 高速化：シンプルなデバッグログ
-void _debugLog(String message) {
-  if (kDebugMode) {
-    debugPrint(message);
-  }
-}
-
 // 高速化：シンプルなLogger（本番環境でのログ削減）
 class Logger {
   static int _logCount = 0;

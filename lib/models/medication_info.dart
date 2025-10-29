@@ -31,7 +31,6 @@ class MedicationInfo {
       );
 }
 
-// MedicationInfoのHiveアダプター
 class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
   @override
   final int typeId = 0;
@@ -40,7 +39,7 @@ class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
     return MedicationInfo(
       checked: reader.readBool(),
       medicine: reader.readString(),
-      actualTime: reader.read() as DateTime?,
+      actualTime: reader.readBool() ? DateTime.parse(reader.readString()) : null,
       notes: reader.readString(),
       sideEffects: reader.readString(),
     );
@@ -49,7 +48,10 @@ class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
   void write(BinaryWriter writer, MedicationInfo obj) {
     writer.writeBool(obj.checked);
     writer.writeString(obj.medicine);
-    writer.write(obj.actualTime);
+    writer.writeBool(obj.actualTime != null);
+    if (obj.actualTime != null) {
+      writer.writeString(obj.actualTime!.toIso8601String());
+    }
     writer.writeString(obj.notes);
     writer.writeString(obj.sideEffects);
   }

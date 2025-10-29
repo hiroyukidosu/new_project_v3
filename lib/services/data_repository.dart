@@ -1,14 +1,15 @@
 // Dart core imports
 import 'dart:convert';
 
-// Third-party package imports
+// Flutter core imports
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 // Local imports
 import '../utils/logger.dart';
 
-// 統一されたデータリポジトリ
+// ✅ 修正：統一されたデータリポジトリ
 class DataRepository {
   static SharedPreferences? _prefs;
   static Box? _hiveBox;
