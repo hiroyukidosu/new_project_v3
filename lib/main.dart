@@ -35,16 +35,6 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'simple_alarm_app.dart';
 import 'core/snapshot_service.dart';
 import 'utils/locale_helper.dart';
-import 'utils/logger.dart';
-import 'utils/error_handler.dart';
-import 'utils/constants.dart';
-import 'models/medication_memo.dart';
-import 'models/medicine_data.dart';
-import 'models/medication_info.dart';
-import 'services/data_repository.dart';
-import 'services/data_manager.dart';
-import 'widgets/common_widgets.dart';
-import 'widgets/trial_widgets.dart';
 
 // 高速化：シンプルなデバッグログ
 void _debugLog(String message) {
@@ -53,9 +43,381 @@ void _debugLog(String message) {
   }
 }
 
+// 高速化：シンプルなLogger（本番環境でのログ削減）
+class Logger {
+  static int _logCount = 0;
+  static const int _maxLogsPerSession = 50; // 本番環境でのログ数制限
+  
+  static void info(String message) {
+    if (_shouldLog()) debugPrint('[INFO] $message');
+  }
+  static void error(String message, [dynamic error]) {
+    if (_shouldLog()) debugPrint('[ERROR] $message: $error');
+  }
+  static void warning(String message) {
+    if (_shouldLog()) debugPrint('[WARNING] $message');
+  }
+  static void debug(String message) {
+    if (kDebugMode && _shouldLog()) debugPrint('[DEBUG] $message');
+  }
+  
+  // 本番環境でのログ数を制限
+  static bool _shouldLog() {
+    if (kDebugMode) return true;
+    _logCount++;
+    return _logCount <= _maxLogsPerSession;
+  }
+  
+  // 重要なログ（本番環境でも出力）
+  static void critical(String message) {
+    debugPrint('[CRITICAL] $message');
+  }
+}
+
 // 高速化：PrefsHelper削除
 
+// 高速化：エラーハンドリング強化
+class AppErrorHandler {
+  static void handleError(dynamic error, StackTrace? stackTrace, {String? context}) {
+    // エラーログを出力
+    Logger.error('エラー発生', error);
+    
+    // ユーザーフレンドリーなエラーメッセージを生成
+    final userMessage = _getUserFriendlyMessage(error);
+    
+    // Firebase Crashlyticsに送信（初期化済みの場合）
+    try {
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+    } catch (e) {
+      // Crashlyticsが利用できない場合は無視
+    }
+    
+    // デバッグ環境でのみ詳細ログを出力
+    if (kDebugMode) {
+      debugPrint('エラー詳細: $error');
+      if (stackTrace != null) {
+        debugPrint('スタックトレース: $stackTrace');
+      }
+    }
+  }
+  
+  static String _getUserFriendlyMessage(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    
+    if (errorString.contains('network') || errorString.contains('connection')) {
+      return 'ネットワーク接続を確認してください';
+    }
+    
+    if (errorString.contains('permission') || errorString.contains('権限')) {
+      return '必要な権限が許可されていません';
+    }
+    
+    if (errorString.contains('storage') || errorString.contains('保存')) {
+      return 'データの保存に失敗しました';
+    }
+    
+    if (errorString.contains('load') || errorString.contains('読み込み')) {
+      return 'データの読み込みに失敗しました';
+    }
+    
+    return '予期しないエラーが発生しました。アプリを再起動してください';
+  }
+}
 
+// 高速化：ローディングオーバーレイ削除
+
+// ✅ 修正：統一された定数管理
+class AppConstants {
+  // アニメーション時間
+  static const Duration animationDuration = Duration(milliseconds: 300);
+  static const Duration shortAnimationDuration = Duration(milliseconds: 150);
+  static const Duration longAnimationDuration = Duration(milliseconds: 500);
+  
+  // デバウンス時間
+  static const Duration debounceDelay = Duration(seconds: 2);
+  static const Duration shortDebounceDelay = Duration(milliseconds: 500);
+  
+  // ログ間隔
+  static const Duration logInterval = Duration(seconds: 30);
+  
+  // データキー
+  static const String medicationMemosKey = 'medication_memos_v2';
+  static const String medicationMemoStatusKey = 'medication_memo_status_v2';
+  static const String weekdayMedicationStatusKey = 'weekday_medication_status_v2';
+  static const String addedMedicationsKey = 'added_medications_v2';
+  static const String backupSuffix = '_backup';
+  
+  // カレンダー関連定数
+  static const String calendarMarksKey = 'calendar_marks';
+  static const Duration calendarScrollAnimationDuration = Duration(milliseconds: 300);
+  static const double calendarScrollSensitivity = 3.0;
+  static const double calendarScrollVelocityThreshold = 300.0;
+}
+
+// ✅ 修正：統一されたUI定数（マジックナンバー削減）
+class AppDimensions {
+  // 高さ
+  static const double listMaxHeight = 250.0;
+  static const double listMaxHeightExpanded = 500.0;
+  static const double calendarMaxHeight = 600.0;
+  static const double dialogMaxHeight = 0.8;
+  static const double dialogMinHeight = 0.4;
+  
+  // パディング
+  static const EdgeInsets standardPadding = EdgeInsets.all(16);
+  static const EdgeInsets smallPadding = EdgeInsets.all(8);
+  static const EdgeInsets largePadding = EdgeInsets.all(24);
+  static const EdgeInsets cardPadding = EdgeInsets.all(24);
+  static const EdgeInsets dialogPadding = EdgeInsets.all(20);
+  static const EdgeInsets listPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 8);
+  
+  // マージン
+  static const EdgeInsets cardMargin = EdgeInsets.symmetric(vertical: 10, horizontal: 4);
+  static const EdgeInsets sectionMargin = EdgeInsets.only(bottom: 16);
+  
+  // ボーダー半径
+  static const double standardBorderRadius = 12.0;
+  static const double smallBorderRadius = 8.0;
+  static const double largeBorderRadius = 16.0;
+  static const double cardBorderRadius = 12.0;
+  static const double dialogBorderRadius = 16.0;
+  static const double buttonBorderRadius = 8.0;
+  
+  // アイコンサイズ
+  static const double smallIcon = 16.0;
+  static const double mediumIcon = 20.0;
+  static const double largeIcon = 24.0;
+  static const double extraLargeIcon = 32.0;
+  
+  // フォントサイズ
+  static const double smallText = 11.0;
+  static const double mediumText = 14.0;
+  static const double largeText = 16.0;
+  static const double titleText = 18.0;
+  static const double headerText = 24.0;
+  
+  // スペーシング
+  static const double smallSpacing = 4.0;
+  static const double mediumSpacing = 8.0;
+  static const double largeSpacing = 12.0;
+  static const double extraLargeSpacing = 16.0;
+  
+  // ボタンサイズ
+  static const double buttonHeight = 48.0;
+  static const double smallButtonHeight = 32.0;
+  static const double largeButtonHeight = 56.0;
+  
+  // アニメーション時間
+  static const Duration shortAnimation = Duration(milliseconds: 150);
+  static const Duration standardAnimation = Duration(milliseconds: 300);
+  static const Duration longAnimation = Duration(milliseconds: 500);
+  
+  // デバウンス時間
+  static const Duration shortDebounce = Duration(milliseconds: 500);
+  static const Duration standardDebounce = Duration(seconds: 2);
+  static const Duration longDebounce = Duration(seconds: 5);
+  
+  // キャッシュ時間
+  static const Duration cacheExpiry = Duration(minutes: 5);
+  static const Duration logInterval = Duration(seconds: 30);
+}
+
+// ✅ 修正：統一されたデータリポジトリ
+class DataRepository {
+  static SharedPreferences? _prefs;
+  static Box? _hiveBox;
+  
+  // 初期化
+  static Future<void> initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+    _hiveBox = await Hive.openBox('medication_data');
+    Logger.info('DataRepository初期化完了');
+  }
+  
+  // 統一された保存メソッド
+  static Future<void> save<T>(String key, T data) async {
+    try {
+      final json = jsonEncode(data);
+      await Future.wait([
+        _prefs!.setString(key, json),
+        _prefs!.setString('${key}_backup', json),
+      ]);
+      Logger.info('データ保存完了: $key');
+    } catch (e) {
+      Logger.error('データ保存エラー: $key', e);
+    }
+  }
+  
+  // 統一された読み込みメソッド
+  static Future<T?> load<T>(String key, T Function(Map<String, dynamic>) fromJson) async {
+    try {
+      for (final suffix in ['', '_backup']) {
+        final json = _prefs!.getString('$key$suffix');
+        if (json != null && json.isNotEmpty) {
+          final data = fromJson(jsonDecode(json));
+          Logger.info('データ読み込み成功: $key$suffix');
+          return data;
+        }
+      }
+      Logger.warning('データが見つかりません: $key');
+      return null;
+    } catch (e) {
+      Logger.error('データ読み込みエラー: $key', e);
+      return null;
+    }
+  }
+  
+  // 統一された削除メソッド
+  static Future<void> delete(String key) async {
+    try {
+      await Future.wait([
+        _prefs!.remove(key),
+        _prefs!.remove('${key}_backup'),
+      ]);
+      Logger.info('データ削除完了: $key');
+    } catch (e) {
+      Logger.error('データ削除エラー: $key', e);
+    }
+  }
+  
+  // メモリリーク防止のためのクリーンアップ
+  static Future<void> dispose() async {
+    try {
+      await _hiveBox?.close();
+      Logger.info('DataRepositoryクリーンアップ完了');
+    } catch (e) {
+      Logger.error('DataRepositoryクリーンアップエラー', e);
+    }
+  }
+}
+
+// ✅ 修正：統一されたデータ管理システム
+class DataManager {
+  static final Map<String, bool> _dirtyFlags = <String, bool>{};
+  static bool _isSaving = false;
+  static SharedPreferences? _prefs;
+  
+  // 初期化
+  static Future<void> initialize() async {
+    _prefs = await SharedPreferences.getInstance();
+    Logger.info('DataManager初期化完了');
+  }
+  
+  // データが変更されたことをマーク
+  static void markDirty(String key) {
+    _dirtyFlags[key] = true;
+    Logger.debug('データ変更マーク: $key');
+  }
+  
+  // 統一されたデータ保存（重複排除）
+  static Future<void> save() async {
+    if (_isSaving) {
+      Logger.warning('データ保存中です。スキップします。');
+      return;
+    }
+    
+    _isSaving = true;
+    try {
+      final data = {
+        'medications': _serializeMedications(),
+        'memos': _serializeMemos(),
+        'settings': _serializeSettings(),
+        'version': '1.0.0',
+        'lastSaved': DateTime.now().toIso8601String(),
+      };
+      
+      await Future.wait([
+        _prefs!.setString('app_data', jsonEncode(data)),
+        _prefs!.setString('app_data_backup', jsonEncode(data)),
+      ]);
+      
+      Logger.info('統一データ保存完了');
+    } catch (e) {
+      Logger.error('統一データ保存エラー', e);
+    } finally {
+      _isSaving = false;
+    }
+  }
+  
+  // 変更されたデータのみ保存（差分保存）
+  static Future<void> saveOnlyDirty() async {
+    if (_isSaving) {
+      Logger.warning('データ保存中です。スキップします。');
+      return;
+    }
+    
+    if (_dirtyFlags.isEmpty) {
+      Logger.debug('変更されたデータがありません。スキップします。');
+      return;
+    }
+    
+    _isSaving = true;
+    try {
+      final tasks = <Future>[];
+      
+      if (_dirtyFlags['memos'] == true) {
+        tasks.add(_saveMemos());
+      }
+      if (_dirtyFlags['medications'] == true) {
+        tasks.add(_saveMedications());
+      }
+      if (_dirtyFlags['alarms'] == true) {
+        tasks.add(_saveAlarms());
+      }
+      if (_dirtyFlags['settings'] == true) {
+        tasks.add(_saveSettings());
+      }
+      
+      if (tasks.isNotEmpty) {
+        await Future.wait(tasks);
+        Logger.info('差分保存完了: ${tasks.length}件');
+      }
+      
+      _dirtyFlags.clear();
+    } catch (e) {
+      Logger.error('差分保存エラー', e);
+    } finally {
+      _isSaving = false;
+    }
+  }
+  
+  // データのシリアライズ
+  static Map<String, dynamic> _serializeMedications() {
+    // 服用薬データのシリアライズ
+    return {};
+  }
+  
+  static Map<String, dynamic> _serializeMemos() {
+    // メモデータのシリアライズ
+    return {};
+  }
+  
+  static Map<String, dynamic> _serializeSettings() {
+    // 設定データのシリアライズ
+    return {};
+  }
+  
+  // 個別保存メソッド（差分保存用）
+  static Future<void> _saveMemos() async {
+    // メモ保存ロジック
+    Logger.debug('メモデータ保存');
+  }
+  
+  static Future<void> _saveMedications() async {
+    // 薬データ保存ロジック
+    Logger.debug('薬データ保存');
+  }
+  
+  static Future<void> _saveAlarms() async {
+    // アラームデータ保存ロジック
+    Logger.debug('アラームデータ保存');
+  }
+  
+  static Future<void> _saveSettings() async {
+    // 設定データ保存ロジック
+    Logger.debug('設定データ保存');
+  }
+}
 
 // ✅ 修正：Result型の実装
 sealed class Result<T> {
@@ -408,7 +770,148 @@ class AsyncDataLoader {
 }
 
 // ✅ 修正：UIコンポーネントの分離
+class MedicationCard extends StatelessWidget {
+  final MedicationMemo memo;
+  final VoidCallback onTap;
+  final bool isSelected;
+  
+  const MedicationCard({
+    Key? key,
+    required this.memo,
+    required this.onTap,
+    this.isSelected = false,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: AppDimensions.cardMargin,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+        side: BorderSide(
+          color: isSelected ? memo.color : Colors.grey.withOpacity(0.3),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+        child: Padding(
+          padding: AppDimensions.cardPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
+                    color: memo.color,
+                    size: AppDimensions.mediumIcon,
+                  ),
+                  const SizedBox(width: AppDimensions.mediumSpacing),
+                  Expanded(
+                    child: Text(
+                      memo.name,
+                      style: const TextStyle(
+                        fontSize: AppDimensions.largeText,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (isSelected)
+                    Icon(
+                      Icons.check_circle,
+                      color: memo.color,
+                      size: AppDimensions.mediumIcon,
+                    ),
+                ],
+              ),
+              if (memo.dosage.isNotEmpty) ...[
+                const SizedBox(height: AppDimensions.smallSpacing),
+                Text(
+                  '用量: ${memo.dosage}',
+                  style: const TextStyle(
+                    fontSize: AppDimensions.mediumText,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+              if (memo.notes.isNotEmpty) ...[
+                const SizedBox(height: AppDimensions.smallSpacing),
+                Text(
+                  memo.notes,
+                  style: const TextStyle(
+                    fontSize: AppDimensions.mediumText,
+                    color: Colors.grey,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
+class WeekdaySelector extends StatelessWidget {
+  final List<int> selectedDays;
+  final ValueChanged<List<int>> onChanged;
+  
+  const WeekdaySelector({
+    Key? key,
+    required this.selectedDays,
+    required this.onChanged,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    final weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    
+    return Wrap(
+      spacing: AppDimensions.smallSpacing,
+      runSpacing: AppDimensions.smallSpacing,
+      children: List.generate(7, (index) {
+        final isSelected = selectedDays.contains(index);
+        return GestureDetector(
+          onTap: () {
+            final newDays = List<int>.from(selectedDays);
+            if (isSelected) {
+              newDays.remove(index);
+            } else {
+              newDays.add(index);
+            }
+            onChanged(newDays);
+          },
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppDimensions.buttonBorderRadius),
+              border: Border.all(
+                color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                weekdays[index],
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[700],
+                  fontWeight: FontWeight.bold,
+                  fontSize: AppDimensions.mediumText,
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
 
 // ✅ 修正：エラー境界ウィジェット
 class ErrorBoundary extends StatefulWidget {
@@ -1142,8 +1645,220 @@ enum SoundType {
 }
 
 /// 服用メモ用のHiveアダプター
+class MedicationMemoAdapter extends TypeAdapter<MedicationMemo> {
+  @override
+  final int typeId = 2;
 
+  @override
+  MedicationMemo read(BinaryReader reader) {
+    return MedicationMemo(
+      id: reader.readString(),
+      name: reader.readString(),
+      type: reader.readString(),
+      dosage: reader.readString(),
+      notes: reader.readString(),
+      createdAt: DateTime.parse(reader.readString()),
+      lastTaken: reader.readBool() ? DateTime.parse(reader.readString()) : null,
+      color: Color(reader.readInt()),
+      selectedWeekdays: List<int>.from(reader.readList()),
+      dosageFrequency: reader.readInt(),
+    );
+  }
 
+  @override
+  void write(BinaryWriter writer, MedicationMemo obj) {
+    writer.writeString(obj.id);
+    writer.writeString(obj.name);
+    writer.writeString(obj.type);
+    writer.writeString(obj.dosage);
+    writer.writeString(obj.notes);
+    writer.writeString(obj.createdAt.toIso8601String());
+    writer.writeBool(obj.lastTaken != null);
+    if (obj.lastTaken != null) {
+      writer.writeString(obj.lastTaken!.toIso8601String());
+    }
+    writer.writeInt(obj.color.value);
+    writer.writeList(obj.selectedWeekdays);
+    writer.writeInt(obj.dosageFrequency);
+  }
+}
+
+/// 薬のデータモデル
+/// 薬の名前、用量、頻度、メモを管理
+class MedicineData {
+  final String name;
+  final String dosage;
+  final String frequency;
+  final String notes;
+  final String category;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final Color color;
+  MedicineData({
+    required this.name,
+    this.dosage = '',
+    this.frequency = '',
+    this.notes = '',
+    this.category = '処方薬',
+    this.startDate,
+    this.endDate,
+    Color? color,
+  }) : color = color ?? Colors.blue;
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'dosage': dosage,
+        'frequency': frequency,
+        'notes': notes,
+        'category': category,
+        'startDate': startDate?.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'color': color.value,
+      };
+  factory MedicineData.fromJson(Map<String, dynamic> json) => MedicineData(
+        name: json['name'] ?? '',
+        dosage: json['dosage'] ?? '',
+        frequency: json['frequency'] ?? '',
+        notes: json['notes'] ?? '',
+        category: json['category'] ?? '処方薬',
+        startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
+        endDate: json['endDate'] != null ? DateTime.parse(json['endDate']) : null,
+        color: Color(json['color'] ?? Colors.blue.value),
+      );
+}
+/// 服用メモのデータモデル
+/// 薬やサプリメントの情報を管理
+// Hive最適化版のMedicationMemo（大量データ対応）
+class MedicationMemo {
+  final String id;
+  final String name;
+  final String type; // '薬品' or 'サプリメント'
+  final String dosage;
+  final String notes;
+  final DateTime createdAt;
+  final DateTime? lastTaken;
+  final Color color;
+  final List<int> selectedWeekdays; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+  final int dosageFrequency; // 服用回数（1〜6回）
+  
+  MedicationMemo({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.dosage = '',
+    this.notes = '',
+    required this.createdAt,
+    this.lastTaken,
+    Color? color,
+    this.selectedWeekdays = const [],
+    this.dosageFrequency = 1,
+  }) : color = color ?? Colors.blue;
+  
+  // JSON変換（後方互換性）
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type,
+        'dosage': dosage,
+        'notes': notes,
+        'createdAt': createdAt.toIso8601String(),
+        'lastTaken': lastTaken?.toIso8601String(),
+        'color': color.value,
+        'selectedWeekdays': selectedWeekdays,
+        'dosageFrequency': dosageFrequency,
+      };
+      
+  factory MedicationMemo.fromJson(Map<String, dynamic> json) => MedicationMemo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        type: json['type'] ?? '薬品',
+        dosage: json['dosage'] ?? '',
+        notes: json['notes'] ?? '',
+        createdAt: DateTime.parse(json['createdAt']),
+        lastTaken: json['lastTaken'] != null ? DateTime.parse(json['lastTaken']) : null,
+        color: Color(json['color'] ?? Colors.blue.value),
+        selectedWeekdays: List<int>.from(json['selectedWeekdays'] ?? []),
+        dosageFrequency: json['dosageFrequency'] ?? 1,
+      );
+}
+
+class MedicineDataAdapter extends TypeAdapter<MedicineData> {
+  @override
+  final int typeId = 1;
+  @override
+  MedicineData read(BinaryReader reader) {
+    return MedicineData(
+      name: reader.readString(),
+      dosage: reader.readString(),
+      frequency: reader.readString(),
+      notes: reader.readString(),
+      category: reader.readString(),
+      startDate: reader.read() as DateTime?,
+      endDate: reader.read() as DateTime?,
+      color: Color(reader.readInt()),
+    );
+  }
+  @override
+  void write(BinaryWriter writer, MedicineData obj) {
+    writer.writeString(obj.name);
+    writer.writeString(obj.dosage);
+    writer.writeString(obj.frequency);
+    writer.writeString(obj.notes);
+    writer.writeString(obj.category);
+    writer.write(obj.startDate);
+    writer.write(obj.endDate);
+    writer.writeInt(obj.color.value);
+  }
+}
+class MedicationInfo {
+  final bool checked;
+  final String medicine;
+  final DateTime? actualTime;
+  final String notes;
+  final String sideEffects;
+  MedicationInfo({
+    required this.checked,
+    required this.medicine,
+    this.actualTime,
+    this.notes = '',
+    this.sideEffects = '',
+  });
+  Map<String, dynamic> toJson() => {
+        'checked': checked,
+        'medicine': medicine,
+        'actualTime': actualTime?.toIso8601String(),
+        'notes': notes,
+        'sideEffects': sideEffects,
+      };
+  factory MedicationInfo.fromJson(Map<String, dynamic> json) => MedicationInfo(
+        checked: json['checked'] ?? false,
+        medicine: json['medicine'] ?? '',
+        actualTime: json['actualTime'] != null ? DateTime.parse(json['actualTime']) : null,
+        notes: json['notes'] ?? '',
+        sideEffects: json['sideEffects'] ?? '',
+      );
+}
+class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
+  @override
+  final int typeId = 0;
+  @override
+  MedicationInfo read(BinaryReader reader) {
+    return MedicationInfo(
+      checked: reader.readBool(),
+      medicine: reader.readString(),
+      actualTime: reader.read() as DateTime?,
+      notes: reader.readString(),
+      sideEffects: reader.readString(),
+    );
+  }
+  @override
+  void write(BinaryWriter writer, MedicationInfo obj) {
+    writer.writeBool(obj.checked);
+    writer.writeString(obj.medicine);
+    writer.write(obj.actualTime);
+    writer.writeString(obj.notes);
+    writer.writeString(obj.sideEffects);
+  }
+}
 class MedicationAlarmApp extends StatelessWidget {
   const MedicationAlarmApp({super.key});
   @override
