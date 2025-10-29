@@ -37,7 +37,10 @@ import '../services/data_repository.dart';
 import '../services/data_manager.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/trial_widgets.dart';
+import '../widgets/memo_dialog.dart';
 
+/// メインのホームページ
+/// カレンダー、服用メモ、統計、設定のタブを持つメインページ
 class MedicationHomePage extends StatefulWidget {
   const MedicationHomePage({super.key});
   @override
@@ -48,34 +51,102 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Set<DateTime> _selectedDates = <DateTime>{};
+  // ✅ カレンダーメモ用の変数
   Map<String, String> _calendarMemos = {};
+  // 動的に追加される薬のリスト
   List<Map<String, dynamic>> _addedMedications = [];
   late TabController _tabController;
   bool _notificationError = false;
   bool _isInitialized = false;
   bool _isAlarmPlaying = false;
-  bool _isLoading = false;
+  bool _isLoading = false; // ✅ 修正：ローディング状態を追加
   Map<String, Map<String, MedicationInfo>> _medicationData = {};
   Map<String, double> _adherenceRates = {};
   List<MedicineData> _medicines = [];
   List<MedicationMemo> _medicationMemos = [];
   Timer? _debounce;
-  Timer? _saveDebounceTimer;
-  StreamSubscription<List<PurchaseDetails>>? _subscription;
+  Timer? _saveDebounceTimer; // ✅ 修正：保存用デバウンスタイマーを追加
+  StreamSubscription<List<PurchaseDetails>>? _subscription; // ✅ 修正：StreamSubscriptionを追加
   
+  // ✅ 修正：変更フラグ変数を追加
   bool _medicationMemoStatusChanged = false;
   bool _weekdayMedicationStatusChanged = false;
   bool _addedMedicationsChanged = false;
   
+  // ✅ アラームタブのキー（強制再構築用）
   Key _alarmTabKey = UniqueKey();
+  
+  // ✅ 統計タブ用のScrollController
   final ScrollController _statsScrollController = ScrollController();
   
+  // ✅ 任意の日数の遵守率機能用の変数
   double? _customAdherenceResult;
   int? _customDaysResult;
   final TextEditingController _customDaysController = TextEditingController();
   final FocusNode _customDaysFocusNode = FocusNode();
   
+  // ✅ 手動復元機能のための変数
   DateTime? _lastOperationTime;
+  
+  // ✅ 自動バックアップ機能のための変数
+  Timer? _autoBackupTimer;
+  
+  // ✅ パフォーマンス最適化のための変数
+  bool _isLoadingMore = false;
+  int _currentPage = 0;
+  static const int _pageSize = 20; // 1ページあたりの件数
+  
+  // ✅ メモリ管理のための変数
+  static Box<MedicationMemo>? _memoBox;
+  
+  // ✅ メモボックスの取得
+  static Future<Box<MedicationMemo>> get _getMemoBox async {
+    _memoBox ??= await Hive.openBox<MedicationMemo>('medication_memos');
+    return _memoBox!;
+  }
+  
+  // ✅ メモの取得（ページネーション対応）
+  static Future<List<MedicationMemo>> getMemos({
+    int page = 0,
+    int pageSize = _pageSize,
+  }) async {
+    final box = await _getMemoBox;
+    final startIndex = page * pageSize;
+    final endIndex = (startIndex + pageSize).clamp(0, box.length);
+    
+    final memos = <MedicationMemo>[];
+    for (int i = startIndex; i < endIndex; i++) {
+      memos.add(box.getAt(i)!);
+    }
+    return memos;
+  }
+  
+  // ✅ メモの検索
+  static Future<List<MedicationMemo>> searchMemos(String keyword) async {
+    final box = await _getMemoBox;
+    return box.values.where((memo) => 
+      memo.name.toLowerCase().contains(keyword.toLowerCase()) ||
+      memo.notes.toLowerCase().contains(keyword.toLowerCase())
+    ).toList();
+  }
+  
+  // ✅ メモの保存
+  static Future<void> saveMemo(MedicationMemo memo) async {
+    final box = await _getMemoBox;
+    await box.put(memo.id, memo);
+  }
+  
+  // ✅ メモの削除
+  static Future<void> deleteMemo(String id) async {
+    final box = await _getMemoBox;
+    await box.delete(id);
+  }
+  
+  // ✅ メモの監視
+  static Stream<List<MedicationMemo>> watchMemos() async* {
+    final box = await _getMemoBox;
+    yield box.values.toList();
+  }
   
   @override
   void initState() {
@@ -93,14 +164,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _customDaysController.dispose();
     _customDaysFocusNode.dispose();
     _statsScrollController.dispose();
+    _autoBackupTimer?.cancel();
     super.dispose();
   }
   
   Future<void> _initializeApp() async {
-    // アプリ初期化処理
-    setState(() {
-      _isInitialized = true;
-    });
+    try {
+      // アプリ初期化処理
+      await _loadData();
+      setState(() {
+        _isInitialized = true;
+      });
+    } catch (e) {
+      AppErrorHandler.handleError(e, null, context: 'アプリ初期化');
+    }
+  }
+  
+  Future<void> _loadData() async {
+    // データ読み込み処理
+    Logger.info('データ読み込み開始');
   }
   
   @override
