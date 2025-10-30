@@ -1,10 +1,9 @@
-// Flutter core imports
 import 'package:flutter/material.dart';
 import 'dart:async';
-
-// Local imports
 import '../services/trial_service.dart';
 
+/// トライアル制限警告ダイアログ
+/// トライアル期間終了時に機能制限を通知するダイアログ
 class TrialLimitDialog extends StatelessWidget {
   final String featureName;
   
@@ -24,7 +23,7 @@ class TrialLimitDialog extends StatelessWidget {
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'トライアル期間が終了しました。\n現在、以下の機能が制限されています：',
+                  'トライアル期間が終了しました。現在、以下の機能が制限されています！',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -64,7 +63,7 @@ class TrialLimitDialog extends StatelessWidget {
         ElevatedButton(
           onPressed: () async {
             await TrialService.getPurchaseLink();
-            // リンクを開く処理（後で実装）
+            // リンクを開く処理は後で実装
             Navigator.of(context).pop();
           },
           style: ElevatedButton.styleFrom(
@@ -106,6 +105,8 @@ class TrialLimitDialog extends StatelessWidget {
   }
 }
 
+/// トライアル開始メッセージ画面
+/// 初回起動時にトライアル開始を通知する画面
 class TrialMessageScreen extends StatefulWidget {
   final VoidCallback onComplete;
   const TrialMessageScreen({super.key, required this.onComplete});
@@ -173,7 +174,7 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                '※無料期間終了後は一部機能に制限がかかります。',
+                '※無料期間終了後、一部機能に制限がかかります。',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey,

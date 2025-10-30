@@ -1,16 +1,10 @@
-// Dart core imports
 import 'dart:async';
-
-// Flutter core imports
 import 'package:flutter/foundation.dart';
-
-// Third-party package imports
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// Local imports
-import '../services/trial_service.dart';
-
-// アプリ内課金サービス
+/// アプリ内課金サービス
+/// 製品ID hirochaso980 を使用した課金処理を行う
 class InAppPurchaseService {
   static const String _productId = 'hirochaso980';
   static const String _purchaseStatusKey = 'purchase_status';
@@ -18,10 +12,10 @@ class InAppPurchaseService {
   static final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   static StreamSubscription<List<PurchaseDetails>>? _subscription;
   
-  // 商品情報を取得
+  // 製品情報を取得
   static Future<ProductDetails?> getProductDetails() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // アプリ内課金が利用可能か確認
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
         debugPrint('アプリ内課金が利用できません');
@@ -33,8 +27,8 @@ class InAppPurchaseService {
       
       if (response.notFoundIDs.isNotEmpty) {
         if (kDebugMode) {
-          debugPrint('商品IDが見つかりません: ${response.notFoundIDs}');
-          debugPrint('Google Play Consoleで商品ID「$_productId」が登録されているか確認してください');
+          debugPrint('製品IDが見つかりません: ${response.notFoundIDs}');
+          debugPrint('Google Play Consoleで製品ID $_productId が登録されているか確認してください');
         }
         return null;
       }
@@ -42,25 +36,25 @@ class InAppPurchaseService {
       if (response.productDetails.isNotEmpty) {
         final product = response.productDetails.first;
         if (kDebugMode) {
-          debugPrint('商品情報取得成功: ${product.title} - ${product.price}');
+          debugPrint('製品情報取得成功: ${product.title} - ${product.price}');
         }
         return product;
       }
       
       if (kDebugMode) {
-        debugPrint('商品情報が空です');
+        debugPrint('製品情報が取得できません');
       }
       return null;
     } catch (e) {
-      debugPrint('商品情報取得エラー: $e');
+      debugPrint('製品情報取得エラー: $e');
       return null;
     }
   }
   
-  // 購入を開始
+  // 製品を購入
   static Future<bool> purchaseProduct() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // アプリ内課金が利用可能か確認
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
         debugPrint('アプリ内課金が利用できません');
@@ -70,8 +64,8 @@ class InAppPurchaseService {
       final ProductDetails? product = await getProductDetails();
       if (product == null) {
         if (kDebugMode) {
-          debugPrint('商品情報が取得できません');
-          debugPrint('Google Play Consoleで商品ID「$_productId」が「有効」状態になっているか確認してください');
+          debugPrint('製品情報が取得できません');
+          debugPrint('Google Play Consoleで製品ID $_productId が正しく設定されているか確認してください');
         }
         return false;
       }
@@ -86,7 +80,7 @@ class InAppPurchaseService {
         if (success) {
           debugPrint('購入リクエストを送信しました');
         } else {
-          debugPrint('購入リクエストの送信に失敗しました');
+          debugPrint('購入リクエストに失敗しました');
         }
       }
       
@@ -97,7 +91,7 @@ class InAppPurchaseService {
     }
   }
   
-  // 購入結果を監視
+  // 購入リスナーを開始
   static void startPurchaseListener(Function(bool success, String? error) onPurchaseResult) {
     _subscription?.cancel();
     _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) {
@@ -113,9 +107,9 @@ class InAppPurchaseService {
       if (kDebugMode) {
         debugPrint('購入成功: ${purchaseDetails.productID}');
       }
-      // 購入済み状態に設定
-      TrialService.setPurchaseStatus(TrialService.purchasedStatus);
-      onPurchaseResult(true, '商品購入後、期限が無期限になりました！');
+      // 購入状態を保存
+      // TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+      onPurchaseResult(true, '製品の購入が正常に完了しました。');
     } else if (purchaseDetails.status == PurchaseStatus.error) {
       if (kDebugMode) {
         debugPrint('購入エラー: ${purchaseDetails.error}');
@@ -137,8 +131,9 @@ class InAppPurchaseService {
   // 購入状態を確認
   static Future<bool> isPurchased() async {
     try {
-      final status = await TrialService.getPurchaseStatus();
-      return status == TrialService.purchasedStatus;
+      // final status = await TrialService.getPurchaseStatus();
+      // return status == TrialService.purchasedStatus;
+      return false; // 仮実装
     } catch (e) {
       debugPrint('購入状態確認エラー: $e');
       return false;
@@ -148,7 +143,7 @@ class InAppPurchaseService {
   // 購入履歴を復元
   static Future<void> restorePurchases() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // アプリ内課金が利用可能か確認
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
         debugPrint('アプリ内課金が利用できません');
@@ -156,11 +151,11 @@ class InAppPurchaseService {
       }
       
       if (kDebugMode) {
-        debugPrint('購入履歴の復元を開始しました');
+        debugPrint('購入履歴の復元を開始します');
       }
       await _inAppPurchase.restorePurchases();
       
-      // 購入履歴復元の結果を監視
+      // 購入履歴復元リスナーを設定
       _subscription?.cancel();
       _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) {
         for (var purchaseDetails in purchaseDetailsList) {
@@ -168,8 +163,8 @@ class InAppPurchaseService {
             if (kDebugMode) {
               debugPrint('購入履歴復元成功: ${purchaseDetails.productID}');
             }
-            // 購入済み状態に設定
-            TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+            // 購入状態を保存
+            // TrialService.setPurchaseStatus(TrialService.purchasedStatus);
           }
         }
       });

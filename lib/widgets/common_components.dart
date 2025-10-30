@@ -63,13 +63,13 @@ class CommonComponents {
   }) {
     return showDialog<Color>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('色を選択'),
-        content: StatefulBuilder(
-          builder: (context, setState) {
-            Color selectedColor = currentColor;
-            
-            return Column(
+      builder: (context) {
+        Color selectedColor = currentColor;
+        
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('色を選択'),
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 buildColorPicker(
@@ -100,20 +100,20 @@ class CommonComponents {
                   ),
                 ),
               ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('キャンセル'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, selectedColor),
+                child: const Text('選択'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, selectedColor),
-            child: const Text('選択'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
   
@@ -169,6 +169,7 @@ class CommonComponents {
   
   // 時間選択ウィジェット（統一版）
   static Widget buildTimePicker({
+    required BuildContext context,
     required TimeOfDay selectedTime,
     required ValueChanged<TimeOfDay> onChanged,
   }) {

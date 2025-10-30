@@ -1,4 +1,4 @@
-// Dart core imports
+﻿// Dart core imports
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -36,18 +36,49 @@ import 'simple_alarm_app.dart';
 import 'core/snapshot_service.dart';
 import 'utils/locale_helper.dart';
 
-// 高速化：シンプルなデバッグログ
+// 分割したファイルのインポート
+import 'constants/app_constants.dart';
+import 'constants/app_dimensions.dart';
+import 'utils/logger.dart';
+import 'utils/error_handler.dart';
+import 'widgets/common/medication_card.dart';
+import 'widgets/common/weekday_selector.dart';
+import 'widgets/common/error_boundary.dart';
+import 'models/medication_memo.dart';
+import 'models/medicine_data.dart';
+import 'models/medication_info.dart';
+import 'models/medication_state.dart';
+import 'models/result.dart';
+import 'models/notification_types.dart';
+import 'models/adapters/medication_memo_adapter.dart';
+import 'models/adapters/medicine_data_adapter.dart';
+import 'models/adapters/medication_info_adapter.dart';
+import 'services/notification_service.dart';
+import 'services/medication_service.dart';
+import 'services/data_repository.dart';
+import 'services/data_manager.dart';
+import 'services/in_app_purchase_service.dart';
+import 'services/trial_service.dart';
+
+
+// Library螳｣險 - 繝輔ぃ繧､繝ｫ蛻・牡縺ｮ縺溘ａ蠢・・r
+library medication_alarm_app;
+
+// Part files for code splitting
+part 'utils/app_utils.dart';
+// 莉悶・part繝輔ぃ繧､繝ｫ縺ｯ鬆・ｬ｡霑ｽ蜉
+
+
+// 鬮倬溷喧・壹す繝ｳ繝励Ν縺ｪ繝・ヰ繝・げ繝ｭ繧ｰ
 void _debugLog(String message) {
   if (kDebugMode) {
     debugPrint(message);
   }
 }
 
-// 高速化：シンプルなLogger（本番環境でのログ削減）
-class Logger {
+// 鬮倬溷喧・壹す繝ｳ繝励Ν縺ｪLogger・域悽逡ｪ迺ｰ蠅・〒縺ｮ繝ｭ繧ｰ蜑頑ｸ幢ｼ・class Logger {
   static int _logCount = 0;
-  static const int _maxLogsPerSession = 50; // 本番環境でのログ数制限
-  
+  static const int _maxLogsPerSession = 50; // 譛ｬ逡ｪ迺ｰ蠅・〒縺ｮ繝ｭ繧ｰ謨ｰ蛻ｶ髯・  
   static void info(String message) {
     if (_shouldLog()) debugPrint('[INFO] $message');
   }
@@ -61,42 +92,34 @@ class Logger {
     if (kDebugMode && _shouldLog()) debugPrint('[DEBUG] $message');
   }
   
-  // 本番環境でのログ数を制限
-  static bool _shouldLog() {
+  // 譛ｬ逡ｪ迺ｰ蠅・〒縺ｮ繝ｭ繧ｰ謨ｰ繧貞宛髯・  static bool _shouldLog() {
     if (kDebugMode) return true;
     _logCount++;
     return _logCount <= _maxLogsPerSession;
   }
   
-  // 重要なログ（本番環境でも出力）
-  static void critical(String message) {
+  // 驥崎ｦ√↑繝ｭ繧ｰ・域悽逡ｪ迺ｰ蠅・〒繧ょ・蜉幢ｼ・  static void critical(String message) {
     debugPrint('[CRITICAL] $message');
   }
 }
 
-// 高速化：PrefsHelper削除
+// 鬮倬溷喧・啀refsHelper蜑企勁
 
-// 高速化：エラーハンドリング強化
-class AppErrorHandler {
+// 鬮倬溷喧・壹お繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ蠑ｷ蛹・class AppErrorHandler {
   static void handleError(dynamic error, StackTrace? stackTrace, {String? context}) {
-    // エラーログを出力
-    Logger.error('エラー発生', error);
+    // 繧ｨ繝ｩ繝ｼ繝ｭ繧ｰ繧貞・蜉・    Logger.error('繧ｨ繝ｩ繝ｼ逋ｺ逕・, error);
     
-    // ユーザーフレンドリーなエラーメッセージを生成
-    final userMessage = _getUserFriendlyMessage(error);
+    // 繝ｦ繝ｼ繧ｶ繝ｼ繝輔Ξ繝ｳ繝峨Μ繝ｼ縺ｪ繧ｨ繝ｩ繝ｼ繝｡繝・そ繝ｼ繧ｸ繧堤函謌・    final userMessage = _getUserFriendlyMessage(error);
     
-    // Firebase Crashlyticsに送信（初期化済みの場合）
-    try {
+    // Firebase Crashlytics縺ｫ騾∽ｿ｡・亥・譛溷喧貂医∩縺ｮ蝣ｴ蜷茨ｼ・    try {
       FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
     } catch (e) {
-      // Crashlyticsが利用できない場合は無視
-    }
+      // Crashlytics縺悟茜逕ｨ縺ｧ縺阪↑縺・ｴ蜷医・辟｡隕・    }
     
-    // デバッグ環境でのみ詳細ログを出力
-    if (kDebugMode) {
-      debugPrint('エラー詳細: $error');
+    // 繝・ヰ繝・げ迺ｰ蠅・〒縺ｮ縺ｿ隧ｳ邏ｰ繝ｭ繧ｰ繧貞・蜉・    if (kDebugMode) {
+      debugPrint('繧ｨ繝ｩ繝ｼ隧ｳ邏ｰ: $error');
       if (stackTrace != null) {
-        debugPrint('スタックトレース: $stackTrace');
+        debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       }
     }
   }
@@ -105,65 +128,63 @@ class AppErrorHandler {
     final errorString = error.toString().toLowerCase();
     
     if (errorString.contains('network') || errorString.contains('connection')) {
-      return 'ネットワーク接続を確認してください';
+      return '繝阪ャ繝医Ρ繝ｼ繧ｯ謗･邯壹ｒ遒ｺ隱阪＠縺ｦ縺上□縺輔＞';
     }
     
-    if (errorString.contains('permission') || errorString.contains('権限')) {
-      return '必要な権限が許可されていません';
+    if (errorString.contains('permission') || errorString.contains('讓ｩ髯・)) {
+      return '蠢・ｦ√↑讓ｩ髯舌′險ｱ蜿ｯ縺輔ｌ縺ｦ縺・∪縺帙ｓ';
     }
     
-    if (errorString.contains('storage') || errorString.contains('保存')) {
-      return 'データの保存に失敗しました';
+    if (errorString.contains('storage') || errorString.contains('菫晏ｭ・)) {
+      return '繝・・繧ｿ縺ｮ菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆';
     }
     
-    if (errorString.contains('load') || errorString.contains('読み込み')) {
-      return 'データの読み込みに失敗しました';
+    if (errorString.contains('load') || errorString.contains('隱ｭ縺ｿ霎ｼ縺ｿ')) {
+      return '繝・・繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆';
     }
     
-    return '予期しないエラーが発生しました。アプリを再起動してください';
+    return '莠域悄縺励↑縺・お繝ｩ繝ｼ縺檎匱逕溘＠縺ｾ縺励◆縲ゅい繝励Μ繧貞・襍ｷ蜍輔＠縺ｦ縺上□縺輔＞';
   }
 }
 
-// 高速化：ローディングオーバーレイ削除
+// 鬮倬溷喧・壹Ο繝ｼ繝・ぅ繝ｳ繧ｰ繧ｪ繝ｼ繝舌・繝ｬ繧､蜑企勁
 
-// ✅ 修正：統一された定数管理
-class AppConstants {
-  // アニメーション時間
+// 笨・菫ｮ豁｣・夂ｵｱ荳縺輔ｌ縺溷ｮ壽焚邂｡逅・class AppConstants {
+  // 繧｢繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ譎る俣
   static const Duration animationDuration = Duration(milliseconds: 300);
   static const Duration shortAnimationDuration = Duration(milliseconds: 150);
   static const Duration longAnimationDuration = Duration(milliseconds: 500);
   
-  // デバウンス時間
+  // 繝・ヰ繧ｦ繝ｳ繧ｹ譎る俣
   static const Duration debounceDelay = Duration(seconds: 2);
   static const Duration shortDebounceDelay = Duration(milliseconds: 500);
   
-  // ログ間隔
+  // 繝ｭ繧ｰ髢馴囈
   static const Duration logInterval = Duration(seconds: 30);
   
-  // データキー
+  // 繝・・繧ｿ繧ｭ繝ｼ
   static const String medicationMemosKey = 'medication_memos_v2';
   static const String medicationMemoStatusKey = 'medication_memo_status_v2';
   static const String weekdayMedicationStatusKey = 'weekday_medication_status_v2';
   static const String addedMedicationsKey = 'added_medications_v2';
   static const String backupSuffix = '_backup';
   
-  // カレンダー関連定数
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ髢｢騾｣螳壽焚
   static const String calendarMarksKey = 'calendar_marks';
   static const Duration calendarScrollAnimationDuration = Duration(milliseconds: 300);
   static const double calendarScrollSensitivity = 3.0;
   static const double calendarScrollVelocityThreshold = 300.0;
 }
 
-// ✅ 修正：統一されたUI定数（マジックナンバー削減）
-class AppDimensions {
-  // 高さ
+// 笨・菫ｮ豁｣・夂ｵｱ荳縺輔ｌ縺欟I螳壽焚・医・繧ｸ繝・け繝翫Φ繝舌・蜑頑ｸ幢ｼ・class AppDimensions {
+  // 鬮倥＆
   static const double listMaxHeight = 250.0;
   static const double listMaxHeightExpanded = 500.0;
   static const double calendarMaxHeight = 600.0;
   static const double dialogMaxHeight = 0.8;
   static const double dialogMinHeight = 0.4;
   
-  // パディング
+  // 繝代ョ繧｣繝ｳ繧ｰ
   static const EdgeInsets standardPadding = EdgeInsets.all(16);
   static const EdgeInsets smallPadding = EdgeInsets.all(8);
   static const EdgeInsets largePadding = EdgeInsets.all(24);
@@ -171,70 +192,68 @@ class AppDimensions {
   static const EdgeInsets dialogPadding = EdgeInsets.all(20);
   static const EdgeInsets listPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 8);
   
-  // マージン
+  // 繝槭・繧ｸ繝ｳ
   static const EdgeInsets cardMargin = EdgeInsets.symmetric(vertical: 10, horizontal: 4);
   static const EdgeInsets sectionMargin = EdgeInsets.only(bottom: 16);
   
-  // ボーダー半径
-  static const double standardBorderRadius = 12.0;
+  // 繝懊・繝繝ｼ蜊雁ｾ・  static const double standardBorderRadius = 12.0;
   static const double smallBorderRadius = 8.0;
   static const double largeBorderRadius = 16.0;
   static const double cardBorderRadius = 12.0;
   static const double dialogBorderRadius = 16.0;
   static const double buttonBorderRadius = 8.0;
   
-  // アイコンサイズ
+  // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ
   static const double smallIcon = 16.0;
   static const double mediumIcon = 20.0;
   static const double largeIcon = 24.0;
   static const double extraLargeIcon = 32.0;
   
-  // フォントサイズ
+  // 繝輔か繝ｳ繝医し繧､繧ｺ
   static const double smallText = 11.0;
   static const double mediumText = 14.0;
   static const double largeText = 16.0;
   static const double titleText = 18.0;
   static const double headerText = 24.0;
   
-  // スペーシング
+  // 繧ｹ繝壹・繧ｷ繝ｳ繧ｰ
   static const double smallSpacing = 4.0;
   static const double mediumSpacing = 8.0;
   static const double largeSpacing = 12.0;
   static const double extraLargeSpacing = 16.0;
   
-  // ボタンサイズ
+  // 繝懊ち繝ｳ繧ｵ繧､繧ｺ
   static const double buttonHeight = 48.0;
   static const double smallButtonHeight = 32.0;
   static const double largeButtonHeight = 56.0;
   
-  // アニメーション時間
+  // 繧｢繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ譎る俣
   static const Duration shortAnimation = Duration(milliseconds: 150);
   static const Duration standardAnimation = Duration(milliseconds: 300);
   static const Duration longAnimation = Duration(milliseconds: 500);
   
-  // デバウンス時間
+  // 繝・ヰ繧ｦ繝ｳ繧ｹ譎る俣
   static const Duration shortDebounce = Duration(milliseconds: 500);
   static const Duration standardDebounce = Duration(seconds: 2);
   static const Duration longDebounce = Duration(seconds: 5);
   
-  // キャッシュ時間
+  // 繧ｭ繝｣繝・す繝･譎る俣
   static const Duration cacheExpiry = Duration(minutes: 5);
   static const Duration logInterval = Duration(seconds: 30);
 }
 
-// ✅ 修正：統一されたデータリポジトリ
+// 笨・菫ｮ豁｣・夂ｵｱ荳縺輔ｌ縺溘ョ繝ｼ繧ｿ繝ｪ繝昴ず繝医Μ
 class DataRepository {
   static SharedPreferences? _prefs;
   static Box? _hiveBox;
   
-  // 初期化
-  static Future<void> initialize() async {
+  // 蛻晄悄蛹・  static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
     _hiveBox = await Hive.openBox('medication_data');
-    Logger.info('DataRepository初期化完了');
+    Logger.info('DataRepository蛻晄悄蛹門ｮ御ｺ・);
   }
   
-  // 統一された保存メソッド
+  // 邨ｱ荳縺輔ｌ縺滉ｿ晏ｭ倥Γ繧ｽ繝・ラ
   static Future<void> save<T>(String key, T data) async {
     try {
       final json = jsonEncode(data);
@@ -242,77 +261,75 @@ class DataRepository {
         _prefs!.setString(key, json),
         _prefs!.setString('${key}_backup', json),
       ]);
-      Logger.info('データ保存完了: $key');
+      Logger.info('繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ $key');
     } catch (e) {
-      Logger.error('データ保存エラー: $key', e);
+      Logger.error('繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $key', e);
     }
   }
   
-  // 統一された読み込みメソッド
+  // 邨ｱ荳縺輔ｌ縺溯ｪｭ縺ｿ霎ｼ縺ｿ繝｡繧ｽ繝・ラ
   static Future<T?> load<T>(String key, T Function(Map<String, dynamic>) fromJson) async {
     try {
       for (final suffix in ['', '_backup']) {
         final json = _prefs!.getString('$key$suffix');
         if (json != null && json.isNotEmpty) {
           final data = fromJson(jsonDecode(json));
-          Logger.info('データ読み込み成功: $key$suffix');
+          Logger.info('繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key$suffix');
           return data;
         }
       }
-      Logger.warning('データが見つかりません: $key');
+      Logger.warning('繝・・繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ: $key');
       return null;
     } catch (e) {
-      Logger.error('データ読み込みエラー: $key', e);
+      Logger.error('繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $key', e);
       return null;
     }
   }
   
-  // 統一された削除メソッド
+  // 邨ｱ荳縺輔ｌ縺溷炎髯､繝｡繧ｽ繝・ラ
   static Future<void> delete(String key) async {
     try {
       await Future.wait([
         _prefs!.remove(key),
         _prefs!.remove('${key}_backup'),
       ]);
-      Logger.info('データ削除完了: $key');
+      Logger.info('繝・・繧ｿ蜑企勁螳御ｺ・ $key');
     } catch (e) {
-      Logger.error('データ削除エラー: $key', e);
+      Logger.error('繝・・繧ｿ蜑企勁繧ｨ繝ｩ繝ｼ: $key', e);
     }
   }
   
-  // メモリリーク防止のためのクリーンアップ
+  // 繝｡繝｢繝ｪ繝ｪ繝ｼ繧ｯ髦ｲ豁｢縺ｮ縺溘ａ縺ｮ繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・
   static Future<void> dispose() async {
     try {
       await _hiveBox?.close();
-      Logger.info('DataRepositoryクリーンアップ完了');
+      Logger.info('DataRepository繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・螳御ｺ・);
     } catch (e) {
-      Logger.error('DataRepositoryクリーンアップエラー', e);
+      Logger.error('DataRepository繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・繧ｨ繝ｩ繝ｼ', e);
     }
   }
 }
 
-// ✅ 修正：統一されたデータ管理システム
+// 笨・菫ｮ豁｣・夂ｵｱ荳縺輔ｌ縺溘ョ繝ｼ繧ｿ邂｡逅・す繧ｹ繝・Β
 class DataManager {
   static final Map<String, bool> _dirtyFlags = <String, bool>{};
   static bool _isSaving = false;
   static SharedPreferences? _prefs;
   
-  // 初期化
-  static Future<void> initialize() async {
+  // 蛻晄悄蛹・  static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
-    Logger.info('DataManager初期化完了');
+    Logger.info('DataManager蛻晄悄蛹門ｮ御ｺ・);
   }
   
-  // データが変更されたことをマーク
+  // 繝・・繧ｿ縺悟､画峩縺輔ｌ縺溘％縺ｨ繧偵・繝ｼ繧ｯ
   static void markDirty(String key) {
     _dirtyFlags[key] = true;
-    Logger.debug('データ変更マーク: $key');
+    Logger.debug('繝・・繧ｿ螟画峩繝槭・繧ｯ: $key');
   }
   
-  // 統一されたデータ保存（重複排除）
-  static Future<void> save() async {
+  // 邨ｱ荳縺輔ｌ縺溘ョ繝ｼ繧ｿ菫晏ｭ假ｼ磯㍾隍・賜髯､・・  static Future<void> save() async {
     if (_isSaving) {
-      Logger.warning('データ保存中です。スキップします。');
+      Logger.warning('繝・・繧ｿ菫晏ｭ倅ｸｭ縺ｧ縺吶ゅせ繧ｭ繝・・縺励∪縺吶・);
       return;
     }
     
@@ -331,23 +348,22 @@ class DataManager {
         _prefs!.setString('app_data_backup', jsonEncode(data)),
       ]);
       
-      Logger.info('統一データ保存完了');
+      Logger.info('邨ｱ荳繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・);
     } catch (e) {
-      Logger.error('統一データ保存エラー', e);
+      Logger.error('邨ｱ荳繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ', e);
     } finally {
       _isSaving = false;
     }
   }
   
-  // 変更されたデータのみ保存（差分保存）
-  static Future<void> saveOnlyDirty() async {
+  // 螟画峩縺輔ｌ縺溘ョ繝ｼ繧ｿ縺ｮ縺ｿ菫晏ｭ假ｼ亥ｷｮ蛻・ｿ晏ｭ假ｼ・  static Future<void> saveOnlyDirty() async {
     if (_isSaving) {
-      Logger.warning('データ保存中です。スキップします。');
+      Logger.warning('繝・・繧ｿ菫晏ｭ倅ｸｭ縺ｧ縺吶ゅせ繧ｭ繝・・縺励∪縺吶・);
       return;
     }
     
     if (_dirtyFlags.isEmpty) {
-      Logger.debug('変更されたデータがありません。スキップします。');
+      Logger.debug('螟画峩縺輔ｌ縺溘ョ繝ｼ繧ｿ縺後≠繧翫∪縺帙ｓ縲ゅせ繧ｭ繝・・縺励∪縺吶・);
       return;
     }
     
@@ -370,80 +386,66 @@ class DataManager {
       
       if (tasks.isNotEmpty) {
         await Future.wait(tasks);
-        Logger.info('差分保存完了: ${tasks.length}件');
+        Logger.info('蟾ｮ蛻・ｿ晏ｭ伜ｮ御ｺ・ ${tasks.length}莉ｶ');
       }
       
       _dirtyFlags.clear();
     } catch (e) {
-      Logger.error('差分保存エラー', e);
+      Logger.error('蟾ｮ蛻・ｿ晏ｭ倥お繝ｩ繝ｼ', e);
     } finally {
       _isSaving = false;
     }
   }
   
-  // データのシリアライズ
+  // 繝・・繧ｿ縺ｮ繧ｷ繝ｪ繧｢繝ｩ繧､繧ｺ
   static Map<String, dynamic> _serializeMedications() {
-    // 服用薬データのシリアライズ
+    // 譛咲畑阮ｬ繝・・繧ｿ縺ｮ繧ｷ繝ｪ繧｢繝ｩ繧､繧ｺ
     return {};
   }
   
   static Map<String, dynamic> _serializeMemos() {
-    // メモデータのシリアライズ
+    // 繝｡繝｢繝・・繧ｿ縺ｮ繧ｷ繝ｪ繧｢繝ｩ繧､繧ｺ
     return {};
   }
   
   static Map<String, dynamic> _serializeSettings() {
-    // 設定データのシリアライズ
+    // 險ｭ螳壹ョ繝ｼ繧ｿ縺ｮ繧ｷ繝ｪ繧｢繝ｩ繧､繧ｺ
     return {};
   }
   
-  // 個別保存メソッド（差分保存用）
-  static Future<void> _saveMemos() async {
-    // メモ保存ロジック
-    Logger.debug('メモデータ保存');
+  // 蛟句挨菫晏ｭ倥Γ繧ｽ繝・ラ・亥ｷｮ蛻・ｿ晏ｭ倡畑・・  static Future<void> _saveMemos() async {
+    // 繝｡繝｢菫晏ｭ倥Ο繧ｸ繝・け
+    Logger.debug('繝｡繝｢繝・・繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveMedications() async {
-    // 薬データ保存ロジック
-    Logger.debug('薬データ保存');
+    // 阮ｬ繝・・繧ｿ菫晏ｭ倥Ο繧ｸ繝・け
+    Logger.debug('阮ｬ繝・・繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveAlarms() async {
-    // アラームデータ保存ロジック
-    Logger.debug('アラームデータ保存');
+    // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ倥Ο繧ｸ繝・け
+    Logger.debug('繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveSettings() async {
-    // 設定データ保存ロジック
-    Logger.debug('設定データ保存');
+    // 險ｭ螳壹ョ繝ｼ繧ｿ菫晏ｭ倥Ο繧ｸ繝・け
+    Logger.debug('險ｭ螳壹ョ繝ｼ繧ｿ菫晏ｭ・);
   }
 }
 
-// ✅ 修正：Result型の実装
-sealed class Result<T> {
-  const Result();
-}
+// Result, Success, Failure は models/result.dart に移動済み（削除済み）
 
-class Success<T> extends Result<T> {
-  final T data;
-  const Success(this.data);
-}
+// 削除済み: Result, Success, Failure クラス定義（models/result.dart に移動済み）
 
-class Failure<T> extends Result<T> {
-  final String message;
-  final Exception? exception;
-  const Failure(this.message, [this.exception]);
-}
+// ErrorService は utils/error_handler.dart に移動済み（削除済み）
 
-// ✅ 修正：エラーハンドリングの改善
-class ErrorService {
-  static void handle(BuildContext? context, dynamic error, {String? userMessage}) {
-    Logger.error('エラーが発生しました', error);
+// 削除済み: ErrorService クラス定義（utils/error_handler.dart に移動済み）
     
     try {
       FirebaseCrashlytics.instance.recordError(error, StackTrace.current);
     } catch (e) {
-      Logger.warning('Crashlyticsレポートエラー: $e');
+      Logger.warning('Crashlytics繝ｬ繝昴・繝医お繝ｩ繝ｼ: $e');
     }
     
     if (context != null && context.mounted) {
@@ -454,7 +456,7 @@ class ErrorService {
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: '再試行',
+            label: '蜀崎ｩｦ陦・,
             textColor: Colors.white,
             onPressed: () => _retry(context),
           ),
@@ -464,30 +466,29 @@ class ErrorService {
   }
   
   static void _retry(BuildContext context) {
-    // 再試行ロジック（必要に応じて実装）
-    Logger.info('ユーザーが再試行を選択しました');
+    // 蜀崎ｩｦ陦後Ο繧ｸ繝・け・亥ｿ・ｦ√↓蠢懊§縺ｦ螳溯｣・ｼ・    Logger.info('繝ｦ繝ｼ繧ｶ繝ｼ縺悟・隧ｦ陦後ｒ驕ｸ謚槭＠縺ｾ縺励◆');
   }
   
-  // ユーザーフレンドリーなエラーメッセージ生成
+  // 繝ｦ繝ｼ繧ｶ繝ｼ繝輔Ξ繝ｳ繝峨Μ繝ｼ縺ｪ繧ｨ繝ｩ繝ｼ繝｡繝・そ繝ｼ繧ｸ逕滓・
   static String _getUserFriendlyMessage(dynamic error) {
     final errorString = error.toString().toLowerCase();
     
-    if (errorString.contains('permission') || errorString.contains('権限')) {
-      return '権限が不足しています。設定から許可してください。';
-    } else if (errorString.contains('network') || errorString.contains('接続')) {
-      return 'ネットワーク接続を確認してください。';
-    } else if (errorString.contains('storage') || errorString.contains('容量')) {
-      return 'ストレージの容量が不足しています。';
-    } else if (errorString.contains('timeout') || errorString.contains('タイムアウト')) {
-      return '処理に時間がかかりすぎています。もう一度お試しください。';
-    } else if (errorString.contains('not found') || errorString.contains('見つかりません')) {
-      return 'データが見つかりません。アプリを再起動してください。';
-    } else if (errorString.contains('format') || errorString.contains('形式')) {
-      return 'データの形式が正しくありません。';
-    } else if (errorString.contains('memory') || errorString.contains('メモリ')) {
-      return 'メモリが不足しています。他のアプリを閉じてください。';
+    if (errorString.contains('permission') || errorString.contains('讓ｩ髯・)) {
+      return '讓ｩ髯舌′荳崎ｶｳ縺励※縺・∪縺吶りｨｭ螳壹°繧芽ｨｱ蜿ｯ縺励※縺上□縺輔＞縲・;
+    } else if (errorString.contains('network') || errorString.contains('謗･邯・)) {
+      return '繝阪ャ繝医Ρ繝ｼ繧ｯ謗･邯壹ｒ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・;
+    } else if (errorString.contains('storage') || errorString.contains('螳ｹ驥・)) {
+      return '繧ｹ繝医Ξ繝ｼ繧ｸ縺ｮ螳ｹ驥上′荳崎ｶｳ縺励※縺・∪縺吶・;
+    } else if (errorString.contains('timeout') || errorString.contains('繧ｿ繧､繝繧｢繧ｦ繝・)) {
+      return '蜃ｦ逅・↓譎る俣縺後°縺九ｊ縺吶℃縺ｦ縺・∪縺吶ゅｂ縺・ｸ蠎ｦ縺願ｩｦ縺励￥縺縺輔＞縲・;
+    } else if (errorString.contains('not found') || errorString.contains('隕九▽縺九ｊ縺ｾ縺帙ｓ')) {
+      return '繝・・繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縲ゅい繝励Μ繧貞・襍ｷ蜍輔＠縺ｦ縺上□縺輔＞縲・;
+    } else if (errorString.contains('format') || errorString.contains('蠖｢蠑・)) {
+      return '繝・・繧ｿ縺ｮ蠖｢蠑上′豁｣縺励￥縺ゅｊ縺ｾ縺帙ｓ縲・;
+    } else if (errorString.contains('memory') || errorString.contains('繝｡繝｢繝ｪ')) {
+      return '繝｡繝｢繝ｪ縺御ｸ崎ｶｳ縺励※縺・∪縺吶ゆｻ悶・繧｢繝励Μ繧帝哩縺倥※縺上□縺輔＞縲・;
     } else {
-      return '問題が発生しました。もう一度お試しください。';
+      return '蝠城｡後′逋ｺ逕溘＠縺ｾ縺励◆縲ゅｂ縺・ｸ蠎ｦ縺願ｩｦ縺励￥縺縺輔＞縲・;
     }
   }
   
@@ -500,7 +501,7 @@ class ErrorService {
         backgroundColor: Colors.red,
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
-          label: '詳細',
+          label: '隧ｳ邏ｰ',
           textColor: Colors.white,
           onPressed: () => _showErrorDetails(context, errorContext, error),
         ),
@@ -512,22 +513,22 @@ class ErrorService {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('エラー詳細'),
+        title: const Text('繧ｨ繝ｩ繝ｼ隧ｳ邏ｰ'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('コンテキスト: $errorContext'),
+            Text('繧ｳ繝ｳ繝・く繧ｹ繝・ $errorContext'),
             const SizedBox(height: 8),
-            Text('エラー: ${error.toString()}'),
+            Text('繧ｨ繝ｩ繝ｼ: ${error.toString()}'),
             const SizedBox(height: 8),
-            const Text('この情報を開発者に報告してください。'),
+            const Text('縺薙・諠・ｱ繧帝幕逋ｺ閠・↓蝣ｱ蜻翫＠縺ｦ縺上□縺輔＞縲・),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
         ],
       ),
@@ -535,7 +536,7 @@ class ErrorService {
   }
 }
 
-// ✅ 修正：メモリリーク対策のためのコントローラー管理
+// MedicationController はまだ分割されていません
 class MedicationController {
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
@@ -543,7 +544,7 @@ class MedicationController {
   
   TextEditingController getController(String id) {
     if (_disposed) {
-      Logger.warning('MedicationControllerは既に破棄されています');
+      Logger.warning('MedicationController縺ｯ譌｢縺ｫ遐ｴ譽・＆繧後※縺・∪縺・);
       return TextEditingController();
     }
     return _controllers.putIfAbsent(id, () => TextEditingController());
@@ -551,7 +552,7 @@ class MedicationController {
   
   FocusNode getFocusNode(String id) {
     if (_disposed) {
-      Logger.warning('MedicationControllerは既に破棄されています');
+      Logger.warning('MedicationController縺ｯ譌｢縺ｫ遐ｴ譽・＆繧後※縺・∪縺・);
       return FocusNode();
     }
     return _focusNodes.putIfAbsent(id, () => FocusNode());
@@ -562,27 +563,27 @@ class MedicationController {
     
     _disposed = true;
     
-    // コントローラーの安全な解放
+    // 繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ縺ｮ螳牙・縺ｪ隗｣謾ｾ
     for (final controller in _controllers.values) {
       try {
         controller.dispose();
       } catch (e) {
-        Logger.warning('コントローラー解放エラー: $e');
+        Logger.warning('繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ隗｣謾ｾ繧ｨ繝ｩ繝ｼ: $e');
       }
     }
     
-    // フォーカスノードの安全な解放
+    // 繝輔か繝ｼ繧ｫ繧ｹ繝弱・繝峨・螳牙・縺ｪ隗｣謾ｾ
     for (final focusNode in _focusNodes.values) {
       try {
         focusNode.dispose();
       } catch (e) {
-        Logger.warning('フォーカスノード解放エラー: $e');
+        Logger.warning('繝輔か繝ｼ繧ｫ繧ｹ繝弱・繝芽ｧ｣謾ｾ繧ｨ繝ｩ繝ｼ: $e');
       }
     }
     
     _controllers.clear();
     _focusNodes.clear();
-    Logger.info('MedicationControllerクリーンアップ完了');
+    Logger.info('MedicationController繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・螳御ｺ・);
   }
   
   void removeController(String id) {
@@ -593,19 +594,18 @@ class MedicationController {
       _focusNodes[id]?.dispose();
       _controllers.remove(id);
       _focusNodes.remove(id);
-      Logger.debug('コントローラー削除完了: $id');
+      Logger.debug('繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ蜑企勁螳御ｺ・ $id');
     } catch (e) {
-      Logger.warning('コントローラー削除エラー: $e');
+      Logger.warning('繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ蜑企勁繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // コントローラーの状態確認
-  bool get isDisposed => _disposed;
+  // 繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ縺ｮ迥ｶ諷狗｢ｺ隱・  bool get isDisposed => _disposed;
   int get controllerCount => _controllers.length;
   int get focusNodeCount => _focusNodes.length;
 }
 
-// ✅ 修正：パフォーマンス最適化のためのキャッシュ機能
+// 笨・菫ｮ豁｣・壹ヱ繝輔か繝ｼ繝槭Φ繧ｹ譛驕ｩ蛹悶・縺溘ａ縺ｮ繧ｭ繝｣繝・す繝･讖溯・
 class MedicationState {
   Map<String, bool>? _cachedMemoStatus;
   Map<String, dynamic>? _cachedMedicationData;
@@ -635,12 +635,12 @@ class MedicationState {
   }
   
   Map<String, bool> _calculateMemoStatus(DateTime date) {
-    // メモ状態の計算ロジック
+    // 繝｡繝｢迥ｶ諷九・險育ｮ励Ο繧ｸ繝・け
     return {};
   }
   
   Map<String, dynamic> _calculateMedicationData(DateTime date) {
-    // 服用データの計算ロジック
+    // 譛咲畑繝・・繧ｿ縺ｮ險育ｮ励Ο繧ｸ繝・け
     return {};
   }
   
@@ -648,13 +648,12 @@ class MedicationState {
     _cachedMemoStatus = null;
     _cachedMedicationData = null;
     _lastCacheUpdate = null;
-    Logger.debug('キャッシュを無効化しました');
+    Logger.debug('繧ｭ繝｣繝・す繝･繧堤┌蜉ｹ蛹悶＠縺ｾ縺励◆');
   }
 }
 
-// ✅ 修正：非同期処理の最適化
-class AsyncDataLoader {
-  // 並列データ読み込み
+// 笨・菫ｮ豁｣・夐撼蜷梧悄蜃ｦ逅・・譛驕ｩ蛹・class AsyncDataLoader {
+  // 荳ｦ蛻励ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ
   static Future<void> loadAllData() async {
     try {
       await Future.wait([
@@ -668,14 +667,13 @@ class AsyncDataLoader {
         _loadAppSettings(),
         _loadMedicationDoseStatus(),
       ]);
-      Logger.info('全データ読み込み完了（並列実行）');
+      Logger.info('蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ｼ井ｸｦ蛻怜ｮ溯｡鯉ｼ・);
     } catch (e) {
-      Logger.error('全データ読み込みエラー', e);
+      Logger.error('蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ', e);
     }
   }
   
-  // 並列データ保存
-  static Future<void> saveAllData() async {
+  // 荳ｦ蛻励ョ繝ｼ繧ｿ菫晏ｭ・  static Future<void> saveAllData() async {
     try {
       await Future.wait([
         _saveMedicationData(),
@@ -688,351 +686,145 @@ class AsyncDataLoader {
         _saveAppSettings(),
         _saveMedicationDoseStatus(),
       ]);
-      Logger.info('全データ保存完了（並列実行）');
+      Logger.info('蜈ｨ繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ｼ井ｸｦ蛻怜ｮ溯｡鯉ｼ・);
     } catch (e) {
-      Logger.error('全データ保存エラー', e);
+      Logger.error('蜈ｨ繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ', e);
     }
   }
   
-  // 個別読み込みメソッド（プレースホルダー）
-  static Future<void> _loadMedicationData() async {
-    Logger.debug('服用データ読み込み');
+  // 蛟句挨隱ｭ縺ｿ霎ｼ縺ｿ繝｡繧ｽ繝・ラ・医・繝ｬ繝ｼ繧ｹ繝帙Ν繝繝ｼ・・  static Future<void> _loadMedicationData() async {
+    Logger.debug('譛咲畑繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadMemoStatus() async {
-    Logger.debug('メモ状態読み込み');
+    Logger.debug('繝｡繝｢迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadAlarmData() async {
-    Logger.debug('アラームデータ読み込み');
+    Logger.debug('繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadCalendarMarks() async {
-    Logger.debug('カレンダーマーク読み込み');
+    Logger.debug('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ隱ｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadUserPreferences() async {
-    Logger.debug('ユーザー設定読み込み');
+    Logger.debug('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadDayColors() async {
-    Logger.debug('日別色設定読み込み');
+    Logger.debug('譌･蛻･濶ｲ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadStatistics() async {
-    Logger.debug('統計データ読み込み');
+    Logger.debug('邨ｱ險医ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadAppSettings() async {
-    Logger.debug('アプリ設定読み込み');
+    Logger.debug('繧｢繝励Μ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ');
   }
   
   static Future<void> _loadMedicationDoseStatus() async {
-    Logger.debug('服用回数別状態読み込み');
+    Logger.debug('譛咲畑蝗樊焚蛻･迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ');
   }
   
-  // 個別保存メソッド（プレースホルダー）
-  static Future<void> _saveMedicationData() async {
-    Logger.debug('服用データ保存');
+  // 蛟句挨菫晏ｭ倥Γ繧ｽ繝・ラ・医・繝ｬ繝ｼ繧ｹ繝帙Ν繝繝ｼ・・  static Future<void> _saveMedicationData() async {
+    Logger.debug('譛咲畑繝・・繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveMemoStatus() async {
-    Logger.debug('メモ状態保存');
+    Logger.debug('繝｡繝｢迥ｶ諷倶ｿ晏ｭ・);
   }
   
   static Future<void> _saveAlarmData() async {
-    Logger.debug('アラームデータ保存');
+    Logger.debug('繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveCalendarMarks() async {
-    Logger.debug('カレンダーマーク保存');
+    Logger.debug('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ菫晏ｭ・);
   }
   
   static Future<void> _saveUserPreferences() async {
-    Logger.debug('ユーザー設定保存');
+    Logger.debug('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壻ｿ晏ｭ・);
   }
   
   static Future<void> _saveDayColors() async {
-    Logger.debug('日別色設定保存');
+    Logger.debug('譌･蛻･濶ｲ險ｭ螳壻ｿ晏ｭ・);
   }
   
   static Future<void> _saveStatistics() async {
-    Logger.debug('統計データ保存');
+    Logger.debug('邨ｱ險医ョ繝ｼ繧ｿ菫晏ｭ・);
   }
   
   static Future<void> _saveAppSettings() async {
-    Logger.debug('アプリ設定保存');
+    Logger.debug('繧｢繝励Μ險ｭ螳壻ｿ晏ｭ・);
   }
   
   static Future<void> _saveMedicationDoseStatus() async {
-    Logger.debug('服用回数別状態保存');
+    Logger.debug('譛咲畑蝗樊焚蛻･迥ｶ諷倶ｿ晏ｭ・);
   }
 }
 
-// ✅ 修正：UIコンポーネントの分離
-class MedicationCard extends StatelessWidget {
-  final MedicationMemo memo;
-  final VoidCallback onTap;
-  final bool isSelected;
-  
-  const MedicationCard({
-    Key? key,
-    required this.memo,
-    required this.onTap,
-    this.isSelected = false,
-  }) : super(key: key);
-  
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: AppDimensions.cardMargin,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
-        side: BorderSide(
-          color: isSelected ? memo.color : Colors.grey.withOpacity(0.3),
-          width: isSelected ? 2 : 1,
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
-        child: Padding(
-          padding: AppDimensions.cardPadding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
-                    color: memo.color,
-                    size: AppDimensions.mediumIcon,
-                  ),
-                  const SizedBox(width: AppDimensions.mediumSpacing),
-                  Expanded(
-                    child: Text(
-                      memo.name,
-                      style: const TextStyle(
-                        fontSize: AppDimensions.largeText,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  if (isSelected)
-                    Icon(
-                      Icons.check_circle,
-                      color: memo.color,
-                      size: AppDimensions.mediumIcon,
-                    ),
-                ],
-              ),
-              if (memo.dosage.isNotEmpty) ...[
-                const SizedBox(height: AppDimensions.smallSpacing),
-                Text(
-                  '用量: ${memo.dosage}',
-                  style: const TextStyle(
-                    fontSize: AppDimensions.mediumText,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-              if (memo.notes.isNotEmpty) ...[
-                const SizedBox(height: AppDimensions.smallSpacing),
-                Text(
-                  memo.notes,
-                  style: const TextStyle(
-                    fontSize: AppDimensions.mediumText,
-                    color: Colors.grey,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// MedicationCard, WeekdaySelector, ErrorBoundary は widgets/common/ に移動済み
 
-class WeekdaySelector extends StatelessWidget {
-  final List<int> selectedDays;
-  final ValueChanged<List<int>> onChanged;
-  
-  const WeekdaySelector({
-    Key? key,
-    required this.selectedDays,
-    required this.onChanged,
-  }) : super(key: key);
-  
-  @override
-  Widget build(BuildContext context) {
-    final weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-    
-    return Wrap(
-      spacing: AppDimensions.smallSpacing,
-      runSpacing: AppDimensions.smallSpacing,
-      children: List.generate(7, (index) {
-        final isSelected = selectedDays.contains(index);
-        return GestureDetector(
-          onTap: () {
-            final newDays = List<int>.from(selectedDays);
-            if (isSelected) {
-              newDays.remove(index);
-            } else {
-              newDays.add(index);
-            }
-            onChanged(newDays);
-          },
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppDimensions.buttonBorderRadius),
-              border: Border.all(
-                color: isSelected ? Colors.blue : Colors.grey.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                weekdays[index],
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.grey[700],
-                  fontWeight: FontWeight.bold,
-                  fontSize: AppDimensions.mediumText,
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-}
-
-// ✅ 修正：エラー境界ウィジェット
-class ErrorBoundary extends StatefulWidget {
-  final Widget child;
-  const ErrorBoundary({required this.child});
-
-  @override
-  State<ErrorBoundary> createState() => _ErrorBoundaryState();
-}
-
-class _ErrorBoundaryState extends State<ErrorBoundary> {
-  bool _hasError = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hasError) {
-      return MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                const Text('エラーが発生しました'),
-                ElevatedButton(
-                  onPressed: () => setState(() => _hasError = false),
-                  child: const Text('再試行'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return widget.child;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    FlutterError.onError = (details) {
-      try {
-        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-      } catch (e) {
-        _debugLog('Crashlyticsエラーレポート失敗: $e');
-      }
-      
-      // ✅ 修正：レイアウト中のsetState()を避ける
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() => _hasError = true);
-        }
-      });
-    };
-  }
-}
-
-// 🔴 最重要：シングルトンパターンでPrefsを管理
-class AppPreferences {
+// 閥 譛驥崎ｦ・ｼ壹す繝ｳ繧ｰ繝ｫ繝医Φ繝代ち繝ｼ繝ｳ縺ｧPrefs繧堤ｮ｡逅・class AppPreferences {
   static SharedPreferences? _preferences;
   
-  // アプリ起動時に一度だけ呼ぶ
+  // 繧｢繝励Μ襍ｷ蜍墓凾縺ｫ荳蠎ｦ縺縺大他縺ｶ
   static Future<void> init() async {
     _preferences = await SharedPreferences.getInstance();
-    _debugLog('AppPreferences初期化完了');
+    _debugLog('AppPreferences蛻晄悄蛹門ｮ御ｺ・);
   }
   
-  // 保存
-  static Future<bool> saveString(String key, String value) async {
+  // 菫晏ｭ・  static Future<bool> saveString(String key, String value) async {
     if (_preferences == null) await init();
     final result = await _preferences!.setString(key, value);
-    debugPrint('保存完了: $key = $value (結果: $result)');
+    debugPrint('菫晏ｭ伜ｮ御ｺ・ $key = $value (邨先棡: $result)');
     return result;
   }
   
-  // 読み込み
+  // 隱ｭ縺ｿ霎ｼ縺ｿ
   static String? getString(String key) {
     final value = _preferences?.getString(key);
-    debugPrint('読み込み: $key = $value');
+    debugPrint('隱ｭ縺ｿ霎ｼ縺ｿ: $key = $value');
     return value;
   }
   
-  // 削除
+  // 蜑企勁
   static Future<bool> remove(String key) async {
     if (_preferences == null) await init();
     final result = await _preferences!.remove(key);
-    debugPrint('削除完了: $key (結果: $result)');
+    debugPrint('蜑企勁螳御ｺ・ $key (邨先棡: $result)');
     return result;
   }
   
-  // 複数キー保存
-  static Future<Map<String, bool>> saveMultiple(Map<String, String> data) async {
+  // 隍・焚繧ｭ繝ｼ菫晏ｭ・  static Future<Map<String, bool>> saveMultiple(Map<String, String> data) async {
     if (_preferences == null) await init();
     final results = <String, bool>{};
     
     for (final entry in data.entries) {
       final result = await _preferences!.setString(entry.key, entry.value);
       results[entry.key] = result;
-      debugPrint('複数保存: ${entry.key} = ${entry.value} (結果: $result)');
+      debugPrint('隍・焚菫晏ｭ・ ${entry.key} = ${entry.value} (邨先棡: $result)');
     }
     
     return results;
   }
   
-  // デバッグ用：すべてのキーを表示（完全型安全版）
-  static void debugAllKeys() {
+  // 繝・ヰ繝・げ逕ｨ・壹☆縺ｹ縺ｦ縺ｮ繧ｭ繝ｼ繧定｡ｨ遉ｺ・亥ｮ悟・蝙句ｮ牙・迚茨ｼ・  static void debugAllKeys() {
     if (_preferences == null) {
-      debugPrint('AppPreferences: 初期化されていません');
+      debugPrint('AppPreferences: 蛻晄悄蛹悶＆繧後※縺・∪縺帙ｓ');
       return;
     }
     
     final keys = _preferences!.getKeys();
-    debugPrint('AppPreferences: 保存されているキー数: ${keys.length}');
+    debugPrint('AppPreferences: 菫晏ｭ倥＆繧後※縺・ｋ繧ｭ繝ｼ謨ｰ: ${keys.length}');
     for (final key in keys) {
       bool found = false;
       
-      // ✅ 修正: 各型を個別のtry-catchで安全にチェック
+      // 笨・菫ｮ豁｣: 蜷・梛繧貞句挨縺ｮtry-catch縺ｧ螳牙・縺ｫ繝√ぉ繝・け
       
-      // 1. int型をチェック
+      // 1. int蝙九ｒ繝√ぉ繝・け
       try {
         final intValue = _preferences!.getInt(key);
         if (intValue != null) {
@@ -1040,12 +832,11 @@ class AppPreferences {
           found = true;
         }
       } catch (e) {
-        // int型ではない、次の型を試す
-      }
+        // int蝙九〒縺ｯ縺ｪ縺・∵ｬ｡縺ｮ蝙九ｒ隧ｦ縺・      }
       
       if (found) continue;
       
-      // 2. String型をチェック
+      // 2. String蝙九ｒ繝√ぉ繝・け
       try {
         final stringValue = _preferences!.getString(key);
         if (stringValue != null) {
@@ -1053,12 +844,11 @@ class AppPreferences {
           found = true;
         }
       } catch (e) {
-        // String型ではない、次の型を試す
-      }
+        // String蝙九〒縺ｯ縺ｪ縺・∵ｬ｡縺ｮ蝙九ｒ隧ｦ縺・      }
       
       if (found) continue;
       
-      // 3. bool型をチェック
+      // 3. bool蝙九ｒ繝√ぉ繝・け
       try {
         final boolValue = _preferences!.getBool(key);
         if (boolValue != null) {
@@ -1066,12 +856,11 @@ class AppPreferences {
           found = true;
         }
       } catch (e) {
-        // bool型ではない、次の型を試す
-      }
+        // bool蝙九〒縺ｯ縺ｪ縺・∵ｬ｡縺ｮ蝙九ｒ隧ｦ縺・      }
       
       if (found) continue;
       
-      // 4. double型をチェック
+      // 4. double蝙九ｒ繝√ぉ繝・け
       try {
         final doubleValue = _preferences!.getDouble(key);
         if (doubleValue != null) {
@@ -1079,12 +868,11 @@ class AppPreferences {
           found = true;
         }
       } catch (e) {
-        // double型ではない、次の型を試す
-      }
+        // double蝙九〒縺ｯ縺ｪ縺・∵ｬ｡縺ｮ蝙九ｒ隧ｦ縺・      }
       
       if (found) continue;
       
-      // 5. StringList型をチェック
+      // 5. StringList蝙九ｒ繝√ぉ繝・け
       try {
         final listValue = _preferences!.getStringList(key);
         if (listValue != null) {
@@ -1092,51 +880,39 @@ class AppPreferences {
           found = true;
         }
       } catch (e) {
-        // StringList型ではない
-      }
+        // StringList蝙九〒縺ｯ縺ｪ縺・      }
       
       if (found) continue;
       
-      // どの型でも取得できない場合
-      debugPrint('  $key: (unknown type)');
+      // 縺ｩ縺ｮ蝙九〒繧ょ叙蠕励〒縺阪↑縺・ｴ蜷・      debugPrint('  $key: (unknown type)');
     }
   }
 
-  // アラーム保存機能
+  // 繧｢繝ｩ繝ｼ繝菫晏ｭ俶ｩ溯・
   static Future<bool> saveAlarms(List<Map<String, dynamic>> alarms) async {
     if (_preferences == null) await init();
     try {
-      // アラーム数を保存
-      await _preferences!.setInt('alarm_count', alarms.length);
+      // 繧｢繝ｩ繝ｼ繝謨ｰ繧剃ｿ晏ｭ・      await _preferences!.setInt('alarm_count', alarms.length);
       
-      // 各アラームのデータを個別に保存
-      for (int i = 0; i < alarms.length; i++) {
+      // 蜷・い繝ｩ繝ｼ繝縺ｮ繝・・繧ｿ繧貞句挨縺ｫ菫晏ｭ・      for (int i = 0; i < alarms.length; i++) {
         final alarm = alarms[i];
         await _preferences!.setString('alarm_${i}_name', alarm['name'] ?? '');
         await _preferences!.setString('alarm_${i}_time', alarm['time'] ?? '00:00');
-        await _preferences!.setString('alarm_${i}_repeat', alarm['repeat'] ?? '一度だけ');
+        await _preferences!.setString('alarm_${i}_repeat', alarm['repeat'] ?? '荳蠎ｦ縺縺・);
         await _preferences!.setBool('alarm_${i}_enabled', alarm['enabled'] ?? true);
         await _preferences!.setString('alarm_${i}_alarmType', alarm['alarmType'] ?? 'sound');
         await _preferences!.setInt('alarm_${i}_volume', alarm['volume'] ?? 80);
       }
       
-      // ✅ バックアップも同時に保存
-      final alarmsJson = jsonEncode(alarms);
-      await Future.wait([
-        _preferences!.setString('alarms_backup', alarmsJson),
-        _preferences!.setString('alarms_backup2', alarmsJson),
-        _preferences!.setString('alarms_backup3', alarmsJson),
-      ]);
-      
-      debugPrint('アラームデータを保存しました: ${alarms.length}件（バックアップ含む）');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ繧剃ｿ晏ｭ倥＠縺ｾ縺励◆: ${alarms.length}莉ｶ');
       return true;
     } catch (e) {
-      debugPrint('アラームデータ保存エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
       return false;
     }
   }
 
-  // アラーム読み込み機能
+  // 繧｢繝ｩ繝ｼ繝隱ｭ縺ｿ霎ｼ縺ｿ讖溯・
   static List<Map<String, dynamic>> loadAlarms() {
     if (_preferences == null) return [];
     try {
@@ -1155,7 +931,7 @@ class AppPreferences {
           alarmsList.add({
             'name': name,
             'time': time,
-            'repeat': repeat ?? '一度だけ',
+            'repeat': repeat ?? '荳蠎ｦ縺縺・,
             'enabled': enabled ?? true,
             'alarmType': alarmType ?? 'sound',
             'volume': volume ?? 80,
@@ -1163,38 +939,15 @@ class AppPreferences {
         }
       }
       
-      // ✅ データが見つからない場合、バックアップから復元
-      if (alarmsList.isEmpty) {
-        debugPrint('アラームデータが見つかりません。バックアップから復元を試みます...');
-        final backupKeys = ['alarms_backup', 'alarms_backup2', 'alarms_backup3'];
-        
-        for (final key in backupKeys) {
-          final backupJson = _preferences!.getString(key);
-          if (backupJson != null && backupJson.isNotEmpty) {
-            try {
-              final List<dynamic> decodedList = jsonDecode(backupJson);
-              final restoredAlarms = decodedList
-                  .map((item) => Map<String, dynamic>.from(item))
-                  .toList();
-              debugPrint('✅ バックアップから復元: ${restoredAlarms.length}件 ($key)');
-              return restoredAlarms;
-            } catch (e) {
-              debugPrint('⚠️ バックアップ解析エラー ($key): $e');
-              continue;
-            }
-          }
-        }
-      }
-      
-      debugPrint('アラームデータを読み込みました: ${alarmsList.length}件');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ縺ｾ縺励◆: ${alarmsList.length}莉ｶ');
       return alarmsList;
     } catch (e) {
-      debugPrint('アラームデータ読み込みエラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       return [];
     }
   }
 
-  // アラーム設定保存機能
+  // 繧｢繝ｩ繝ｼ繝險ｭ螳壻ｿ晏ｭ俶ｩ溯・
   static Future<bool> saveAlarmSettings({
     required bool isAlarmEnabled,
     required String notificationType,
@@ -1208,15 +961,15 @@ class AppPreferences {
       await _preferences!.setString('alarm_sound', alarmSound);
       await _preferences!.setInt('notification_volume', notificationVolume);
       
-      debugPrint('アラーム設定を保存しました');
+      debugPrint('繧｢繝ｩ繝ｼ繝險ｭ螳壹ｒ菫晏ｭ倥＠縺ｾ縺励◆');
       return true;
     } catch (e) {
-      debugPrint('アラーム設定保存エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝險ｭ螳壻ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
       return false;
     }
   }
 
-  // アラーム設定読み込み機能
+  // 繧｢繝ｩ繝ｼ繝險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ讖溯・
   static Map<String, dynamic> loadAlarmSettings() {
     if (_preferences == null) {
       return {
@@ -1236,85 +989,79 @@ class AppPreferences {
   }
 
 
-  // フォントサイズ取得機能
+  // 繝輔か繝ｳ繝医し繧､繧ｺ蜿門ｾ玲ｩ溯・
   static Future<double> getFontSize() async {
     if (_preferences == null) await init();
     return _preferences!.getDouble('fontSize') ?? 16.0;
   }
 
-  // フォントサイズ設定機能
+  // 繝輔か繝ｳ繝医し繧､繧ｺ險ｭ螳壽ｩ溯・
   static Future<bool> setFontSize(double fontSize) async {
     if (_preferences == null) await init();
     return await _preferences!.setDouble('fontSize', fontSize);
   }
 
-  // ✅ 改善版：服用メモ保存機能（多重バックアップ付き）
-  static Future<bool> saveMedicationMemo(MedicationMemo memo) async {
+  // 笨・謾ｹ蝟・沿・壽恪逕ｨ繝｡繝｢菫晏ｭ俶ｩ溯・・亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・  static Future<bool> saveMedicationMemo(MedicationMemo memo) async {
     try {
-      // ✅ 1. Hiveボックスが開かれているか確認
-      if (!Hive.isBoxOpen('medication_memos')) {
-        debugPrint('❌ medication_memosボックスが開かれていません');
+      // 笨・1. Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・ｋ縺狗｢ｺ隱・      if (!Hive.isBoxOpen('medication_memos')) {
+        debugPrint('笶・medication_memos繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・∪縺帙ｓ');
         await Hive.openBox<MedicationMemo>('medication_memos');
       }
       
       final box = Hive.box<MedicationMemo>('medication_memos');
       await box.put(memo.id, memo);
       
-      debugPrint('✅ 服用メモ保存成功: ${memo.name}');
+      debugPrint('笨・譛咲畑繝｡繝｢菫晏ｭ俶・蜉・ ${memo.name}');
       
-      // ✅ 2. SharedPreferencesにもバックアップ保存
-      await _backupMemosToSharedPreferences();
+      // 笨・2. SharedPreferences縺ｫ繧ゅヰ繝・け繧｢繝・・菫晏ｭ・      await _backupMemosToSharedPreferences();
       
       return true;
     } catch (e, stackTrace) {
-      debugPrint('❌ 服用メモ保存エラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+      debugPrint('笶・譛咲畑繝｡繝｢菫晏ｭ倥お繝ｩ繝ｼ: $e');
+      debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       return false;
     }
   }
 
-  // ✅ 改善版：服用メモ読み込み機能（フォールバック付き）
-  static Future<List<MedicationMemo>> loadMedicationMemos() async {
+  // 笨・謾ｹ蝟・沿・壽恪逕ｨ繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ讖溯・・医ヵ繧ｩ繝ｼ繝ｫ繝舌ャ繧ｯ莉倥″・・  static Future<List<MedicationMemo>> loadMedicationMemos() async {
     try {
-      debugPrint('🔄 服用メモ読み込み開始...');
+      debugPrint('売 譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ髢句ｧ・..');
       
-      // ✅ 1. Hiveボックスが開かれているか確認
-      if (!Hive.isBoxOpen('medication_memos')) {
-        debugPrint('❌ medication_memosボックスが開かれていません');
-        debugPrint('🔄 バックアップから復元を試みます...');
+      // 笨・1. Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・ｋ縺狗｢ｺ隱・      if (!Hive.isBoxOpen('medication_memos')) {
+        debugPrint('笶・medication_memos繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・∪縺帙ｓ');
+        debugPrint('売 繝舌ャ繧ｯ繧｢繝・・縺九ｉ蠕ｩ蜈・ｒ隧ｦ縺ｿ縺ｾ縺・..');
         return await _loadMemosFromBackup();
       }
       
       final box = Hive.box<MedicationMemo>('medication_memos');
       final memos = box.values.toList();
       
-        debugPrint('✅ 服用メモ読み込み成功: ${memos.length}件');
+        debugPrint('笨・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: ${memos.length}莉ｶ');
       
-      // ✅ 2. データが空でない場合、SharedPreferencesにもバックアップ
+      // 笨・2. 繝・・繧ｿ縺檎ｩｺ縺ｧ縺ｪ縺・ｴ蜷医ヾharedPreferences縺ｫ繧ゅヰ繝・け繧｢繝・・
       if (memos.isNotEmpty) {
         _backupMemosToSharedPreferences();
       } else {
-        debugPrint('⚠️ Hiveボックスは空です。バックアップから復元を試みます...');
+        debugPrint('笞・・Hive繝懊ャ繧ｯ繧ｹ縺ｯ遨ｺ縺ｧ縺吶ゅヰ繝・け繧｢繝・・縺九ｉ蠕ｩ蜈・ｒ隧ｦ縺ｿ縺ｾ縺・..');
         return await _loadMemosFromBackup();
       }
       
       return memos;
     } catch (e, stackTrace) {
-      debugPrint('❌ 服用メモ読み込みエラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+      debugPrint('笶・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
+      debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       
-      // ✅ 3. フォールバック: SharedPreferencesから読み込み
-      debugPrint('🔄 バックアップから復元を試みます...');
+      // 笨・3. 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ: SharedPreferences縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ
+      debugPrint('売 繝舌ャ繧ｯ繧｢繝・・縺九ｉ蠕ｩ蜈・ｒ隧ｦ縺ｿ縺ｾ縺・..');
       return await _loadMemosFromBackup();
     }
   }
   
-  // ✅ SharedPreferencesからのバックアップ読み込み
+  // 笨・SharedPreferences縺九ｉ縺ｮ繝舌ャ繧ｯ繧｢繝・・隱ｭ縺ｿ霎ｼ縺ｿ
   static Future<List<MedicationMemo>> _loadMemosFromBackup() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-        // ✅ 複数のバックアップキーから試行
-        final backupKeys = ['medication_memos_backup', 'medication_memos_backup2', 'medication_memos_backup3'];
+        // 笨・隍・焚縺ｮ繝舌ャ繧ｯ繧｢繝・・繧ｭ繝ｼ縺九ｉ隧ｦ陦・        final backupKeys = ['medication_memos_backup', 'medication_memos_backup2', 'medication_memos_backup3'];
         
         for (final key in backupKeys) {
           final backupJson = prefs.getString(key);
@@ -1324,25 +1071,24 @@ class AppPreferences {
               final memos = memosList
                   .map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>))
                   .toList();
-              debugPrint('✅ バックアップから復元: ${memos.length}件 ($key)');
+              debugPrint('笨・繝舌ャ繧ｯ繧｢繝・・縺九ｉ蠕ｩ蜈・ ${memos.length}莉ｶ ($key)');
       return memos;
     } catch (e) {
-              debugPrint('⚠️ バックアップ解析エラー ($key): $e');
+              debugPrint('笞・・繝舌ャ繧ｯ繧｢繝・・隗｣譫舌お繝ｩ繝ｼ ($key): $e');
               continue;
             }
           }
         }
         
-        debugPrint('⚠️ 全てのバックアップが見つかりません');
+        debugPrint('笞・・蜈ｨ縺ｦ縺ｮ繝舌ャ繧ｯ繧｢繝・・縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
         return <MedicationMemo>[];
     } catch (e) {
-      debugPrint('❌ バックアップ読み込みエラー: $e');
+      debugPrint('笶・繝舌ャ繧ｯ繧｢繝・・隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       return <MedicationMemo>[];
     }
   }
   
-  // ✅ SharedPreferencesへのバックアップ保存（複数キー）
-  static Future<void> _backupMemosToSharedPreferences() async {
+  // 笨・SharedPreferences縺ｸ縺ｮ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ假ｼ郁､・焚繧ｭ繝ｼ・・  static Future<void> _backupMemosToSharedPreferences() async {
     try {
       if (!Hive.isBoxOpen('medication_memos')) return;
       
@@ -1352,118 +1098,96 @@ class AppPreferences {
       
       final prefs = await SharedPreferences.getInstance();
       
-      // ✅ 複数のバックアップキーに保存
-      await Future.wait([
+      // 笨・隍・焚縺ｮ繝舌ャ繧ｯ繧｢繝・・繧ｭ繝ｼ縺ｫ菫晏ｭ・      await Future.wait([
         prefs.setString('medication_memos_backup', memosJson),
         prefs.setString('medication_memos_backup2', memosJson),
         prefs.setString('medication_memos_backup3', memosJson),
       ]);
       
-      debugPrint('✅ SharedPreferencesにバックアップ保存: ${memos.length}件');
+      debugPrint('笨・SharedPreferences縺ｫ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ・ ${memos.length}莉ｶ');
     } catch (e) {
-      debugPrint('⚠️ バックアップ保存エラー: $e');
+      debugPrint('笞・・繝舌ャ繧ｯ繧｢繝・・菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
 
-  // 服用メモ削除機能
+  // 譛咲畑繝｡繝｢蜑企勁讖溯・
   static Future<bool> deleteMedicationMemo(String memoId) async {
     try {
       final box = Hive.box<MedicationMemo>('medication_memos');
       await box.delete(memoId);
-      debugPrint('服用メモを削除しました: $memoId');
-      
-      // ✅ バックアップを更新
-      await _backupMemosToSharedPreferences();
-      
+      debugPrint('譛咲畑繝｡繝｢繧貞炎髯､縺励∪縺励◆: $memoId');
       return true;
     } catch (e) {
-      debugPrint('服用メモ削除エラー: $e');
+      debugPrint('譛咲畑繝｡繝｢蜑企勁繧ｨ繝ｩ繝ｼ: $e');
       return false;
     }
   }
 
-  // 服用メモ更新機能
+  // 譛咲畑繝｡繝｢譖ｴ譁ｰ讖溯・
   static Future<bool> updateMedicationMemo(MedicationMemo memo) async {
     try {
       final box = Hive.box<MedicationMemo>('medication_memos');
       await box.put(memo.id, memo);
-      debugPrint('服用メモを更新しました: ${memo.name}');
-      
-      // ✅ バックアップを更新
-      await _backupMemosToSharedPreferences();
-      
+      debugPrint('譛咲畑繝｡繝｢繧呈峩譁ｰ縺励∪縺励◆: ${memo.name}');
       return true;
     } catch (e) {
-      debugPrint('服用メモ更新エラー: $e');
+      debugPrint('譛咲畑繝｡繝｢譖ｴ譁ｰ繧ｨ繝ｩ繝ｼ: $e');
       return false;
     }
   }
 }
-/// アプリケーションのエントリーポイント
-/// 初期化処理とエラーハンドリングを設定
-void main() async {
-  // ✅ パフォーマンス最適化：最小限の初期化のみ実行
-  WidgetsFlutterBinding.ensureInitialized();
+/// 繧｢繝励Μ繧ｱ繝ｼ繧ｷ繝ｧ繝ｳ縺ｮ繧ｨ繝ｳ繝医Μ繝ｼ繝昴う繝ｳ繝・/// 蛻晄悄蛹門・逅・→繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ繧定ｨｭ螳・void main() async {
+  // 笨・繝代ヵ繧ｩ繝ｼ繝槭Φ繧ｹ譛驕ｩ蛹厄ｼ壽怙蟆城剞縺ｮ蛻晄悄蛹悶・縺ｿ螳溯｡・  WidgetsFlutterBinding.ensureInitialized();
   
-  // ✅ 日付のローカライゼーション初期化（LocaleDataException対策）
-  await LocaleHelper.initializeLocale('ja_JP');
+  // 笨・譌･莉倥・繝ｭ繝ｼ繧ｫ繝ｩ繧､繧ｼ繝ｼ繧ｷ繝ｧ繝ｳ蛻晄悄蛹厄ｼ・ocaleDataException蟇ｾ遲厄ｼ・  await LocaleHelper.initializeLocale('ja_JP');
   
-  // ✅ 修正：Hive初期化を先に完了させる（確実に完了を待つ）
-  try {
-    debugPrint('📦 Hive初期化開始...');
+  // 笨・菫ｮ豁｣・唏ive蛻晄悄蛹悶ｒ蜈医↓螳御ｺ・＆縺帙ｋ・育｢ｺ螳溘↓螳御ｺ・ｒ蠕・▽・・  try {
+    debugPrint('逃 Hive蛻晄悄蛹夜幕蟋・..');
     await Hive.initFlutter();
     
-    // アダプター登録
+    // 繧｢繝繝励ち繝ｼ逋ｻ骭ｲ
     if (!Hive.isAdapterRegistered(2)) {
       Hive.registerAdapter(MedicationMemoAdapter());
-      debugPrint('✅ MedicationMemoAdapter登録完了');
+      debugPrint('笨・MedicationMemoAdapter逋ｻ骭ｲ螳御ｺ・);
     }
     
-    // ボックスを開く
-    await Hive.openBox<MedicationMemo>('medication_memos');
-    debugPrint('✅ medication_memosボックスを開きました');
+    // 繝懊ャ繧ｯ繧ｹ繧帝幕縺・    await Hive.openBox<MedicationMemo>('medication_memos');
+    debugPrint('笨・medication_memos繝懊ャ繧ｯ繧ｹ繧帝幕縺阪∪縺励◆');
     
-    // ボックス確認
-    if (Hive.isBoxOpen('medication_memos')) {
+    // 繝懊ャ繧ｯ繧ｹ遒ｺ隱・    if (Hive.isBoxOpen('medication_memos')) {
       final box = Hive.box<MedicationMemo>('medication_memos');
-      debugPrint('✅ ボックス確認完了: ${box.length}件のデータ');
+      debugPrint('笨・繝懊ャ繧ｯ繧ｹ遒ｺ隱榊ｮ御ｺ・ ${box.length}莉ｶ縺ｮ繝・・繧ｿ');
     }
   } catch (e, stackTrace) {
-    debugPrint('❌ Hive初期化エラー: $e');
-    debugPrint('スタックトレース: $stackTrace');
+    debugPrint('笶・Hive蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
   }
   
-  // ✅ 修正：SharedPreferences初期化も先に完了させる
+  // 笨・菫ｮ豁｣・售haredPreferences蛻晄悄蛹悶ｂ蜈医↓螳御ｺ・＆縺帙ｋ
   try {
-    debugPrint('💾 SharedPreferences初期化開始...');
+    debugPrint('沈 SharedPreferences蛻晄悄蛹夜幕蟋・..');
     await AppPreferences.init();
-    debugPrint('✅ SharedPreferences初期化完了');
+    debugPrint('笨・SharedPreferences蛻晄悄蛹門ｮ御ｺ・);
   } catch (e) {
-    debugPrint('❌ SharedPreferences初期化エラー: $e');
+    debugPrint('笶・SharedPreferences蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
   
-  // アプリを起動
-  runApp(const MedicationAlarmApp());
+  // 繧｢繝励Μ繧定ｵｷ蜍・  runApp(const MedicationAlarmApp());
   
-  // 重い初期化処理は非同期で実行
-  Future.microtask(() async {
+  // 驥阪＞蛻晄悄蛹門・逅・・髱槫酔譛溘〒螳溯｡・  Future.microtask(() async {
     await _initializeAppAsync();
   });
 }
 
-/// 非同期初期化処理（パフォーマンス最適化）
-Future<void> _initializeAppAsync() async {
+/// 髱槫酔譛溷・譛溷喧蜃ｦ逅・ｼ医ヱ繝輔か繝ｼ繝槭Φ繧ｹ譛驕ｩ蛹厄ｼ・Future<void> _initializeAppAsync() async {
   try {
-    // Firebase初期化（必須でない場合は遅延実行）
-    await Firebase.initializeApp(
+    // Firebase蛻晄悄蛹厄ｼ亥ｿ・医〒縺ｪ縺・ｴ蜷医・驕・ｻｶ螳溯｡鯉ｼ・    await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
     
-    // Crashlytics初期化
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+    // Crashlytics蛻晄悄蛹・    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
     
-    // エラーハンドリング設定
-    FlutterError.onError = (errorDetails) {
+    // 繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ險ｭ螳・    FlutterError.onError = (errorDetails) {
       FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
     };
     
@@ -1472,56 +1196,45 @@ Future<void> _initializeAppAsync() async {
       return true;
     };
     
-    // その他の重い初期化処理
-    await _initializeHeavyServices();
+    // 縺昴・莉悶・驥阪＞蛻晄悄蛹門・逅・    await _initializeHeavyServices();
     
   } catch (e) {
-    // 初期化失敗時はログのみ出力（アプリは継続動作）
-    if (kDebugMode) {
-      debugPrint('非同期初期化エラー: $e');
+    // 蛻晄悄蛹門､ｱ謨玲凾縺ｯ繝ｭ繧ｰ縺ｮ縺ｿ蜃ｺ蜉幢ｼ医い繝励Μ縺ｯ邯咏ｶ壼虚菴懶ｼ・    if (kDebugMode) {
+      debugPrint('髱槫酔譛溷・譛溷喧繧ｨ繝ｩ繝ｼ: $e');
     }
   }
 }
 
-/// 重いサービスの初期化
-Future<void> _initializeHeavyServices() async {
+/// 驥阪＞繧ｵ繝ｼ繝薙せ縺ｮ蛻晄悄蛹・Future<void> _initializeHeavyServices() async {
   try {
-    // Hive初期化
-    await Hive.initFlutter();
+    // Hive蛻晄悄蛹・    await Hive.initFlutter();
     
-    // タイムゾーン初期化
-    tz.initializeTimeZones();
+    // 繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹・    tz.initializeTimeZones();
     
-    // その他の重い初期化処理
-    await _initializeDataServices();
+    // 縺昴・莉悶・驥阪＞蛻晄悄蛹門・逅・    await _initializeDataServices();
     
   } catch (e) {
-    debugPrint('重いサービス初期化エラー: $e');
+    debugPrint('驥阪＞繧ｵ繝ｼ繝薙せ蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
 }
 
-/// データサービスの初期化
-Future<void> _initializeDataServices() async {
+/// 繝・・繧ｿ繧ｵ繝ｼ繝薙せ縺ｮ蛻晄悄蛹・Future<void> _initializeDataServices() async {
   try {
-    // SharedPreferences初期化
-    await SharedPreferences.getInstance();
+    // SharedPreferences蛻晄悄蛹・    await SharedPreferences.getInstance();
     
-    // その他のデータサービス初期化
-    // ...
+    // 縺昴・莉悶・繝・・繧ｿ繧ｵ繝ｼ繝薙せ蛻晄悄蛹・    // ...
     
   } catch (e) {
-    debugPrint('データサービス初期化エラー: $e');
+    debugPrint('繝・・繧ｿ繧ｵ繝ｼ繝薙せ蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
 }
 
 
-// アプリ初期化処理を分離
+// 繧｢繝励Μ蛻晄悄蛹門・逅・ｒ蛻・屬
 Future<void> _initializeApp() async {
 
-  // 全機種対応の設定
-  try {
-    // システムUIの設定
-    SystemChrome.setSystemUIOverlayStyle(
+  // 蜈ｨ讖溽ｨｮ蟇ｾ蠢懊・險ｭ螳・  try {
+    // 繧ｷ繧ｹ繝・ΒUI縺ｮ險ｭ螳・    SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
@@ -1530,8 +1243,7 @@ Future<void> _initializeApp() async {
       ),
     );
     
-    // 画面向きの設定
-    SystemChrome.setPreferredOrientations([
+    // 逕ｻ髱｢蜷代″縺ｮ險ｭ螳・    SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
@@ -1540,111 +1252,96 @@ Future<void> _initializeApp() async {
   }
  
   try {
-    // Firebase初期化（エラーが発生してもアプリは起動）
-    await Firebase.initializeApp();
+    // Firebase蛻晄悄蛹厄ｼ医お繝ｩ繝ｼ縺檎匱逕溘＠縺ｦ繧ゅい繝励Μ縺ｯ襍ｷ蜍包ｼ・    await Firebase.initializeApp();
     
-    // Crashlytics初期化
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-    debugPrint('Firebase Crashlytics初期化完了');
+    // Crashlytics蛻晄悄蛹・    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+    debugPrint('Firebase Crashlytics蛻晄悄蛹門ｮ御ｺ・);
   } catch (e) {
-    // Firebase初期化に失敗してもアプリは起動する
-    debugPrint('Firebase初期化エラー: $e');
+    // Firebase蛻晄悄蛹悶↓螟ｱ謨励＠縺ｦ繧ゅい繝励Μ縺ｯ襍ｷ蜍輔☆繧・    debugPrint('Firebase蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
  
   try {
-    // タイムゾーン初期化
-    tz.initializeTimeZones();
+    // 繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹・    tz.initializeTimeZones();
   } catch (e) {
   }
  
   try {
-    // 日本語ロケール初期化
-    await initializeDateFormatting('ja_JP', null);
+    // 譌･譛ｬ隱槭Ο繧ｱ繝ｼ繝ｫ蛻晄悄蛹・    await initializeDateFormatting('ja_JP', null);
   } catch (e) {
-    // エラーが発生しても続行
-  }
+    // 繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺ｦ繧らｶ夊｡・  }
 
   try {
-    // Hive初期化（Flutter 3.29.3対応・Zone安全）
-    await runZonedGuarded(() async {
+    // Hive蛻晄悄蛹厄ｼ・lutter 3.29.3蟇ｾ蠢懊・Zone螳牙・・・    await runZonedGuarded(() async {
     await Hive.initFlutter();
     
-    // 服用メモ用アダプターを登録
+    // 譛咲畑繝｡繝｢逕ｨ繧｢繝繝励ち繝ｼ繧堤匳骭ｲ
     Hive.registerAdapter(MedicationMemoAdapter());
     
-    // 服用メモ用ボックスを開く
-    await Hive.openBox<MedicationMemo>('medication_memos');
+    // 譛咲畑繝｡繝｢逕ｨ繝懊ャ繧ｯ繧ｹ繧帝幕縺・    await Hive.openBox<MedicationMemo>('medication_memos');
     
-      debugPrint('Hive初期化完了（Flutter 3.29.3対応・Zone安全）');
+      debugPrint('Hive蛻晄悄蛹門ｮ御ｺ・ｼ・lutter 3.29.3蟇ｾ蠢懊・Zone螳牙・・・);
     }, (error, stack) {
-      debugPrint('Hive初期化Zoneエラー: $error');
+      debugPrint('Hive蛻晄悄蛹忙one繧ｨ繝ｩ繝ｼ: $error');
     });
   } catch (e) {
-    debugPrint('Hive初期化エラー: $e');
+    debugPrint('Hive蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
 
-  // 🔴 最重要：SharedPreferencesを事前初期化（Zone安全）
-  try {
+  // 閥 譛驥崎ｦ・ｼ售haredPreferences繧剃ｺ句燕蛻晄悄蛹厄ｼ・one螳牙・・・  try {
     await runZonedGuarded(() async {
     await AppPreferences.init();
-      debugPrint('SharedPreferences初期化完了（完全版・Zone安全）');
+      debugPrint('SharedPreferences蛻晄悄蛹門ｮ御ｺ・ｼ亥ｮ悟・迚医・Zone螳牙・・・);
     }, (error, stack) {
-      debugPrint('SharedPreferences初期化Zoneエラー: $error');
+      debugPrint('SharedPreferences蛻晄悄蛹忙one繧ｨ繝ｩ繝ｼ: $error');
     });
   } catch (e) {
-    debugPrint('SharedPreferences初期化エラー: $e');
+    debugPrint('SharedPreferences蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
   }
  
-  // アプリ内課金の初期化（Zone安全）
-  try {
+  // 繧｢繝励Μ蜀・ｪｲ驥代・蛻晄悄蛹厄ｼ・one螳牙・・・  try {
     await runZonedGuarded(() async {
-      // アプリ内課金が利用可能かチェック
+      // 繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ蜿ｯ閭ｽ縺九メ繧ｧ繝・け
       final bool isAvailable = await InAppPurchase.instance.isAvailable();
       if (isAvailable) {
-        // 購入履歴を復元
-        await InAppPurchaseService.restorePurchases();
+        // 雉ｼ蜈･螻･豁ｴ繧貞ｾｩ蜈・        await InAppPurchaseService.restorePurchases();
         if (kDebugMode) {
-          debugPrint('アプリ内課金初期化完了（Zone安全）');
+          debugPrint('繧｢繝励Μ蜀・ｪｲ驥大・譛溷喧螳御ｺ・ｼ・one螳牙・・・);
         }
       } else {
         if (kDebugMode) {
-          debugPrint('アプリ内課金が利用できません（Google Play Services未対応）');
+          debugPrint('繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ縺ｧ縺阪∪縺帙ｓ・・oogle Play Services譛ｪ蟇ｾ蠢懶ｼ・);
         }
       }
     }, (error, stack) {
-      debugPrint('アプリ内課金初期化Zoneエラー: $error');
+      debugPrint('繧｢繝励Μ蜀・ｪｲ驥大・譛溷喧Zone繧ｨ繝ｩ繝ｼ: $error');
     });
   } catch (e) {
-    debugPrint('アプリ内課金初期化エラー: $e');
-      debugPrint('エラーレポート: $e');
+    debugPrint('繧｢繝励Μ蜀・ｪｲ驥大・譛溷喧繧ｨ繝ｩ繝ｼ: $e');
+      debugPrint('繧ｨ繝ｩ繝ｼ繝ｬ繝昴・繝・ $e');
   }
 }
-/// 通知タイプの列挙型
-/// 音、バイブレーション、サイレント、緊急の4種類
-enum NotificationType {
-  sound('音', Icons.volume_up),
-  vibration('バイブレーション', Icons.vibration),
-  silent('サイレント', Icons.notifications_off),
-  urgent('緊急', Icons.priority_high);
+/// 騾夂衍繧ｿ繧､繝励・蛻玲嫌蝙・/// 髻ｳ縲√ヰ繧､繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ縲√し繧､繝ｬ繝ｳ繝医∫ｷ頑･縺ｮ4遞ｮ鬘・enum NotificationType {
+  sound('髻ｳ', Icons.volume_up),
+  vibration('繝舌う繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ', Icons.vibration),
+  silent('繧ｵ繧､繝ｬ繝ｳ繝・, Icons.notifications_off),
+  urgent('邱頑･', Icons.priority_high);
   const NotificationType(this.displayName, this.icon);
   final String displayName;
   final IconData icon;
 }
 
-/// 音声タイプの列挙型
-/// デフォルト、優しい音、緊急音、クラシックの4種類
-enum SoundType {
-  defaultSound('デフォルト', 'default_sound'),
-  gentle('優しい音', 'gentle_sound'),
-  urgent('緊急音', 'urgent_sound'),
-  classic('クラシック', 'classic_sound');
+/// 髻ｳ螢ｰ繧ｿ繧､繝励・蛻玲嫌蝙・/// 繝・ヵ繧ｩ繝ｫ繝医∝━縺励＞髻ｳ縲∫ｷ頑･髻ｳ縲√け繝ｩ繧ｷ繝・け縺ｮ4遞ｮ鬘・enum SoundType {
+  defaultSound('繝・ヵ繧ｩ繝ｫ繝・, 'default_sound'),
+  gentle('蜆ｪ縺励＞髻ｳ', 'gentle_sound'),
+  urgent('邱頑･髻ｳ', 'urgent_sound'),
+  classic('繧ｯ繝ｩ繧ｷ繝・け', 'classic_sound');
   
   const SoundType(this.displayName, this.soundFile);
   final String displayName;
   final String soundFile;
 }
 
-/// 服用メモ用のHiveアダプター
+/// 譛咲畑繝｡繝｢逕ｨ縺ｮHive繧｢繝繝励ち繝ｼ
 class MedicationMemoAdapter extends TypeAdapter<MedicationMemo> {
   @override
   final int typeId = 2;
@@ -1683,9 +1380,8 @@ class MedicationMemoAdapter extends TypeAdapter<MedicationMemo> {
   }
 }
 
-/// 薬のデータモデル
-/// 薬の名前、用量、頻度、メモを管理
-class MedicineData {
+/// 阮ｬ縺ｮ繝・・繧ｿ繝｢繝・Ν
+/// 阮ｬ縺ｮ蜷榊燕縲∫畑驥上・ｻ蠎ｦ縲√Γ繝｢繧堤ｮ｡逅・class MedicineData {
   final String name;
   final String dosage;
   final String frequency;
@@ -1699,7 +1395,7 @@ class MedicineData {
     this.dosage = '',
     this.frequency = '',
     this.notes = '',
-    this.category = '処方薬',
+    this.category = '蜃ｦ譁ｹ阮ｬ',
     this.startDate,
     this.endDate,
     Color? color,
@@ -1719,27 +1415,24 @@ class MedicineData {
         dosage: json['dosage'] ?? '',
         frequency: json['frequency'] ?? '',
         notes: json['notes'] ?? '',
-        category: json['category'] ?? '処方薬',
+        category: json['category'] ?? '蜃ｦ譁ｹ阮ｬ',
         startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
         endDate: json['endDate'] != null ? DateTime.parse(json['endDate']) : null,
         color: Color(json['color'] ?? Colors.blue.value),
       );
 }
-/// 服用メモのデータモデル
-/// 薬やサプリメントの情報を管理
-// Hive最適化版のMedicationMemo（大量データ対応）
-class MedicationMemo {
+/// 譛咲畑繝｡繝｢縺ｮ繝・・繧ｿ繝｢繝・Ν
+/// 阮ｬ繧・し繝励Μ繝｡繝ｳ繝医・諠・ｱ繧堤ｮ｡逅・// Hive譛驕ｩ蛹也沿縺ｮMedicationMemo・亥､ｧ驥上ョ繝ｼ繧ｿ蟇ｾ蠢懶ｼ・class MedicationMemo {
   final String id;
   final String name;
-  final String type; // '薬品' or 'サプリメント'
+  final String type; // '阮ｬ蜩・ or '繧ｵ繝励Μ繝｡繝ｳ繝・
   final String dosage;
   final String notes;
   final DateTime createdAt;
   final DateTime? lastTaken;
   final Color color;
-  final List<int> selectedWeekdays; // 0=日曜日, 1=月曜日, ..., 6=土曜日
-  final int dosageFrequency; // 服用回数（1〜6回）
-  
+  final List<int> selectedWeekdays; // 0=譌･譖懈律, 1=譛域屆譌･, ..., 6=蝨滓屆譌･
+  final int dosageFrequency; // 譛咲畑蝗樊焚・・縲・蝗橸ｼ・  
   MedicationMemo({
     required this.id,
     required this.name,
@@ -1753,8 +1446,7 @@ class MedicationMemo {
     this.dosageFrequency = 1,
   }) : color = color ?? Colors.blue;
   
-  // JSON変換（後方互換性）
-  Map<String, dynamic> toJson() => {
+  // JSON螟画鋤・亥ｾ梧婿莠呈鋤諤ｧ・・  Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'type': type,
@@ -1770,7 +1462,7 @@ class MedicationMemo {
   factory MedicationMemo.fromJson(Map<String, dynamic> json) => MedicationMemo(
         id: json['id'] ?? '',
         name: json['name'] ?? '',
-        type: json['type'] ?? '薬品',
+        type: json['type'] ?? '阮ｬ蜩・,
         dosage: json['dosage'] ?? '',
         notes: json['notes'] ?? '',
         createdAt: DateTime.parse(json['createdAt']),
@@ -1781,90 +1473,15 @@ class MedicationMemo {
       );
 }
 
-class MedicineDataAdapter extends TypeAdapter<MedicineData> {
-  @override
-  final int typeId = 1;
-  @override
-  MedicineData read(BinaryReader reader) {
-    return MedicineData(
-      name: reader.readString(),
-      dosage: reader.readString(),
-      frequency: reader.readString(),
-      notes: reader.readString(),
-      category: reader.readString(),
-      startDate: reader.read() as DateTime?,
-      endDate: reader.read() as DateTime?,
-      color: Color(reader.readInt()),
-    );
-  }
-  @override
-  void write(BinaryWriter writer, MedicineData obj) {
-    writer.writeString(obj.name);
-    writer.writeString(obj.dosage);
-    writer.writeString(obj.frequency);
-    writer.writeString(obj.notes);
-    writer.writeString(obj.category);
-    writer.write(obj.startDate);
-    writer.write(obj.endDate);
-    writer.writeInt(obj.color.value);
-  }
-}
-class MedicationInfo {
-  final bool checked;
-  final String medicine;
-  final DateTime? actualTime;
-  final String notes;
-  final String sideEffects;
-  MedicationInfo({
-    required this.checked,
-    required this.medicine,
-    this.actualTime,
-    this.notes = '',
-    this.sideEffects = '',
-  });
-  Map<String, dynamic> toJson() => {
-        'checked': checked,
-        'medicine': medicine,
-        'actualTime': actualTime?.toIso8601String(),
-        'notes': notes,
-        'sideEffects': sideEffects,
-      };
-  factory MedicationInfo.fromJson(Map<String, dynamic> json) => MedicationInfo(
-        checked: json['checked'] ?? false,
-        medicine: json['medicine'] ?? '',
-        actualTime: json['actualTime'] != null ? DateTime.parse(json['actualTime']) : null,
-        notes: json['notes'] ?? '',
-        sideEffects: json['sideEffects'] ?? '',
-      );
-}
-class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
-  @override
-  final int typeId = 0;
-  @override
-  MedicationInfo read(BinaryReader reader) {
-    return MedicationInfo(
-      checked: reader.readBool(),
-      medicine: reader.readString(),
-      actualTime: reader.read() as DateTime?,
-      notes: reader.readString(),
-      sideEffects: reader.readString(),
-    );
-  }
-  @override
-  void write(BinaryWriter writer, MedicationInfo obj) {
-    writer.writeBool(obj.checked);
-    writer.writeString(obj.medicine);
-    writer.write(obj.actualTime);
-    writer.writeString(obj.notes);
-    writer.writeString(obj.sideEffects);
-  }
-}
+// MedicineDataAdapter は models/adapters/medicine_data_adapter.dart に移動済み（削除済み）
+// MedicationInfo は models/medication_info.dart に移動済み（削除済み）
+// MedicationInfoAdapter は models/adapters/medication_info_adapter.dart に移動済み（削除済み）
 class MedicationAlarmApp extends StatelessWidget {
   const MedicationAlarmApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'サプリ＆おくすりスケジュール管理帳',
+      title: '繧ｵ繝励Μ・・♀縺上☆繧翫せ繧ｱ繧ｸ繝･繝ｼ繝ｫ邂｡逅・ｸｳ',
       locale: const Locale('ja', 'JP'),
       theme: ThemeData(
         useMaterial3: true,
@@ -1916,15 +1533,14 @@ class MedicationAlarmApp extends StatelessWidget {
     }
   }
 }
-/// 薬のデータ管理サービス
-/// Hiveデータベースを使用して薬の情報を管理
-class MedicationService {
+/// 阮ｬ縺ｮ繝・・繧ｿ邂｡逅・し繝ｼ繝薙せ
+/// Hive繝・・繧ｿ繝吶・繧ｹ繧剃ｽｿ逕ｨ縺励※阮ｬ縺ｮ諠・ｱ繧堤ｮ｡逅・class MedicationService {
   static Box<Map>? _medicationBox;
   static Box<MedicineData>? _medicineDatabase;
   static Box<Map>? _adherenceStats;
   static Box<dynamic>? _settingsBox;
   static bool _isInitialized = false;
-  static const String _csvFileName = '服薬記録.csv';
+  static const String _csvFileName = '譛崎脈險倬鹸.csv';
   static Future<void> initialize() async {
     if (_isInitialized) return;
     try {
@@ -2043,18 +1659,18 @@ class MedicationService {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/$_csvFileName');
-      final now = DateFormat('yyyy年MM月dd日 HH:mm:ss', 'ja_JP').format(DateTime.now());
-      final record = '$dateStr,$timeSlot,${medicine.isEmpty ? "未入力" : medicine},$status,$now\n';
+      final now = DateFormat('yyyy蟷ｴMM譛・d譌･ HH:mm:ss', 'ja_JP').format(DateTime.now());
+      final record = '$dateStr,$timeSlot,${medicine.isEmpty ? "譛ｪ蜈･蜉・ : medicine},$status,$now\n';
       if (!await file.exists()) {
-        await file.writeAsString('日付,時間帯,薬の種類,服薬状況,記録時間\n');
+        await file.writeAsString('譌･莉・譎る俣蟶ｯ,阮ｬ縺ｮ遞ｮ鬘・譛崎脈迥ｶ豕・險倬鹸譎る俣\n');
       }
       await file.writeAsString(record, mode: FileMode.append);
     } catch (e) {
     }
   }
 }
-/// 通知管理サービス
-/// ローカル通知の設定と管理を行う
+/// 騾夂衍邂｡逅・し繝ｼ繝薙せ
+/// 繝ｭ繝ｼ繧ｫ繝ｫ騾夂衍縺ｮ險ｭ螳壹→邂｡逅・ｒ陦後≧
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static bool _isInitialized = false;
@@ -2090,8 +1706,8 @@ class NotificationService {
         final channels = [
           const AndroidNotificationChannel(
             'medication_sound',
-            '服用アラーム',
-            description: '服薬時間の通知',
+            '譛咲畑繧｢繝ｩ繝ｼ繝',
+            description: '譛崎脈譎る俣縺ｮ騾夂衍',
             importance: Importance.max,
             playSound: true,
             enableVibration: true,
@@ -2115,12 +1731,12 @@ class NotificationService {
   ) async {
     if (!_isInitialized) return;
     try {
-      // ✅ 修正：既存の通知をすべてキャンセル
+      // 笨・菫ｮ豁｣・壽里蟄倥・騾夂衍繧偵☆縺ｹ縺ｦ繧ｭ繝｣繝ｳ繧ｻ繝ｫ
       await _plugin.cancelAll();
       int notificationId = 1;
       final now = DateTime.now();
       
-      // ✅ 修正：medicationDataの各エントリに対して通知をスケジュール
+      // 笨・菫ｮ豁｣・嗄edicationData縺ｮ蜷・お繝ｳ繝医Μ縺ｫ蟇ｾ縺励※騾夂衍繧偵せ繧ｱ繧ｸ繝･繝ｼ繝ｫ
       for (final entry in medicationData.entries) {
         final dateStr = entry.key;
         final date = DateFormat('yyyy-MM-dd').parse(dateStr);
@@ -2134,15 +1750,14 @@ class NotificationService {
               time.hour, time.minute
             );
             
-            // ✅ 修正：過去の日時はスケジュールしない
-            if (scheduledDate.isAfter(DateTime.now())) {
+            // 笨・菫ｮ豁｣・夐℃蜴ｻ縺ｮ譌･譎ゅ・繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺励↑縺・            if (scheduledDate.isAfter(DateTime.now())) {
               final medicines = entry.value[timeSlot]?.medicine ?? '';
-          final displayMedicines = medicines.isNotEmpty ? medicines : '薬';
+          final displayMedicines = medicines.isNotEmpty ? medicines : '阮ｬ';
           
           const androidDetails = AndroidNotificationDetails(
                 'medication_sound',
-            '服用アラーム',
-            channelDescription: '服薬時間の通知',
+            '譛咲畑繧｢繝ｩ繝ｼ繝',
+            channelDescription: '譛崎脈譎る俣縺ｮ騾夂衍',
                 importance: Importance.max,
                 priority: Priority.high,
                 playSound: true,
@@ -2153,7 +1768,7 @@ class NotificationService {
             actions: [
               AndroidNotificationAction(
                 'stop_alarm',
-                '停止',
+                '蛛懈ｭ｢',
                 cancelNotification: true,
               ),
             ],
@@ -2171,11 +1786,11 @@ class NotificationService {
             iOS: iosDetails,
           );
           
-              // ✅ 修正：zonedScheduleを使用して正確なスケジュール
+              // 笨・菫ｮ豁｣・營onedSchedule繧剃ｽｿ逕ｨ縺励※豁｣遒ｺ縺ｪ繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ
             await _plugin.zonedSchedule(
               notificationId++,
-              '服用アラーム',
-              '$displayMedicines を服用しましょう',
+              '譛咲畑繧｢繝ｩ繝ｼ繝',
+              '$displayMedicines 繧呈恪逕ｨ縺励∪縺励ｇ縺・,
                 tz.TZDateTime.from(scheduledDate, tz.local),
               notificationDetails,
               androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -2190,22 +1805,20 @@ class NotificationService {
     }
   }
 }
-/// アプリ内課金サービス
-/// 商品ID hirochaso980 を使用した課金機能を提供
-class InAppPurchaseService {
+/// 繧｢繝励Μ蜀・ｪｲ驥代し繝ｼ繝薙せ
+/// 蝠・刀ID hirochaso980 繧剃ｽｿ逕ｨ縺励◆隱ｲ驥第ｩ溯・繧呈署萓・class InAppPurchaseService {
   static const String _productId = 'hirochaso980';
   static const String _purchaseStatusKey = 'purchase_status';
   
   static final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   static StreamSubscription<List<PurchaseDetails>>? _subscription;
   
-  // 商品情報を取得
-  static Future<ProductDetails?> getProductDetails() async {
+  // 蝠・刀諠・ｱ繧貞叙蠕・  static Future<ProductDetails?> getProductDetails() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // 繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ蜿ｯ閭ｽ縺九メ繧ｧ繝・け
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
-        debugPrint('アプリ内課金が利用できません');
+        debugPrint('繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ縺ｧ縺阪∪縺帙ｓ');
         return null;
       }
       
@@ -2214,8 +1827,8 @@ class InAppPurchaseService {
       
       if (response.notFoundIDs.isNotEmpty) {
         if (kDebugMode) {
-          debugPrint('商品IDが見つかりません: ${response.notFoundIDs}');
-          debugPrint('Google Play Consoleで商品ID「$_productId」が登録されているか確認してください');
+          debugPrint('蝠・刀ID縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ: ${response.notFoundIDs}');
+          debugPrint('Google Play Console縺ｧ蝠・刀ID縲・_productId縲阪′逋ｻ骭ｲ縺輔ｌ縺ｦ縺・ｋ縺狗｢ｺ隱阪＠縺ｦ縺上□縺輔＞');
         }
         return null;
       }
@@ -2223,63 +1836,61 @@ class InAppPurchaseService {
       if (response.productDetails.isNotEmpty) {
         final product = response.productDetails.first;
         if (kDebugMode) {
-          debugPrint('商品情報取得成功: ${product.title} - ${product.price}');
+          debugPrint('蝠・刀諠・ｱ蜿門ｾ玲・蜉・ ${product.title} - ${product.price}');
         }
         return product;
       }
       
       if (kDebugMode) {
-        debugPrint('商品情報が空です');
+        debugPrint('蝠・刀諠・ｱ縺檎ｩｺ縺ｧ縺・);
       }
       return null;
     } catch (e) {
-      debugPrint('商品情報取得エラー: $e');
+      debugPrint('蝠・刀諠・ｱ蜿門ｾ励お繝ｩ繝ｼ: $e');
       return null;
     }
   }
   
-  // 購入を開始
-  static Future<bool> purchaseProduct() async {
+  // 雉ｼ蜈･繧帝幕蟋・  static Future<bool> purchaseProduct() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // 繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ蜿ｯ閭ｽ縺九メ繧ｧ繝・け
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
-        debugPrint('アプリ内課金が利用できません');
+        debugPrint('繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ縺ｧ縺阪∪縺帙ｓ');
         return false;
       }
       
       final ProductDetails? product = await getProductDetails();
       if (product == null) {
         if (kDebugMode) {
-          debugPrint('商品情報が取得できません');
-          debugPrint('Google Play Consoleで商品ID「$_productId」が「有効」状態になっているか確認してください');
+          debugPrint('蝠・刀諠・ｱ縺悟叙蠕励〒縺阪∪縺帙ｓ');
+          debugPrint('Google Play Console縺ｧ蝠・刀ID縲・_productId縲阪′縲梧怏蜉ｹ縲咲憾諷九↓縺ｪ縺｣縺ｦ縺・ｋ縺狗｢ｺ隱阪＠縺ｦ縺上□縺輔＞');
         }
         return false;
       }
       
       if (kDebugMode) {
-        debugPrint('購入を開始します: ${product.title} - ${product.price}');
+        debugPrint('雉ｼ蜈･繧帝幕蟋九＠縺ｾ縺・ ${product.title} - ${product.price}');
       }
       final PurchaseParam purchaseParam = PurchaseParam(productDetails: product);
       final bool success = await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
       
       if (kDebugMode) {
         if (success) {
-          debugPrint('購入リクエストを送信しました');
+          debugPrint('雉ｼ蜈･繝ｪ繧ｯ繧ｨ繧ｹ繝医ｒ騾∽ｿ｡縺励∪縺励◆');
         } else {
-          debugPrint('購入リクエストの送信に失敗しました');
+          debugPrint('雉ｼ蜈･繝ｪ繧ｯ繧ｨ繧ｹ繝医・騾∽ｿ｡縺ｫ螟ｱ謨励＠縺ｾ縺励◆');
         }
       }
       
       return success;
     } catch (e) {
-      debugPrint('購入エラー: $e');
+      debugPrint('雉ｼ蜈･繧ｨ繝ｩ繝ｼ: $e');
       return false;
     }
   }
   
-  // 購入結果を監視
-  static void startPurchaseListener(Function(bool success, String? error) onPurchaseResult) {
+  // 雉ｼ蜈･邨先棡繧堤屮隕・  static void startPurchaseListener(Function(bool success, String? error) onPurchaseResult) {
     _subscription?.cancel();
     _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) {
       for (var purchaseDetails in purchaseDetailsList) {
@@ -2288,98 +1899,89 @@ class InAppPurchaseService {
     });
   }
   
-  // 購入更新を処理
-  static void _handlePurchaseUpdate(PurchaseDetails purchaseDetails, Function(bool success, String? error) onPurchaseResult) {
+  // 雉ｼ蜈･譖ｴ譁ｰ繧貞・逅・  static void _handlePurchaseUpdate(PurchaseDetails purchaseDetails, Function(bool success, String? error) onPurchaseResult) {
     if (purchaseDetails.status == PurchaseStatus.purchased) {
       if (kDebugMode) {
-        debugPrint('購入成功: ${purchaseDetails.productID}');
+        debugPrint('雉ｼ蜈･謌仙粥: ${purchaseDetails.productID}');
       }
-      // 購入済み状態に設定
-      TrialService.setPurchaseStatus(TrialService.purchasedStatus);
-      onPurchaseResult(true, '商品購入後、期限が無期限になりました！');
+      // 雉ｼ蜈･貂医∩迥ｶ諷九↓險ｭ螳・      TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+      onPurchaseResult(true, '蝠・刀雉ｼ蜈･蠕後∵悄髯舌′辟｡譛滄剞縺ｫ縺ｪ繧翫∪縺励◆・・);
     } else if (purchaseDetails.status == PurchaseStatus.error) {
       if (kDebugMode) {
-        debugPrint('購入エラー: ${purchaseDetails.error}');
+        debugPrint('雉ｼ蜈･繧ｨ繝ｩ繝ｼ: ${purchaseDetails.error}');
       }
-      onPurchaseResult(false, purchaseDetails.error?.message ?? '購入に失敗しました');
+      onPurchaseResult(false, purchaseDetails.error?.message ?? '雉ｼ蜈･縺ｫ螟ｱ謨励＠縺ｾ縺励◆');
     } else if (purchaseDetails.status == PurchaseStatus.canceled) {
       if (kDebugMode) {
-        debugPrint('購入キャンセル');
+        debugPrint('雉ｼ蜈･繧ｭ繝｣繝ｳ繧ｻ繝ｫ');
       }
-      onPurchaseResult(false, '購入がキャンセルされました');
+      onPurchaseResult(false, '雉ｼ蜈･縺後く繝｣繝ｳ繧ｻ繝ｫ縺輔ｌ縺ｾ縺励◆');
     }
     
-    // 購入完了を通知
+    // 雉ｼ蜈･螳御ｺ・ｒ騾夂衍
     if (purchaseDetails.pendingCompletePurchase) {
       _inAppPurchase.completePurchase(purchaseDetails);
     }
   }
   
-  // 購入状態を確認
-  static Future<bool> isPurchased() async {
+  // 雉ｼ蜈･迥ｶ諷九ｒ遒ｺ隱・  static Future<bool> isPurchased() async {
     try {
       final status = await TrialService.getPurchaseStatus();
       return status == TrialService.purchasedStatus;
     } catch (e) {
-      debugPrint('購入状態確認エラー: $e');
+      debugPrint('雉ｼ蜈･迥ｶ諷狗｢ｺ隱阪お繝ｩ繝ｼ: $e');
       return false;
     }
   }
   
-  // 購入履歴を復元
-  static Future<void> restorePurchases() async {
+  // 雉ｼ蜈･螻･豁ｴ繧貞ｾｩ蜈・  static Future<void> restorePurchases() async {
     try {
-      // アプリ内課金が利用可能かチェック
+      // 繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ蜿ｯ閭ｽ縺九メ繧ｧ繝・け
       final bool isAvailable = await _inAppPurchase.isAvailable();
       if (!isAvailable) {
-        debugPrint('アプリ内課金が利用できません');
+        debugPrint('繧｢繝励Μ蜀・ｪｲ驥代′蛻ｩ逕ｨ縺ｧ縺阪∪縺帙ｓ');
         return;
       }
       
       if (kDebugMode) {
-        debugPrint('購入履歴の復元を開始しました');
+        debugPrint('雉ｼ蜈･螻･豁ｴ縺ｮ蠕ｩ蜈・ｒ髢句ｧ九＠縺ｾ縺励◆');
       }
       await _inAppPurchase.restorePurchases();
       
-      // 購入履歴復元の結果を監視
-      _subscription?.cancel();
+      // 雉ｼ蜈･螻･豁ｴ蠕ｩ蜈・・邨先棡繧堤屮隕・      _subscription?.cancel();
       _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) {
         for (var purchaseDetails in purchaseDetailsList) {
           if (purchaseDetails.status == PurchaseStatus.purchased) {
             if (kDebugMode) {
-              debugPrint('購入履歴復元成功: ${purchaseDetails.productID}');
+              debugPrint('雉ｼ蜈･螻･豁ｴ蠕ｩ蜈・・蜉・ ${purchaseDetails.productID}');
             }
-            // 購入済み状態に設定
-            TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+            // 雉ｼ蜈･貂医∩迥ｶ諷九↓險ｭ螳・            TrialService.setPurchaseStatus(TrialService.purchasedStatus);
           }
         }
       });
     } catch (e) {
-      debugPrint('購入履歴復元エラー: $e');
+      debugPrint('雉ｼ蜈･螻･豁ｴ蠕ｩ蜈・お繝ｩ繝ｼ: $e');
     }
   }
   
-  // リソースを解放
+  // 繝ｪ繧ｽ繝ｼ繧ｹ繧定ｧ｣謾ｾ
   static void dispose() {
     _subscription?.cancel();
     _subscription = null;
   }
 }
 
-/// トライアル期間管理サービス
-/// 7日間のトライアル期間の管理と制限機能を提供
-class TrialService {
+/// 繝医Λ繧､繧｢繝ｫ譛滄俣邂｡逅・し繝ｼ繝薙せ
+/// 7譌･髢薙・繝医Λ繧､繧｢繝ｫ譛滄俣縺ｮ邂｡逅・→蛻ｶ髯先ｩ溯・繧呈署萓・class TrialService {
   static const String _trialStartTimeKey = 'trial_start_time';
   static const String _purchaseLinkKey = 'purchase_link';
-  static const String _purchaseStatusKey = 'purchase_status'; // 購入状態を保存
-  static const int _trialDurationMinutes = 7 * 24 * 60; // トライアル期間: 7日
+  static const String _purchaseStatusKey = 'purchase_status'; // 雉ｼ蜈･迥ｶ諷九ｒ菫晏ｭ・  static const int _trialDurationMinutes = 7 * 24 * 60; // 繝医Λ繧､繧｢繝ｫ譛滄俣: 7譌･
   
-  // 購入状態の列挙型
-  static const String trialStatus = 'trial'; // トライアル中
-  static const String expiredStatus = 'expired'; // 期限切れ
-  static const String purchasedStatus = 'purchased'; // 購入済み
+  // 雉ｼ蜈･迥ｶ諷九・蛻玲嫌蝙・  static const String trialStatus = 'trial'; // 繝医Λ繧､繧｢繝ｫ荳ｭ
+  static const String expiredStatus = 'expired'; // 譛滄剞蛻・ｌ
+  static const String purchasedStatus = 'purchased'; // 雉ｼ蜈･貂医∩
   
-  // トライアル開始時刻を記録
+  // 繝医Λ繧､繧｢繝ｫ髢句ｧ区凾蛻ｻ繧定ｨ倬鹸
   static Future<void> initializeTrial() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2391,39 +1993,36 @@ class TrialService {
     }
   }
   
-  // 現在の購入状態を取得
-  static Future<String> getPurchaseStatus() async {
+  // 迴ｾ蝨ｨ縺ｮ雉ｼ蜈･迥ｶ諷九ｒ蜿門ｾ・  static Future<String> getPurchaseStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final status = prefs.getString(_purchaseStatusKey);
       
       if (status == purchasedStatus) {
-        return purchasedStatus; // 購入済み
+        return purchasedStatus; // 雉ｼ蜈･貂医∩
       }
       
-      // トライアル期間をチェック
+      // 繝医Λ繧､繧｢繝ｫ譛滄俣繧偵メ繧ｧ繝・け
       final startTime = prefs.getInt(_trialStartTimeKey);
       if (startTime == null) {
         await initializeTrial();
-        return trialStatus; // トライアル開始
-      }
+        return trialStatus; // 繝医Λ繧､繧｢繝ｫ髢句ｧ・      }
       
       final start = DateTime.fromMillisecondsSinceEpoch(startTime);
       final now = DateTime.now();
       final difference = now.difference(start);
       
       if (difference.inMinutes >= _trialDurationMinutes) {
-        return expiredStatus; // 期限切れ
+        return expiredStatus; // 譛滄剞蛻・ｌ
       }
       
-      return trialStatus; // トライアル中
+      return trialStatus; // 繝医Λ繧､繧｢繝ｫ荳ｭ
     } catch (e) {
       return trialStatus;
     }
   }
   
-  // 購入状態を設定
-  static Future<void> setPurchaseStatus(String status) async {
+  // 雉ｼ蜈･迥ｶ諷九ｒ險ｭ螳・  static Future<void> setPurchaseStatus(String status) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_purchaseStatusKey, status);
@@ -2431,14 +2030,12 @@ class TrialService {
     }
   }
   
-  // トライアル期間が終了しているかチェック（後方互換性のため残す）
-  static Future<bool> isTrialExpired() async {
+  // 繝医Λ繧､繧｢繝ｫ譛滄俣縺檎ｵゆｺ・＠縺ｦ縺・ｋ縺九メ繧ｧ繝・け・亥ｾ梧婿莠呈鋤諤ｧ縺ｮ縺溘ａ谿九☆・・  static Future<bool> isTrialExpired() async {
     final status = await getPurchaseStatus();
     return status == expiredStatus;
   }
   
-  // 残り時間を取得（分単位）
-  static Future<int> getRemainingMinutes() async {
+  // 谿九ｊ譎る俣繧貞叙蠕暦ｼ亥・蜊倅ｽ搾ｼ・  static Future<int> getRemainingMinutes() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final startTime = prefs.getInt(_trialStartTimeKey);
@@ -2456,8 +2053,7 @@ class TrialService {
   }
   
   
-  // 購入リンクを設定
-  static Future<void> setPurchaseLink(String link) async {
+  // 雉ｼ蜈･繝ｪ繝ｳ繧ｯ繧定ｨｭ螳・  static Future<void> setPurchaseLink(String link) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_purchaseLinkKey, link);
@@ -2465,8 +2061,7 @@ class TrialService {
     }
   }
   
-  // 購入リンクを取得
-  static Future<String?> getPurchaseLink() async {
+  // 雉ｼ蜈･繝ｪ繝ｳ繧ｯ繧貞叙蠕・  static Future<String?> getPurchaseLink() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_purchaseLinkKey);
@@ -2475,8 +2070,7 @@ class TrialService {
     }
   }
   
-  // トライアル期間をリセット（開発・テスト用）
-  static Future<void> resetTrial() async {
+  // 繝医Λ繧､繧｢繝ｫ譛滄俣繧偵Μ繧ｻ繝・ヨ・磯幕逋ｺ繝ｻ繝・せ繝育畑・・  static Future<void> resetTrial() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_trialStartTimeKey);
@@ -2484,8 +2078,7 @@ class TrialService {
     }
   }
   
-  // トライアル・購入状態の詳細情報を取得
-  static Future<Map<String, dynamic>> getTrialStatus() async {
+  // 繝医Λ繧､繧｢繝ｫ繝ｻ雉ｼ蜈･迥ｶ諷九・隧ｳ邏ｰ諠・ｱ繧貞叙蠕・  static Future<Map<String, dynamic>> getTrialStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final startTime = prefs.getInt(_trialStartTimeKey);
@@ -2522,15 +2115,14 @@ class TrialService {
     }
   }
   
-  // トライアル状態をコンソールに出力（デバッグ用）
-  static Future<void> printTrialStatus() async {
+  // 繝医Λ繧､繧｢繝ｫ迥ｶ諷九ｒ繧ｳ繝ｳ繧ｽ繝ｼ繝ｫ縺ｫ蜃ｺ蜉幢ｼ医ョ繝舌ャ繧ｰ逕ｨ・・  static Future<void> printTrialStatus() async {
     await getTrialStatus();
   }
   
 }
 
-/// トライアル制限警告ダイアログ
-/// トライアル期間終了時に機能制限を通知するダイアログ
+/// 繝医Λ繧､繧｢繝ｫ蛻ｶ髯占ｭｦ蜻翫ム繧､繧｢繝ｭ繧ｰ
+/// 繝医Λ繧､繧｢繝ｫ譛滄俣邨ゆｺ・凾縺ｫ讖溯・蛻ｶ髯舌ｒ騾夂衍縺吶ｋ繝繧､繧｢繝ｭ繧ｰ
 class TrialLimitDialog extends StatelessWidget {
   final String featureName;
   
@@ -2543,14 +2135,14 @@ class TrialLimitDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 鍵アイコンとメッセージ
+          // 骰ｵ繧｢繧､繧ｳ繝ｳ縺ｨ繝｡繝・そ繝ｼ繧ｸ
           Row(
             children: [
               Icon(Icons.lock, color: Colors.orange, size: 24),
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'トライアル期間が終了しました。\n現在、以下の機能が制限されています：',
+                  '繝医Λ繧､繧｢繝ｫ譛滄俣縺檎ｵゆｺ・＠縺ｾ縺励◆縲・n迴ｾ蝨ｨ縲∽ｻ･荳九・讖溯・縺悟宛髯舌＆繧後※縺・∪縺呻ｼ・,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -2560,10 +2152,10 @@ class TrialLimitDialog extends StatelessWidget {
             ],
           ),
           SizedBox(height: 16),
-          _buildRestrictionItem('すべてのメモ（服用メモ含む）', '追加・入力ができません'),
-          _buildRestrictionItem('アラーム機能', '使用できません'),
-          _buildRestrictionItem('統計機能', '閲覧できません'),
-          _buildRestrictionItem('カレンダー', '当日以外の閲覧ができません'),
+          _buildRestrictionItem('縺吶∋縺ｦ縺ｮ繝｡繝｢・域恪逕ｨ繝｡繝｢蜷ｫ繧・・, '霑ｽ蜉繝ｻ蜈･蜉帙′縺ｧ縺阪∪縺帙ｓ'),
+          _buildRestrictionItem('繧｢繝ｩ繝ｼ繝讖溯・', '菴ｿ逕ｨ縺ｧ縺阪∪縺帙ｓ'),
+          _buildRestrictionItem('邨ｱ險域ｩ溯・', '髢ｲ隕ｧ縺ｧ縺阪∪縺帙ｓ'),
+          _buildRestrictionItem('繧ｫ繝ｬ繝ｳ繝繝ｼ', '蠖捺律莉･螟悶・髢ｲ隕ｧ縺後〒縺阪∪縺帙ｓ'),
           SizedBox(height: 20),
           Container(
             padding: EdgeInsets.all(12),
@@ -2573,7 +2165,7 @@ class TrialLimitDialog extends StatelessWidget {
               border: Border.all(color: Colors.blue.shade200),
             ),
             child: Text(
-              '機能を継続してご利用いただくには、\n購入が必要です。',
+              '讖溯・繧堤ｶ咏ｶ壹＠縺ｦ縺泌茜逕ｨ縺・◆縺縺上↓縺ｯ縲―n雉ｼ蜈･縺悟ｿ・ｦ√〒縺吶・,
               style: TextStyle(
                 fontWeight: FontWeight.w500,
                 color: Colors.blue.shade800,
@@ -2585,19 +2177,18 @@ class TrialLimitDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('閉じる'),
+          child: Text('髢峨§繧・),
         ),
         ElevatedButton(
           onPressed: () async {
             await TrialService.getPurchaseLink();
-            // リンクを開く処理（後で実装）
-            Navigator.of(context).pop();
+            // 繝ｪ繝ｳ繧ｯ繧帝幕縺丞・逅・ｼ亥ｾ後〒螳溯｣・ｼ・            Navigator.of(context).pop();
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
           ),
-          child: Text('👉 機能解除はこちら'),
+          child: Text('痩 讖溯・隗｣髯､縺ｯ縺薙■繧・),
         ),
       ],
     );
@@ -2632,9 +2223,8 @@ class TrialLimitDialog extends StatelessWidget {
   }
 }
 
-/// トライアル期間メッセージ表示画面
-/// チュートリアル完了後に5秒間表示される
-class TrialMessageScreen extends StatefulWidget {
+/// 繝医Λ繧､繧｢繝ｫ譛滄俣繝｡繝・そ繝ｼ繧ｸ陦ｨ遉ｺ逕ｻ髱｢
+/// 繝√Η繝ｼ繝医Μ繧｢繝ｫ螳御ｺ・ｾ後↓5遘帝俣陦ｨ遉ｺ縺輔ｌ繧・class TrialMessageScreen extends StatefulWidget {
   final VoidCallback onComplete;
   const TrialMessageScreen({super.key, required this.onComplete});
   @override
@@ -2645,7 +2235,7 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
   @override
   void initState() {
     super.initState();
-    // 5秒後に自動的にメインページに遷移
+    // 5遘貞ｾ後↓閾ｪ蜍慕噪縺ｫ繝｡繧､繝ｳ繝壹・繧ｸ縺ｫ驕ｷ遘ｻ
     Timer(const Duration(seconds: 5), () {
       widget.onComplete();
     });
@@ -2673,7 +2263,7 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // アイコン
+              // 繧｢繧､繧ｳ繝ｳ
               Container(
                 width: 80,
                 height: 80,
@@ -2688,9 +2278,9 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              // メッセージ
+              // 繝｡繝・そ繝ｼ繧ｸ
               const Text(
-                '本日から7日間、すべての機能を無料でご利用いただけます。',
+                '譛ｬ譌･縺九ｉ7譌･髢薙√☆縺ｹ縺ｦ縺ｮ讖溯・繧堤┌譁吶〒縺泌茜逕ｨ縺・◆縺縺代∪縺吶・,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -2701,7 +2291,7 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                '※無料期間終了後は一部機能に制限がかかります。',
+                '窶ｻ辟｡譁呎悄髢鍋ｵゆｺ・ｾ後・荳驛ｨ讖溯・縺ｫ蛻ｶ髯舌′縺九°繧翫∪縺吶・,
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -2710,7 +2300,7 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              // ローディングインジケーター
+              // 繝ｭ繝ｼ繝・ぅ繝ｳ繧ｰ繧､繝ｳ繧ｸ繧ｱ繝ｼ繧ｿ繝ｼ
               const SizedBox(
                 width: 24,
                 height: 24,
@@ -2727,9 +2317,8 @@ class _TrialMessageScreenState extends State<TrialMessageScreen> {
   }
 }
 
-/// チュートリアルラッパー
-/// 初回起動時にチュートリアルを表示するかどうかを管理
-class TutorialWrapper extends StatefulWidget {
+/// 繝√Η繝ｼ繝医Μ繧｢繝ｫ繝ｩ繝・ヱ繝ｼ
+/// 蛻晏屓襍ｷ蜍墓凾縺ｫ繝√Η繝ｼ繝医Μ繧｢繝ｫ繧定｡ｨ遉ｺ縺吶ｋ縺九←縺・°繧堤ｮ｡逅・class TutorialWrapper extends StatefulWidget {
   const TutorialWrapper({super.key});
   @override
   State<TutorialWrapper> createState() => _TutorialWrapperState();
@@ -2747,7 +2336,7 @@ class _TutorialWrapperState extends State<TutorialWrapper> {
   Future<void> _initializeApp() async {
     try {
       await _checkTutorialStatus();
-      // トライアル期間を初期化
+      // 繝医Λ繧､繧｢繝ｫ譛滄俣繧貞・譛溷喧
       await TrialService.initializeTrial();
       await Future.wait([
         MedicationService.initialize().catchError((e) {
@@ -2795,8 +2384,8 @@ class _TutorialWrapperState extends State<TutorialWrapper> {
     }
   }
 }
-/// チュートリアルページ
-/// アプリの使い方を説明するページビュー
+/// 繝√Η繝ｼ繝医Μ繧｢繝ｫ繝壹・繧ｸ
+/// 繧｢繝励Μ縺ｮ菴ｿ縺・婿繧定ｪｬ譏弱☆繧九・繝ｼ繧ｸ繝薙Η繝ｼ
 class TutorialPage extends StatefulWidget {
   final VoidCallback onComplete;
   const TutorialPage({super.key, required this.onComplete});
@@ -2809,35 +2398,35 @@ class _TutorialPageState extends State<TutorialPage> {
   final List<Map<String, dynamic>> _tutorialPages = [
     {
       'icon': Icons.calendar_month,
-      'title': 'カレンダー機能',
-      'description': '日付をタップして服用記録を管理\n服用メモから服用スケジュール(毎日、曜日)を選択',
+      'title': '繧ｫ繝ｬ繝ｳ繝繝ｼ讖溯・',
+      'description': '譌･莉倥ｒ繧ｿ繝・・縺励※譛咲畑險倬鹸繧堤ｮ｡逅・n譛咲畑繝｡繝｢縺九ｉ譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ(豈取律縲∵屆譌･)繧帝∈謚・,
       'color': Colors.blue,
-      'image': '📅',
-      'features': ['日付選択', '服用記録', 'スケジュール管理'],
+      'image': '套',
+      'features': ['譌･莉倬∈謚・, '譛咲畑險倬鹸', '繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ邂｡逅・],
     },
     {
       'icon': Icons.medication,
-      'title': '服用メモ',
-      'description': '薬やサプリメントを登録\n曜日設定で服用スケジュール(毎日、曜日)を管理',
+      'title': '譛咲畑繝｡繝｢',
+      'description': '阮ｬ繧・し繝励Μ繝｡繝ｳ繝医ｒ逋ｻ骭ｲ\n譖懈律險ｭ螳壹〒譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ(豈取律縲∵屆譌･)繧堤ｮ｡逅・,
       'color': Colors.green,
-      'image': '💊',
-      'features': ['薬品登録', 'サプリメント登録', '曜日設定'],
+      'image': '抽',
+      'features': ['阮ｬ蜩∫匳骭ｲ', '繧ｵ繝励Μ繝｡繝ｳ繝育匳骭ｲ', '譖懈律險ｭ螳・],
     },
     {
       'icon': Icons.alarm,
-      'title': 'アラーム',
-      'description': '服用時間を忘れずにリマインド\n複数の通知時間を設定可能',
+      'title': '繧｢繝ｩ繝ｼ繝',
+      'description': '譛咲畑譎る俣繧貞ｿ倥ｌ縺壹↓繝ｪ繝槭う繝ｳ繝噂n隍・焚縺ｮ騾夂衍譎る俣繧定ｨｭ螳壼庄閭ｽ',
       'color': Colors.orange,
-      'image': '⏰',
-      'features': ['通知設定', 'リマインド', '複数時間'],
+      'image': '竢ｰ',
+      'features': ['騾夂衍險ｭ螳・, '繝ｪ繝槭う繝ｳ繝・, '隍・焚譎る俣'],
     },
     {
       'icon': Icons.analytics,
-      'title': '統計',
-      'description': '服用遵守率をグラフで可視化\n健康管理をデータでサポート',
+      'title': '邨ｱ險・,
+      'description': '譛咲畑驕ｵ螳育紫繧偵げ繝ｩ繝輔〒蜿ｯ隕門喧\n蛛･蠎ｷ邂｡逅・ｒ繝・・繧ｿ縺ｧ繧ｵ繝昴・繝・,
       'color': Colors.purple,
-      'image': '📊',
-      'features': ['遵守率グラフ', 'データ分析', '健康管理'],
+      'image': '投',
+      'features': ['驕ｵ螳育紫繧ｰ繝ｩ繝・, '繝・・繧ｿ蛻・梵', '蛛･蠎ｷ邂｡逅・],
     },
   ];
   @override
@@ -2858,8 +2447,7 @@ class _TutorialPageState extends State<TutorialPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // 大きな図（絵文字）
-                        Container(
+                        // 螟ｧ縺阪↑蝗ｳ・育ｵｵ譁・ｭ暦ｼ・                        Container(
                           width: 120,
                           height: 120,
                           decoration: BoxDecoration(
@@ -2878,7 +2466,7 @@ class _TutorialPageState extends State<TutorialPage> {
                           ),
                         ),
                         const SizedBox(height: 32),
-                        // タイトル
+                        // 繧ｿ繧､繝医Ν
                         Text(
                           page['title'],
                           style: TextStyle(
@@ -2889,7 +2477,7 @@ class _TutorialPageState extends State<TutorialPage> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
-                        // 説明文
+                        // 隱ｬ譏取枚
                         Text(
                           page['description'],
                           style: const TextStyle(
@@ -2899,7 +2487,7 @@ class _TutorialPageState extends State<TutorialPage> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
-                        // 機能一覧
+                        // 讖溯・荳隕ｧ
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -2912,7 +2500,7 @@ class _TutorialPageState extends State<TutorialPage> {
                           child: Column(
                             children: [
                               Text(
-                                '主な機能',
+                                '荳ｻ縺ｪ讖溯・',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -2950,8 +2538,7 @@ class _TutorialPageState extends State<TutorialPage> {
                 },
               ),
             ),
-            // ボタンエリア（固定位置）
-            Container(
+            // 繝懊ち繝ｳ繧ｨ繝ｪ繧｢・亥崋螳壻ｽ咲ｽｮ・・            Container(
               padding: const EdgeInsets.all(20.0),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -2965,7 +2552,7 @@ class _TutorialPageState extends State<TutorialPage> {
               ),
               child: Column(
                 children: [
-                  // ページインジケーター
+                  // 繝壹・繧ｸ繧､繝ｳ繧ｸ繧ｱ繝ｼ繧ｿ繝ｼ
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(
@@ -2984,18 +2571,17 @@ class _TutorialPageState extends State<TutorialPage> {
                       ),
                     ),
                   const SizedBox(height: 20),
-                  // ボタンエリア
+                  // 繝懊ち繝ｳ繧ｨ繝ｪ繧｢
                   Row(
                     children: [
-                      // スキップボタン（左側）
-                      Expanded(
+                      // 繧ｹ繧ｭ繝・・繝懊ち繝ｳ・亥ｷｦ蛛ｴ・・                      Expanded(
                         child: TextButton(
                           onPressed: widget.onComplete,
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
                           child: const Text(
-                            'スキップ',
+                            '繧ｹ繧ｭ繝・・',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey,
@@ -3005,8 +2591,7 @@ class _TutorialPageState extends State<TutorialPage> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      // 次へ/始めるボタン（右側）
-                      Expanded(
+                      // 谺｡縺ｸ/蟋九ａ繧九・繧ｿ繝ｳ・亥承蛛ｴ・・                      Expanded(
                         flex: 2,
                         child: ElevatedButton(
                           onPressed: () {
@@ -3028,7 +2613,7 @@ class _TutorialPageState extends State<TutorialPage> {
                             ),
                             ),
                     child: Text(
-                      _currentPage == _tutorialPages.length - 1 ? '始める' : '次へ',
+                      _currentPage == _tutorialPages.length - 1 ? '蟋九ａ繧・ : '谺｡縺ｸ',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -3047,8 +2632,8 @@ class _TutorialPageState extends State<TutorialPage> {
     );
   }
 }
-/// メインのホームページ
-/// カレンダー、服用メモ、統計、設定のタブを持つメインページ
+/// 繝｡繧､繝ｳ縺ｮ繝帙・繝繝壹・繧ｸ
+/// 繧ｫ繝ｬ繝ｳ繝繝ｼ縲∵恪逕ｨ繝｡繝｢縲∫ｵｱ險医∬ｨｭ螳壹・繧ｿ繝悶ｒ謖√▽繝｡繧､繝ｳ繝壹・繧ｸ
 class MedicationHomePage extends StatefulWidget {
   const MedicationHomePage({super.key});
   @override
@@ -3057,117 +2642,106 @@ class MedicationHomePage extends StatefulWidget {
 class _MedicationHomePageState extends State<MedicationHomePage> with TickerProviderStateMixin {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  Set<DateTime> _selectedDates = <DateTime>{};
-  // ✅ カレンダーメモ用の変数
-  Map<String, String> _calendarMemos = {};
-  // 動的に追加される薬のリスト
-  List<Map<String, dynamic>> _addedMedications = [];
+  final Set<DateTime> _selectedDates = <DateTime>{};
+  // 蜍慕噪縺ｫ霑ｽ蜉縺輔ｌ繧玖脈縺ｮ繝ｪ繧ｹ繝・  List<Map<String, dynamic>> _addedMedications = [];
   late TabController _tabController;
   bool _notificationError = false;
   bool _isInitialized = false;
   bool _isAlarmPlaying = false;
-  bool _isLoading = false; // ✅ 修正：ローディング状態を追加
+  bool _isLoading = false; // 笨・菫ｮ豁｣・壹Ο繝ｼ繝・ぅ繝ｳ繧ｰ迥ｶ諷九ｒ霑ｽ蜉
   Map<String, Map<String, MedicationInfo>> _medicationData = {};
   Map<String, double> _adherenceRates = {};
   List<MedicineData> _medicines = [];
   List<MedicationMemo> _medicationMemos = [];
   Timer? _debounce;
-  Timer? _saveDebounceTimer; // ✅ 修正：保存用デバウンスタイマーを追加
-  StreamSubscription<List<PurchaseDetails>>? _subscription; // ✅ 修正：StreamSubscriptionを追加
+  Timer? _saveDebounceTimer; // 笨・菫ｮ豁｣・壻ｿ晏ｭ倡畑繝・ヰ繧ｦ繝ｳ繧ｹ繧ｿ繧､繝槭・繧定ｿｽ蜉
+  StreamSubscription<List<PurchaseDetails>>? _subscription; // 笨・菫ｮ豁｣・售treamSubscription繧定ｿｽ蜉
   
-  // ✅ 修正：変更フラグ変数を追加
+  // 笨・菫ｮ豁｣・壼､画峩繝輔Λ繧ｰ螟画焚繧定ｿｽ蜉
   bool _medicationMemoStatusChanged = false;
 
   bool _weekdayMedicationStatusChanged = false;
   bool _addedMedicationsChanged = false;
  
   
-  // ✅ アラームタブのキー（強制再構築用）
-  Key _alarmTabKey = UniqueKey();
+  // 笨・繧｢繝ｩ繝ｼ繝繧ｿ繝悶・繧ｭ繝ｼ・亥ｼｷ蛻ｶ蜀肴ｧ狗ｯ臥畑・・  Key _alarmTabKey = UniqueKey();
   
-  // ✅ 統計タブ用のScrollController
+  // 笨・邨ｱ險医ち繝也畑縺ｮScrollController
   final ScrollController _statsScrollController = ScrollController();
   
-  // ✅ 任意の日数の遵守率機能用の変数
+  // 笨・莉ｻ諢上・譌･謨ｰ縺ｮ驕ｵ螳育紫讖溯・逕ｨ縺ｮ螟画焚
   double? _customAdherenceResult;
   int? _customDaysResult;
   final TextEditingController _customDaysController = TextEditingController();
   final FocusNode _customDaysFocusNode = FocusNode();
   
   
-  // ✅ 手動復元機能のための変数
+  // 笨・謇句虚蠕ｩ蜈・ｩ溯・縺ｮ縺溘ａ縺ｮ螟画焚
   DateTime? _lastOperationTime;
   
-  // ✅ 自動バックアップ機能のための変数
+  // 笨・閾ｪ蜍輔ヰ繝・け繧｢繝・・讖溯・縺ｮ縺溘ａ縺ｮ螟画焚
   Timer? _autoBackupTimer;
   bool _autoBackupEnabled = true;
  
-  // ✅ 修正：データキーの統一とバージョン管理
-  static const String _medicationMemosKey = 'medication_memos_v2';
+  // 笨・菫ｮ豁｣・壹ョ繝ｼ繧ｿ繧ｭ繝ｼ縺ｮ邨ｱ荳縺ｨ繝舌・繧ｸ繝ｧ繝ｳ邂｡逅・  static const String _medicationMemosKey = 'medication_memos_v2';
   static const String _medicationMemoStatusKey = 'medication_memo_status_v2';
   static const String _weekdayMedicationStatusKey = 'weekday_medication_status_v2';
   static const String _addedMedicationsKey = 'added_medications_v2';
   
-  // バックアップキー
+  // 繝舌ャ繧ｯ繧｢繝・・繧ｭ繝ｼ
   static const String _backupSuffix = '_backup';
 
   
-  // メモ用の状態変数
+  // 繝｡繝｢逕ｨ縺ｮ迥ｶ諷句､画焚
   final TextEditingController _memoController = TextEditingController();
   final FocusNode _memoFocusNode = FocusNode();
   bool _isMemoFocused = false;
-  bool _memoSnapshotSaved = false; // メモ変更時のスナップショット保存フラグ
-  // ✅ 部分更新用のValueNotifier
+  bool _memoSnapshotSaved = false; // 繝｡繝｢螟画峩譎ゅ・繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥ヵ繝ｩ繧ｰ
+  // 笨・驛ｨ蛻・峩譁ｰ逕ｨ縺ｮValueNotifier
   final ValueNotifier<String> _memoTextNotifier = ValueNotifier<String>('');
   final ValueNotifier<Map<String, Color>> _dayColorsNotifier = ValueNotifier<Map<String, Color>>({});
   
   
-  // 曜日設定された薬の服用状況を管理
-  Map<String, Map<String, bool>> _weekdayMedicationStatus = {};
+  // 譖懈律險ｭ螳壹＆繧後◆阮ｬ縺ｮ譛咲畑迥ｶ豕√ｒ邂｡逅・  Map<String, Map<String, bool>> _weekdayMedicationStatus = {};
   
-  // 服用回数別の服用状況を管理（日付 -> メモID -> 回数インデックス -> 服用済み）
-  Map<String, Map<String, Map<int, bool>>> _weekdayMedicationDoseStatus = {};
+  // 譛咲畑蝗樊焚蛻･縺ｮ譛咲畑迥ｶ豕√ｒ邂｡逅・ｼ域律莉・-> 繝｡繝｢ID -> 蝗樊焚繧､繝ｳ繝・ャ繧ｯ繧ｹ -> 譛咲畑貂医∩・・  Map<String, Map<String, Map<int, bool>>> _weekdayMedicationDoseStatus = {};
   
-  // 服用メモのチェック状況を管理
-  Map<String, bool> _medicationMemoStatus = {};
+  // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ豕√ｒ邂｡逅・  Map<String, bool> _medicationMemoStatus = {};
   
-  // メモ選択状態を管理
-  bool _isMemoSelected = false;
+  // 繝｡繝｢驕ｸ謚樒憾諷九ｒ邂｡逅・  bool _isMemoSelected = false;
   MedicationMemo? _selectedMemo;
   
   
-  // アラームデータを管理
-  List<Map<String, dynamic>> _alarmList = [];
+  // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ繧堤ｮ｡逅・  List<Map<String, dynamic>> _alarmList = [];
   Map<String, dynamic> _alarmSettings = {};
   
-  // オーバースクロール検出用の状態変数
+  // 繧ｪ繝ｼ繝舌・繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ讀懷・逕ｨ縺ｮ迥ｶ諷句､画焚
   bool _isAtTop = false;
   double _lastScrollPosition = 0.0;
   
-  // カレンダータブのスクロール制御用
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ繧ｿ繝悶・繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蛻ｶ蠕｡逕ｨ
   final ScrollController _calendarScrollController = ScrollController();
   
-  // 服用履歴メモ用のScrollController
+  // 譛咲畑螻･豁ｴ繝｡繝｢逕ｨ縺ｮScrollController
   final ScrollController _medicationHistoryScrollController = ScrollController();
   
-  // 服用記録ページめくり用のコントローラー
+  // 譛咲畑險倬鹸繝壹・繧ｸ繧√￥繧顔畑縺ｮ繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ
   late PageController _medicationPageController;
   int _currentMedicationPage = 0;
   
-  // カレンダー下の位置を取得するためのGlobalKey
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ荳九・菴咲ｽｮ繧貞叙蠕励☆繧九◆繧√・GlobalKey
   final GlobalKey _calendarBottomKey = GlobalKey();
   
-  // スクロールバトンタッチ用の変数
+  // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ繝舌ヨ繝ｳ繧ｿ繝・メ逕ｨ縺ｮ螟画焚
   bool _isScrollBatonPassActive = false;
   
-  // ログ制御用の変数
+  // 繝ｭ繧ｰ蛻ｶ蠕｡逕ｨ縺ｮ螟画焚
   DateTime _lastAlarmCheckLog = DateTime.now();
   
-  // カレンダー色変更用の変数
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ螟画峩逕ｨ縺ｮ螟画焚
   Map<String, Color> _dayColors = {};
-  static const Duration _logInterval = Duration(seconds: 30); // 30秒間隔でログ出力
-  
-  // ログ出力を制限するヘルパーメソッド
+  static const Duration _logInterval = Duration(seconds: 30); // 30遘帝俣髫斐〒繝ｭ繧ｰ蜃ｺ蜉・  
+  // 繝ｭ繧ｰ蜃ｺ蜉帙ｒ蛻ｶ髯舌☆繧九・繝ｫ繝代・繝｡繧ｽ繝・ラ
   bool _shouldLog() {
     final now = DateTime.now();
     if (now.difference(_lastAlarmCheckLog) >= _logInterval) {
@@ -3185,41 +2759,36 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _tabController.addListener(() {
       setState(() {});
     });
-    // ✅ SnapshotServiceにスナップショット保存関数を登録
+    // 笨・SnapshotService縺ｫ繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倬未謨ｰ繧堤匳骭ｲ
     SnapshotService.register((label) => _saveSnapshotBeforeChange(label));
     
    
     
-    // PageControllerを初期化
+    // PageController繧貞・譛溷喧
     _medicationPageController = PageController(viewportFraction: 1.0);
-    // ValueNotifier初期値
+    // ValueNotifier蛻晄悄蛟､
     _memoTextNotifier.value = '';
     _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
     
-    // ページネーション初期化
-    _initializeScrollListener();
+    // 繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ蛻晄悄蛹・    _initializeScrollListener();
       
-    // ✅ 修正：データ読み込みを確実に実行
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      debugPrint('🔄 データ読み込み開始...');
+    // 笨・菫ｮ豁｣・壹ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧堤｢ｺ螳溘↓螳溯｡・    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      debugPrint('売 繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ髢句ｧ・..');
       
       try {
-        // 1. 全データを読み込み
+        // 1. 蜈ｨ繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ
         await _loadSavedData();
-        debugPrint('✅ 全データ読み込み完了');
+        debugPrint('笨・蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
         
-        // 2. 服用メモを明示的に読み込み（確実に実行）
-        await _loadMedicationMemosWithRetry();
-        debugPrint('✅ 服用メモ読み込み完了: ${_medicationMemos.length}件');
+        // 2. 譛咲畑繝｡繝｢繧呈・遉ｺ逧・↓隱ｭ縺ｿ霎ｼ縺ｿ・育｢ｺ螳溘↓螳溯｡鯉ｼ・        await _loadMedicationMemosWithRetry();
+        debugPrint('笨・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_medicationMemos.length}莉ｶ');
         
-        // 3. ページネーション初期化
-        _currentPage = 0;
+        // 3. 繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ蛻晄悄蛹・        _currentPage = 0;
         _displayedMemos.clear();
         _loadMoreMemos();
-        debugPrint('✅ ページネーション初期化完了');
+        debugPrint('笨・繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ蛻晄悄蛹門ｮ御ｺ・);
         
-        // 4. 基本設定
-        if (_selectedDay == null) {
+        // 4. 蝓ｺ譛ｬ險ｭ螳・        if (_selectedDay == null) {
           _selectedDay = DateTime.now();
         }
         if (_selectedDates.isEmpty) {
@@ -3227,23 +2796,21 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
         _setupControllerListeners();
         
-        // 5. 初期化完了フラグを設定（最後に設定）
-      _isInitialized = true;
+        // 5. 蛻晄悄蛹門ｮ御ｺ・ヵ繝ｩ繧ｰ繧定ｨｭ螳夲ｼ域怙蠕後↓險ｭ螳夲ｼ・      _isInitialized = true;
       
-        // 6. UIを強制更新
+        // 6. UI繧貞ｼｷ蛻ｶ譖ｴ譁ｰ
         if (mounted) {
           setState(() {
-            debugPrint('✅ UI更新完了');
+            debugPrint('笨・UI譖ｴ譁ｰ螳御ｺ・);
           });
         }
         
-        debugPrint('✅ 初期化完了: メモ${_medicationMemos.length}件');
+        debugPrint('笨・蛻晄悄蛹門ｮ御ｺ・ 繝｡繝｢${_medicationMemos.length}莉ｶ');
       } catch (e, stackTrace) {
-        debugPrint('❌ 初期化エラー: $e');
-        debugPrint('スタックトレース: $stackTrace');
+        debugPrint('笶・蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
+        debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
         
-        // エラー時も初期化完了フラグを設定（アプリが動作するようにする）
-        _isInitialized = true;
+        // 繧ｨ繝ｩ繝ｼ譎ゅｂ蛻晄悄蛹門ｮ御ｺ・ヵ繝ｩ繧ｰ繧定ｨｭ螳夲ｼ医い繝励Μ縺悟虚菴懊☆繧九ｈ縺・↓縺吶ｋ・・        _isInitialized = true;
       if (mounted) {
         setState(() {});
         }
@@ -3251,100 +2818,81 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     });
   }
   
-  // 包括的データ読み込みシステム：すべてのデータを復元
-  Future<void> _loadSavedData() async {
+  // 蛹・峡逧・ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｷ繧ｹ繝・Β・壹☆縺ｹ縺ｦ縺ｮ繝・・繧ｿ繧貞ｾｩ蜈・  Future<void> _loadSavedData() async {
     try {
-      // 包括的データ読み込み：すべてのデータを復元
-      await _loadAllData();
+      // 蛹・峡逧・ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ・壹☆縺ｹ縺ｦ縺ｮ繝・・繧ｿ繧貞ｾｩ蜈・      await _loadAllData();
       
-      // 重い処理も実行
-      await _initializeAsync();
+      // 驥阪＞蜃ｦ逅・ｂ螳溯｡・      await _initializeAsync();
       
-      // アラームの再登録
+      // 繧｢繝ｩ繝ｼ繝縺ｮ蜀咲匳骭ｲ
       await _reRegisterAlarms();
       
-      // データ保持テスト
-      await _testDataPersistence();
+      // 繝・・繧ｿ菫晄戟繝・せ繝・      await _testDataPersistence();
       
-      // ✅ 自動バックアップ機能を初期化
+      // 笨・閾ｪ蜍輔ヰ繝・け繧｢繝・・讖溯・繧貞・譛溷喧
       _initializeAutoBackup();
       
-      _debugLog('全データ読み込み完了（包括的ローカル復元）');
+      _debugLog('蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ｼ亥桁諡ｬ逧・Ο繝ｼ繧ｫ繝ｫ蠕ｩ蜈・ｼ・);
     } catch (e) {
-      _debugLog('データ読み込みエラー: $e');
+      _debugLog('繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 包括的データ保存システム：すべてのデータをローカル保存
-  Future<void> _saveAllData() async {
+  // 蛹・峡逧・ョ繝ｼ繧ｿ菫晏ｭ倥す繧ｹ繝・Β・壹☆縺ｹ縺ｦ縺ｮ繝・・繧ｿ繧偵Ο繝ｼ繧ｫ繝ｫ菫晏ｭ・  Future<void> _saveAllData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // 1. メモ状態の保存
-      await _saveMemoStatus();
+      // 1. 繝｡繝｢迥ｶ諷九・菫晏ｭ・      await _saveMemoStatus();
       
-      // 2. 服用薬データの保存
-      await _saveMedicationList();
+      // 2. 譛咲畑阮ｬ繝・・繧ｿ縺ｮ菫晏ｭ・      await _saveMedicationList();
       
-      // 3. アラームデータの保存
-      await _saveAlarmData();
+      // 3. 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ菫晏ｭ・      await _saveAlarmData();
       
-      // 4. カレンダーマークの保存
-      await _saveCalendarMarks();
+      // 4. 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ縺ｮ菫晏ｭ・      await _saveCalendarMarks();
       
-      // 5. ユーザー設定の保存
-      await _saveUserPreferences();
+      // 5. 繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壹・菫晏ｭ・      await _saveUserPreferences();
       
-      // 6. 服用データの保存
-      await _saveMedicationData();
+      // 6. 譛咲畑繝・・繧ｿ縺ｮ菫晏ｭ・      await _saveMedicationData();
       
-      // 7. 日別色設定の保存
-      await _saveDayColors();
+      // 7. 譌･蛻･濶ｲ險ｭ螳壹・菫晏ｭ・      await _saveDayColors();
       
-      // 8. 統計データの保存
-      await _saveStatistics();
+      // 8. 邨ｱ險医ョ繝ｼ繧ｿ縺ｮ菫晏ｭ・      await _saveStatistics();
       
-      // 9. アプリ設定の保存
-      await _saveAppSettings();
+      // 9. 繧｢繝励Μ險ｭ螳壹・菫晏ｭ・      await _saveAppSettings();
       
-      // 10. 服用回数別状態の保存
-      await _saveMedicationDoseStatus();
+      // 10. 譛咲畑蝗樊焚蛻･迥ｶ諷九・菫晏ｭ・      await _saveMedicationDoseStatus();
       
-      _debugLog('全データ保存完了（包括的ローカル保存）');
+      _debugLog('蜈ｨ繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ｼ亥桁諡ｬ逧・Ο繝ｼ繧ｫ繝ｫ菫晏ｭ假ｼ・);
       
-      // ✅ 操作時間を記録（手動復元用）
-      _lastOperationTime = DateTime.now();
+      // 笨・謫堺ｽ懈凾髢薙ｒ險倬鹸・域焔蜍募ｾｩ蜈・畑・・      _lastOperationTime = DateTime.now();
       
-      // ✅ 操作スナップショットを常に保存（5分以降でも手動復元可能）
-      try {
-        final backupData = await _createSafeBackupData('操作スナップショット');
+      // 笨・謫堺ｽ懊せ繝翫ャ繝励す繝ｧ繝・ヨ繧貞ｸｸ縺ｫ菫晏ｭ假ｼ・蛻・ｻ･髯阪〒繧よ焔蜍募ｾｩ蜈・庄閭ｽ・・      try {
+        final backupData = await _createSafeBackupData('謫堺ｽ懊せ繝翫ャ繝励す繝ｧ繝・ヨ');
         final jsonString = await _safeJsonEncode(backupData);
         final encryptedData = await _encryptDataAsync(jsonString);
         final snapshotKey = 'operation_snapshot_latest';
         await prefs.setString(snapshotKey, encryptedData);
-        await _updateBackupHistory('操作スナップショット', snapshotKey, type: 'snapshot');
+        await _updateBackupHistory('謫堺ｽ懊せ繝翫ャ繝励す繝ｧ繝・ヨ', snapshotKey, type: 'snapshot');
         await prefs.setString('last_snapshot_key', snapshotKey);
       } catch (e) {
-        debugPrint('操作スナップショット保存エラー: $e');
+        debugPrint('謫堺ｽ懊せ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥お繝ｩ繝ｼ: $e');
       }
     } catch (e) {
-      _debugLog('全データ保存エラー: $e');
+      _debugLog('蜈ｨ繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // ✅ 自動バックアップ機能の初期化
-  void _initializeAutoBackup() {
+  // 笨・閾ｪ蜍輔ヰ繝・け繧｢繝・・讖溯・縺ｮ蛻晄悄蛹・  void _initializeAutoBackup() {
     _scheduleAutoBackup();
-    debugPrint('🔄 自動バックアップ機能を初期化しました');
+    debugPrint('売 閾ｪ蜍輔ヰ繝・け繧｢繝・・讖溯・繧貞・譛溷喧縺励∪縺励◆');
   }
   
-  // ✅ 深夜2:00の自動バックアップをスケジュール
+  // 笨・豺ｱ螟・:00縺ｮ閾ｪ蜍輔ヰ繝・け繧｢繝・・繧偵せ繧ｱ繧ｸ繝･繝ｼ繝ｫ
   void _scheduleAutoBackup() {
     _autoBackupTimer?.cancel();
     
     final now = DateTime.now();
-    // 次の実行時刻を当日20:12（過ぎていれば翌日20:12）に設定
-    final todayTarget = DateTime(now.year, now.month, now.day, 20, 12);
+    // 谺｡縺ｮ螳溯｡梧凾蛻ｻ繧貞ｽ捺律20:12・磯℃縺弱※縺・ｌ縺ｰ鄙梧律20:12・峨↓險ｭ螳・    final todayTarget = DateTime(now.year, now.month, now.day, 20, 12);
     final nextRun = now.isBefore(todayTarget)
         ? todayTarget
         : DateTime(now.year, now.month, now.day + 1, 20, 12);
@@ -3353,54 +2901,50 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _autoBackupTimer = Timer(duration, () async {
       if (_autoBackupEnabled) {
         await _performAutoBackup();
-        // 次の日の深夜2:00をスケジュール
+        // 谺｡縺ｮ譌･縺ｮ豺ｱ螟・:00繧偵せ繧ｱ繧ｸ繝･繝ｼ繝ｫ
         _scheduleAutoBackup();
       }
     });
     
-    debugPrint('🔄 自動バックアップをスケジュールしました: ${nextRun.toString()}');
+    debugPrint('売 閾ｪ蜍輔ヰ繝・け繧｢繝・・繧偵せ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺励∪縺励◆: ${nextRun.toString()}');
   }
   
-  // ✅ 自動バックアップを実行
-  Future<void> _performAutoBackup() async {
+  // 笨・閾ｪ蜍輔ヰ繝・け繧｢繝・・繧貞ｮ溯｡・  Future<void> _performAutoBackup() async {
     try {
-      final backupName = '自動バックアップ_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
-      debugPrint('🔄 自動バックアップを実行: $backupName');
+      final backupName = '閾ｪ蜍輔ヰ繝・け繧｢繝・・_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+      debugPrint('売 閾ｪ蜍輔ヰ繝・け繧｢繝・・繧貞ｮ溯｡・ $backupName');
       
-      // バックアップデータを作成
+      // 繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ繧剃ｽ懈・
       final backupData = await _createSafeBackupData(backupName);
       final jsonString = await _safeJsonEncode(backupData);
       final encryptedData = await _encryptDataAsync(jsonString);
       
-      // バックアップを保存
-      final prefs = await SharedPreferences.getInstance();
+      // 繝舌ャ繧ｯ繧｢繝・・繧剃ｿ晏ｭ・      final prefs = await SharedPreferences.getInstance();
       final backupKey = 'auto_backup_${DateTime.now().millisecondsSinceEpoch}';
       await prefs.setString(backupKey, encryptedData);
       
-      // 履歴を更新（フルとして扱う）
-      await _updateBackupHistory(backupName, backupKey, type: 'full');
+      // 螻･豁ｴ繧呈峩譁ｰ・医ヵ繝ｫ縺ｨ縺励※謇ｱ縺・ｼ・      await _updateBackupHistory(backupName, backupKey, type: 'full');
       
-      // 最新バックアップ参照キーを保存
-      await prefs.setString('last_auto_backup_key', backupKey);
+      // 譛譁ｰ繝舌ャ繧ｯ繧｢繝・・蜿ら・繧ｭ繝ｼ繧剃ｿ晏ｭ・      await prefs.setString('last_auto_backup_key', backupKey);
       await prefs.setString('last_full_backup_key', backupKey);
       
-      debugPrint('✅ 自動バックアップ完了: $backupName');
+      debugPrint('笨・閾ｪ蜍輔ヰ繝・け繧｢繝・・螳御ｺ・ $backupName');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🔄 深夜2:00の自動バックアップが完了しました'),
+            content: Text('売 豺ｱ螟・:00縺ｮ閾ｪ蜍輔ヰ繝・け繧｢繝・・縺悟ｮ御ｺ・＠縺ｾ縺励◆'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
         );
       }
     } catch (e) {
-      debugPrint('❌ 自動バックアップエラー: $e');
+      debugPrint('笶・閾ｪ蜍輔ヰ繝・け繧｢繝・・繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // ✅ 操作後5分以内の手動復元機能
+  // 笨・謫堺ｽ懷ｾ・蛻・ｻ･蜀・・謇句虚蠕ｩ蜈・ｩ溯・
   Future<void> _showManualRestoreDialog() async {
     if (!mounted) return;
     
@@ -3415,7 +2959,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(Icons.restore, color: Colors.blue),
             SizedBox(width: 8),
-            Text('手動復元'),
+            Text('謇句虚蠕ｩ蜈・),
           ],
         ),
         content: SizedBox(
@@ -3431,8 +2975,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
                 child: Text(
                   canRestore 
-                    ? '✅ 操作後5分以内です\n最後の操作から${now.difference(_lastOperationTime!).inMinutes}分経過'
-                    : '⚠️ 操作後5分を過ぎています\n最後の操作から${_lastOperationTime != null ? now.difference(_lastOperationTime!).inMinutes : 0}分経過',
+                    ? '笨・謫堺ｽ懷ｾ・蛻・ｻ･蜀・〒縺兔n譛蠕後・謫堺ｽ懊°繧・{now.difference(_lastOperationTime!).inMinutes}蛻・ｵ碁℃'
+                    : '笞・・謫堺ｽ懷ｾ・蛻・ｒ驕弱℃縺ｦ縺・∪縺兔n譛蠕後・謫堺ｽ懊°繧・{_lastOperationTime != null ? now.difference(_lastOperationTime!).inMinutes : 0}蛻・ｵ碁℃',
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
@@ -3444,7 +2988,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     await _performManualRestore();
                   },
                   icon: const Icon(Icons.restore),
-                  label: const Text('操作前の状態に復元'),
+                  label: const Text('謫堺ｽ懷燕縺ｮ迥ｶ諷九↓蠕ｩ蜈・),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
@@ -3452,7 +2996,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
               ] else ...[
                 const Text(
-                  '操作後5分以内に復元ボタンを押してください',
+                  '謫堺ｽ懷ｾ・蛻・ｻ･蜀・↓蠕ｩ蜈・・繧ｿ繝ｳ繧呈款縺励※縺上□縺輔＞',
                   style: TextStyle(color: Colors.orange),
                   textAlign: TextAlign.center,
                 ),
@@ -3463,28 +3007,27 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
         ],
       ),
     );
   }
   
-  // ✅ 手動復元を実行
-  Future<void> _performManualRestore() async {
+  // 笨・謇句虚蠕ｩ蜈・ｒ螳溯｡・  Future<void> _performManualRestore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // ✅ 操作スナップショット（直近保存時に常に更新）を参照
+      // 笨・謫堺ｽ懊せ繝翫ャ繝励す繝ｧ繝・ヨ・育峩霑台ｿ晏ｭ俶凾縺ｫ蟶ｸ縺ｫ譖ｴ譁ｰ・峨ｒ蜿ら・
       final lastBackupKey = prefs.getString('last_snapshot_key');
       
       if (lastBackupKey != null) {
-        debugPrint('🔄 手動復元を実行: $lastBackupKey');
+        debugPrint('売 謇句虚蠕ｩ蜈・ｒ螳溯｡・ $lastBackupKey');
         await _restoreBackup(lastBackupKey);
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('🔄 操作前の状態に復元しました'),
+              content: Text('売 謫堺ｽ懷燕縺ｮ迥ｶ諷九↓蠕ｩ蜈・＠縺ｾ縺励◆'),
               backgroundColor: Colors.blue,
               duration: Duration(seconds: 3),
             ),
@@ -3494,7 +3037,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('❌ 復元可能なスナップショットが見つかりません'),
+              content: Text('笶・蠕ｩ蜈・庄閭ｽ縺ｪ繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 3),
             ),
@@ -3502,11 +3045,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
     } catch (e) {
-      debugPrint('❌ 手動復元エラー: $e');
+      debugPrint('笶・謇句虚蠕ｩ蜈・お繝ｩ繝ｼ: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ 復元エラー: $e'),
+            content: Text('笶・蠕ｩ蜈・お繝ｩ繝ｼ: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -3515,210 +3058,197 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // 包括的データ読み込みシステム：すべてのデータを復元
-  Future<void> _loadAllData() async {
+  // 蛹・峡逧・ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｷ繧ｹ繝・Β・壹☆縺ｹ縺ｦ縺ｮ繝・・繧ｿ繧貞ｾｩ蜈・  Future<void> _loadAllData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // 1. メモ状態の読み込み
+      // 1. 繝｡繝｢迥ｶ諷九・隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadMemoStatus();
       
-      // 2. 服用薬データの読み込み
+      // 2. 譛咲畑阮ｬ繝・・繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadMedicationList();
       
-      // 3. アラームデータの読み込み
+      // 3. 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadAlarmData();
       
-      // 3.5. アラームの再登録
+      // 3.5. 繧｢繝ｩ繝ｼ繝縺ｮ蜀咲匳骭ｲ
       await _reRegisterAlarms();
       
-      // 4. カレンダーマークの読み込み
+      // 4. 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadCalendarMarks();
       
-      // 5. ユーザー設定の読み込み
+      // 5. 繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadUserPreferences();
       
-      // 6. 服用データの読み込み
+      // 6. 譛咲畑繝・・繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadMedicationData();
       
-      // 7. 日別色設定の読み込み
+      // 7. 譌･蛻･濶ｲ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadDayColors();
       
-      // 8. 統計データの読み込み
+      // 8. 邨ｱ險医ョ繝ｼ繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadStatistics();
       
-      // 9. 服用回数別状態の読み込み
+      // 9. 譛咲畑蝗樊焚蛻･迥ｶ諷九・隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadMedicationDoseStatus();
       
-      // 9. アプリ設定の読み込み
+      // 9. 繧｢繝励Μ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadAppSettings();
       
-      // 10. データ検証とUI更新
+      // 10. 繝・・繧ｿ讀懆ｨｼ縺ｨUI譖ｴ譁ｰ
       await _validateAndUpdateUI();
       
-      _debugLog('全データ読み込み完了（包括的ローカル復元）');
+      _debugLog('蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ｼ亥桁諡ｬ逧・Ο繝ｼ繧ｫ繝ｫ蠕ｩ蜈・ｼ・);
     } catch (e) {
-      _debugLog('全データ読み込みエラー: $e');
+      _debugLog('蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // データ検証とUI更新
+  // 繝・・繧ｿ讀懆ｨｼ縺ｨUI譖ｴ譁ｰ
   Future<void> _validateAndUpdateUI() async {
     try {
-      // データの整合性をチェック
+      // 繝・・繧ｿ縺ｮ謨ｴ蜷域ｧ繧偵メ繧ｧ繝・け
       await _validateDataIntegrity();
       
-      // UIを強制更新
+      // UI繧貞ｼｷ蛻ｶ譖ｴ譁ｰ
       if (mounted) {
         setState(() {
-          // 状態を強制更新
+          // 迥ｶ諷九ｒ蠑ｷ蛻ｶ譖ｴ譁ｰ
         });
       }
       
-      // カレンダーの日付を更新
+      // 繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｮ譌･莉倥ｒ譖ｴ譁ｰ
       await _updateCalendarForSelectedDate();
       
-      // 服用メモの状態を更新
+      // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷九ｒ譖ｴ譁ｰ
       await _updateMedicationMemoDisplay();
       
-      // アラームデータの検証
+      // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ讀懆ｨｼ
       await _validateAlarmData();
       
-      // アラームデータの整合性チェック
+      // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ謨ｴ蜷域ｧ繝√ぉ繝・け
       await _checkAlarmDataIntegrity();
       
-      // アプリ再起動時のデータ表示を確実にする
+      // 繧｢繝励Μ蜀崎ｵｷ蜍墓凾縺ｮ繝・・繧ｿ陦ｨ遉ｺ繧堤｢ｺ螳溘↓縺吶ｋ
       await _ensureDataDisplayOnRestart();
       
-      // 最終的なデータ表示確認
-      await _finalDataDisplayCheck();
+      // 譛邨ら噪縺ｪ繝・・繧ｿ陦ｨ遉ｺ遒ｺ隱・      await _finalDataDisplayCheck();
       
-      _debugLog('データ検証とUI更新完了');
+      _debugLog('繝・・繧ｿ讀懆ｨｼ縺ｨUI譖ｴ譁ｰ螳御ｺ・);
     } catch (e) {
-      _debugLog('データ検証とUI更新エラー: $e');
+      _debugLog('繝・・繧ｿ讀懆ｨｼ縺ｨUI譖ｴ譁ｰ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 最終的なデータ表示確認
-  Future<void> _finalDataDisplayCheck() async {
+  // 譛邨ら噪縺ｪ繝・・繧ｿ陦ｨ遉ｺ遒ｺ隱・  Future<void> _finalDataDisplayCheck() async {
     try {
-      // データ表示の最終確認
-      debugPrint('=== 最終データ表示確認 ===');
-      debugPrint('選択日付: ${_selectedDay != null ? DateFormat('yyyy-MM-dd').format(_selectedDay!) : 'なし'}');
-      debugPrint('服用メモ数: ${_medicationMemos.length}件');
-      debugPrint('メモ状態数: ${_medicationMemoStatus.length}件');
-      debugPrint('動的薬リスト数: ${_addedMedications.length}件');
-      debugPrint('カレンダーマーク数: ${_selectedDates.length}件');
-      debugPrint('日別色設定数: ${_dayColors.length}件');
+      // 繝・・繧ｿ陦ｨ遉ｺ縺ｮ譛邨ら｢ｺ隱・      debugPrint('=== 譛邨ゅョ繝ｼ繧ｿ陦ｨ遉ｺ遒ｺ隱・===');
+      debugPrint('驕ｸ謚樊律莉・ ${_selectedDay != null ? DateFormat('yyyy-MM-dd').format(_selectedDay!) : '縺ｪ縺・}');
+      debugPrint('譛咲畑繝｡繝｢謨ｰ: ${_medicationMemos.length}莉ｶ');
+      debugPrint('繝｡繝｢迥ｶ諷区焚: ${_medicationMemoStatus.length}莉ｶ');
+      debugPrint('蜍慕噪阮ｬ繝ｪ繧ｹ繝域焚: ${_addedMedications.length}莉ｶ');
+      debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ謨ｰ: ${_selectedDates.length}莉ｶ');
+      debugPrint('譌･蛻･濶ｲ險ｭ螳壽焚: ${_dayColors.length}莉ｶ');
       
-      // UIを最終更新
+      // UI繧呈怙邨よ峩譁ｰ
       if (mounted) {
         setState(() {
-          // 最終的なUI更新
+          // 譛邨ら噪縺ｪUI譖ｴ譁ｰ
         });
       }
       
-      debugPrint('=== 最終データ表示確認完了 ===');
+      debugPrint('=== 譛邨ゅョ繝ｼ繧ｿ陦ｨ遉ｺ遒ｺ隱榊ｮ御ｺ・===');
     } catch (e) {
-      debugPrint('最終データ表示確認エラー: $e');
+      debugPrint('譛邨ゅョ繝ｼ繧ｿ陦ｨ遉ｺ遒ｺ隱阪お繝ｩ繝ｼ: $e');
     }
   }
   
-  // データの整合性をチェック
+  // 繝・・繧ｿ縺ｮ謨ｴ蜷域ｧ繧偵メ繧ｧ繝・け
   Future<void> _validateDataIntegrity() async {
     try {
-      // 選択された日付のデータを確認
-      if (_selectedDay != null) {
+      // 驕ｸ謚槭＆繧後◆譌･莉倥・繝・・繧ｿ繧堤｢ｺ隱・      if (_selectedDay != null) {
         final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
         final dayData = _medicationData[dateStr];
         
         if (dayData != null) {
-          debugPrint('選択日付のデータ確認: $dateStr - ${dayData.length}件');
+          debugPrint('驕ｸ謚樊律莉倥・繝・・繧ｿ遒ｺ隱・ $dateStr - ${dayData.length}莉ｶ');
         } else {
-          debugPrint('選択日付のデータなし: $dateStr');
+          debugPrint('驕ｸ謚樊律莉倥・繝・・繧ｿ縺ｪ縺・ $dateStr');
         }
       }
       
-      // 服用メモの状態を確認
-      debugPrint('服用メモ状態: ${_medicationMemoStatus.length}件');
+      // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷九ｒ遒ｺ隱・      debugPrint('譛咲畑繝｡繝｢迥ｶ諷・ ${_medicationMemoStatus.length}莉ｶ');
       
-      // カレンダーマークを確認
-      debugPrint('カレンダーマーク: ${_selectedDates.length}件');
+      // 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ繧堤｢ｺ隱・      debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ: ${_selectedDates.length}莉ｶ');
       
-      // 日別色設定を確認
-      debugPrint('日別色設定: ${_dayColors.length}件');
+      // 譌･蛻･濶ｲ險ｭ螳壹ｒ遒ｺ隱・      debugPrint('譌･蛻･濶ｲ險ｭ螳・ ${_dayColors.length}莉ｶ');
       
     } catch (e) {
-      debugPrint('データ整合性チェックエラー: $e');
+      debugPrint('繝・・繧ｿ謨ｴ蜷域ｧ繝√ぉ繝・け繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // カレンダーの日付を更新
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｮ譌･莉倥ｒ譖ｴ譁ｰ
   Future<void> _updateCalendarForSelectedDate() async {
     try {
       if (_selectedDay != null) {
-        // 選択された日付のデータを読み込み
+        // 驕ｸ謚槭＆繧後◆譌･莉倥・繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ
         await _updateMedicineInputsForSelectedDate();
         
-        // メモを読み込み
+        // 繝｡繝｢繧定ｪｭ縺ｿ霎ｼ縺ｿ
         await _loadMemoForSelectedDate();
         
-        debugPrint('カレンダー日付更新完了: ${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+        debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ譌･莉俶峩譁ｰ螳御ｺ・ ${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
       }
     } catch (e) {
-      debugPrint('カレンダー日付更新エラー: $e');
+      debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ譌･莉俶峩譁ｰ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 服用メモの表示を更新
+  // 譛咲畑繝｡繝｢縺ｮ陦ｨ遉ｺ繧呈峩譁ｰ
   Future<void> _updateMedicationMemoDisplay() async {
     try {
-      // 服用メモの状態を再計算
-      for (final memo in _medicationMemos) {
+      // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷九ｒ蜀崎ｨ育ｮ・      for (final memo in _medicationMemos) {
         if (!_medicationMemoStatus.containsKey(memo.id)) {
           _medicationMemoStatus[memo.id] = false;
         }
       }
       
-      debugPrint('服用メモ表示更新完了: ${_medicationMemos.length}件');
+      debugPrint('譛咲畑繝｡繝｢陦ｨ遉ｺ譖ｴ譁ｰ螳御ｺ・ ${_medicationMemos.length}莉ｶ');
     } catch (e) {
-      debugPrint('服用メモ表示更新エラー: $e');
+      debugPrint('譛咲畑繝｡繝｢陦ｨ遉ｺ譖ｴ譁ｰ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 🔴 最重要：データ保持テスト（完全版）
-  Future<void> _testDataPersistence() async {
+  // 閥 譛驥崎ｦ・ｼ壹ョ繝ｼ繧ｿ菫晄戟繝・せ繝茨ｼ亥ｮ悟・迚茨ｼ・  Future<void> _testDataPersistence() async {
     try {
-      // 🔴 最重要：最小構成テンプレート
-      final testKey = 'flutter_storage_test';
+      // 閥 譛驥崎ｦ・ｼ壽怙蟆乗ｧ区・繝・Φ繝励Ξ繝ｼ繝・      final testKey = 'flutter_storage_test';
       final testValue = 'data_persistence_test_${DateTime.now().millisecondsSinceEpoch}';
       
-      debugPrint('🔴 データ保持テスト開始: $testValue');
+      debugPrint('閥 繝・・繧ｿ菫晄戟繝・せ繝磯幕蟋・ $testValue');
       
-      // 🔴 最重要：保存処理（awaitを確実に付ける）
-      await AppPreferences.saveString(testKey, testValue);
-      debugPrint('🔴 データ保持テスト保存完了（完全版）');
+      // 閥 譛驥崎ｦ・ｼ壻ｿ晏ｭ伜・逅・ｼ・wait繧堤｢ｺ螳溘↓莉倥￠繧具ｼ・      await AppPreferences.saveString(testKey, testValue);
+      debugPrint('閥 繝・・繧ｿ菫晄戟繝・せ繝井ｿ晏ｭ伜ｮ御ｺ・ｼ亥ｮ悟・迚茨ｼ・);
       
-      // 🔴 最重要：復元処理（起動時）
-      final readValue = AppPreferences.getString(testKey);
+      // 閥 譛驥崎ｦ・ｼ壼ｾｩ蜈・・逅・ｼ郁ｵｷ蜍墓凾・・      final readValue = AppPreferences.getString(testKey);
       if (readValue == testValue) {
-        debugPrint('🔴 データ保持テスト成功: $readValue（完全版）');
+        debugPrint('閥 繝・・繧ｿ菫晄戟繝・せ繝域・蜉・ $readValue・亥ｮ悟・迚茨ｼ・);
       } else {
-        debugPrint('🔴 データ保持テスト失敗: 期待値=$testValue, 実際値=$readValue');
+        debugPrint('閥 繝・・繧ｿ菫晄戟繝・せ繝亥､ｱ謨・ 譛溷ｾ・､=$testValue, 螳滄圀蛟､=$readValue');
       }
       
-      // 🔴 最重要：デバッグ用：すべてのキーを表示
+      // 閥 譛驥崎ｦ・ｼ壹ョ繝舌ャ繧ｰ逕ｨ・壹☆縺ｹ縺ｦ縺ｮ繧ｭ繝ｼ繧定｡ｨ遉ｺ
       AppPreferences.debugAllKeys();
       
-      // テストデータの削除
+      // 繝・せ繝医ョ繝ｼ繧ｿ縺ｮ蜑企勁
       await AppPreferences.remove(testKey);
-      debugPrint('🔴 テストデータ削除完了');
+      debugPrint('閥 繝・せ繝医ョ繝ｼ繧ｿ蜑企勁螳御ｺ・);
     } catch (e) {
-      debugPrint('🔴 データ保持テストエラー: $e');
+      debugPrint('閥 繝・・繧ｿ菫晄戟繝・せ繝医お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 服用データの読み込み
+  // 譛咲畑繝・・繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadMedicationData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -3728,27 +3258,26 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         final backupData = prefs.getString('medication_backup_$lastSaveDate');
         if (backupData != null) {
           final dataJson = jsonDecode(backupData) as Map<String, dynamic>;
-          debugPrint('服用データ復元: $lastSaveDate');
+          debugPrint('譛咲畑繝・・繧ｿ蠕ｩ蜈・ $lastSaveDate');
         }
       }
     } catch (e) {
-      debugPrint('服用データ読み込みエラー: $e');
+      debugPrint('譛咲畑繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // こぱさん流：服用薬データを読み込み（確実なデータ復元）
-  Future<void> _loadMedicationList() async {
+  // 縺薙・縺輔ｓ豬・ｼ壽恪逕ｨ阮ｬ繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ・育｢ｺ螳溘↑繝・・繧ｿ蠕ｩ蜈・ｼ・  Future<void> _loadMedicationList() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       String? medicationListStr;
       
-      // こぱさん流：複数キーから読み込み
+      // 縺薙・縺輔ｓ豬・ｼ夊､・焚繧ｭ繝ｼ縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ
       final keys = ['medicationList', 'medicationList_backup'];
       
       for (final key in keys) {
         medicationListStr = prefs.getString(key);
         if (medicationListStr != null && medicationListStr.isNotEmpty) {
-          debugPrint('服用薬データ読み込み成功: $key（こぱさん流）');
+          debugPrint('譛咲畑阮ｬ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key・医％縺ｱ縺輔ｓ豬・ｼ・);
           break;
         }
       }
@@ -3775,32 +3304,30 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           }
         }
         
-        debugPrint('服用薬データ読み込み完了: ${_addedMedications.length}件（こぱさん流）');
+        debugPrint('譛咲畑阮ｬ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_addedMedications.length}莉ｶ・医％縺ｱ縺輔ｓ豬・ｼ・);
         
-        // こぱさん流：UIに反映
+        // 縺薙・縺輔ｓ豬・ｼ啅I縺ｫ蜿肴丐
         if (mounted) {
           setState(() {
-            // 保存された値があればそれを使う
-          });
+            // 菫晏ｭ倥＆繧後◆蛟､縺後≠繧後・縺昴ｌ繧剃ｽｿ縺・          });
         }
       } else {
-        debugPrint('服用薬データが見つかりません（こぱさん流）');
+        debugPrint('譛咲畑阮ｬ繝・・繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ・医％縺ｱ縺輔ｓ豬・ｼ・);
         _addedMedications.clear();
       }
     } catch (e) {
-      debugPrint('服用薬データ読み込みエラー: $e');
+      debugPrint('譛咲畑阮ｬ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _addedMedications.clear();
     }
   }
   
-  // 確実なアラームデータ読み込み（指定パス方式を採用）
-  Future<void> _loadAlarmData() async {
+  // 遒ｺ螳溘↑繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ・域欠螳壹ヱ繧ｹ譁ｹ蠑上ｒ謗｡逕ｨ・・  Future<void> _loadAlarmData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final alarmCount = prefs.getInt('alarm_count') ?? 0;
       final alarmsList = <Map<String, dynamic>>[];
       
-      debugPrint('アラームデータ読み込み開始: $alarmCount件');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ髢句ｧ・ $alarmCount莉ｶ');
       
       for (int i = 0; i < alarmCount; i++) {
         final name = prefs.getString('alarm_${i}_name');
@@ -3815,11 +3342,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           alarmsList.add({
             'name': name,
             'time': time,
-            'repeat': repeat ?? '一度だけ',
+            'repeat': repeat ?? '荳蠎ｦ縺縺・,
             'enabled': enabled ?? true,
             'alarmType': alarmType ?? 'sound',
             'volume': volume ?? 80,
-            'message': message ?? '薬を服用する時間です',
+            'message': message ?? '阮ｬ繧呈恪逕ｨ縺吶ｋ譎る俣縺ｧ縺・,
           });
         }
       }
@@ -3828,74 +3355,70 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _alarmList = alarmsList;
       });
       
-      debugPrint('アラームデータ読み込み完了: ${_alarmList.length}件（指定パス方式）');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_alarmList.length}莉ｶ・域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・);
       
-      // UIを更新
+      // UI繧呈峩譁ｰ
       if (mounted) {
         setState(() {
-          // アラームデータを反映
+          // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ繧貞渚譏
         });
       }
     } catch (e) {
-      debugPrint('アラームデータ読み込みエラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _alarmList = [];
     }
   }
   
-  // こぱさん流：アラームの再登録
+  // 縺薙・縺輔ｓ豬・ｼ壹い繝ｩ繝ｼ繝縺ｮ蜀咲匳骭ｲ
   Future<void> _reRegisterAlarms() async {
     try {
       if (_alarmList.isEmpty) {
-        debugPrint('アラーム再登録: アラームデータなし');
+        debugPrint('繧｢繝ｩ繝ｼ繝蜀咲匳骭ｲ: 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｪ縺・);
         return;
       }
       
-      debugPrint('アラーム再登録開始: ${_alarmList.length}件');
+      debugPrint('繧｢繝ｩ繝ｼ繝蜀咲匳骭ｲ髢句ｧ・ ${_alarmList.length}莉ｶ');
       
-      // 既存の通知をキャンセル
+      // 譌｢蟄倥・騾夂衍繧偵く繝｣繝ｳ繧ｻ繝ｫ
       // await NotificationService.cancelAllNotifications();
       
-      // 各アラームを再登録
+      // 蜷・い繝ｩ繝ｼ繝繧貞・逋ｻ骭ｲ
       for (int i = 0; i < _alarmList.length; i++) {
         final alarm = _alarmList[i];
         await _registerSingleAlarm(alarm, i);
       }
       
-      debugPrint('アラーム再登録完了: ${_alarmList.length}件');
+      debugPrint('繧｢繝ｩ繝ｼ繝蜀咲匳骭ｲ螳御ｺ・ ${_alarmList.length}莉ｶ');
     } catch (e) {
-      debugPrint('アラーム再登録エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝蜀咲匳骭ｲ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 単一アラームの登録
+  // 蜊倅ｸ繧｢繝ｩ繝ｼ繝縺ｮ逋ｻ骭ｲ
   Future<void> _registerSingleAlarm(Map<String, dynamic> alarm, int index) async {
     try {
-      // アラームの詳細情報を取得（安全な型変換）
-      final time = alarm['time']?.toString() ?? '09:00';
+      // 繧｢繝ｩ繝ｼ繝縺ｮ隧ｳ邏ｰ諠・ｱ繧貞叙蠕暦ｼ亥ｮ牙・縺ｪ蝙句､画鋤・・      final time = alarm['time']?.toString() ?? '09:00';
       final enabled = alarm['enabled'] is bool ? alarm['enabled'] as bool : true;
-      final title = alarm['title']?.toString() ?? '服用アラーム';
-      final message = alarm['message']?.toString() ?? '薬を服用する時間です';
+      final title = alarm['title']?.toString() ?? '譛咲畑繧｢繝ｩ繝ｼ繝';
+      final message = alarm['message']?.toString() ?? '阮ｬ繧呈恪逕ｨ縺吶ｋ譎る俣縺ｧ縺・;
       
       if (!enabled) {
-        debugPrint('アラーム $index は無効化されています');
+        debugPrint('繧｢繝ｩ繝ｼ繝 $index 縺ｯ辟｡蜉ｹ蛹悶＆繧後※縺・∪縺・);
         return;
       }
       
-      // 時間を解析
-      final timeParts = time.split(':');
+      // 譎る俣繧定ｧ｣譫・      final timeParts = time.split(':');
       final hour = int.parse(timeParts[0]);
       final minute = int.parse(timeParts[1]);
       
-      // 今日の日時を設定
-      final now = DateTime.now();
+      // 莉頑律縺ｮ譌･譎ゅｒ險ｭ螳・      final now = DateTime.now();
       var scheduledTime = DateTime(now.year, now.month, now.day, hour, minute);
       
-      // 過去の時間の場合は明日に設定
-      if (scheduledTime.isBefore(now)) {
+      // 驕主悉縺ｮ譎る俣縺ｮ蝣ｴ蜷医・譏取律縺ｫ險ｭ螳・      if (scheduledTime.isBefore(now)) {
         scheduledTime = scheduledTime.add(const Duration(days: 1));
       }
       
-      // 通知をスケジュール
+      // 騾夂衍繧偵せ繧ｱ繧ｸ繝･繝ｼ繝ｫ
       // await NotificationService.scheduleNotification(
       //   id: index,
       //   title: title,
@@ -3903,134 +3426,126 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       //   scheduledTime: scheduledTime,
       // );
       
-      debugPrint('アラーム $index 登録完了: $time');
+      debugPrint('繧｢繝ｩ繝ｼ繝 $index 逋ｻ骭ｲ螳御ｺ・ $time');
     } catch (e) {
-      debugPrint('アラーム $index 登録エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝 $index 逋ｻ骭ｲ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームの追加（指定パス方式）
-  Future<void> addAlarm(Map<String, dynamic> alarm) async {
+  // 繧｢繝ｩ繝ｼ繝縺ｮ霑ｽ蜉・域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・  Future<void> addAlarm(Map<String, dynamic> alarm) async {
     try {
-      // ✅ 追加：変更前スナップショット
-      await _saveSnapshotBeforeChange('アラーム追加_${alarm['name']}');
+      // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+      await _saveSnapshotBeforeChange('繧｢繝ｩ繝ｼ繝霑ｽ蜉_${alarm['name']}');
       setState(() {
         _alarmList.add(alarm);
       });
       
-      // アラーム追加後に自動保存
-      await _saveAlarmData();
+      // 繧｢繝ｩ繝ｼ繝霑ｽ蜉蠕後↓閾ｪ蜍穂ｿ晏ｭ・      await _saveAlarmData();
       
-      // 新しいアラームを登録
+      // 譁ｰ縺励＞繧｢繝ｩ繝ｼ繝繧堤匳骭ｲ
       await _registerSingleAlarm(alarm, _alarmList.length - 1);
       
-      debugPrint('アラーム追加完了: ${alarm['name']}');
+      debugPrint('繧｢繝ｩ繝ｼ繝霑ｽ蜉螳御ｺ・ ${alarm['name']}');
     } catch (e) {
-      debugPrint('アラーム追加エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝霑ｽ蜉繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームの削除（指定パス方式）
-  Future<void> removeAlarm(int index) async {
+  // 繧｢繝ｩ繝ｼ繝縺ｮ蜑企勁・域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・  Future<void> removeAlarm(int index) async {
     try {
       if (index >= 0 && index < _alarmList.length) {
-        // ✅ 追加：変更前スナップショット
+        // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
         final alarm = _alarmList[index];
-        await _saveSnapshotBeforeChange('アラーム削除_${alarm['name']}');
+        await _saveSnapshotBeforeChange('繧｢繝ｩ繝ｼ繝蜑企勁_${alarm['name']}');
         setState(() {
           _alarmList.removeAt(index);
         });
         
-        // アラーム削除後に自動保存
-        await _saveAlarmData();
+        // 繧｢繝ｩ繝ｼ繝蜑企勁蠕後↓閾ｪ蜍穂ｿ晏ｭ・        await _saveAlarmData();
         
-        debugPrint('アラーム削除完了: インデックス $index');
+        debugPrint('繧｢繝ｩ繝ｼ繝蜑企勁螳御ｺ・ 繧､繝ｳ繝・ャ繧ｯ繧ｹ $index');
       }
     } catch (e) {
-      debugPrint('アラーム削除エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝蜑企勁繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームの更新（指定パス方式）
-  Future<void> updateAlarm(int index, Map<String, dynamic> updatedAlarm) async {
+  // 繧｢繝ｩ繝ｼ繝縺ｮ譖ｴ譁ｰ・域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・  Future<void> updateAlarm(int index, Map<String, dynamic> updatedAlarm) async {
     try {
       if (index >= 0 && index < _alarmList.length) {
-        // ✅ 追加：変更前スナップショット
+        // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
         final alarm = _alarmList[index];
-        await _saveSnapshotBeforeChange('アラーム編集_${alarm['name']}');
+        await _saveSnapshotBeforeChange('繧｢繝ｩ繝ｼ繝邱ｨ髮・${alarm['name']}');
         setState(() {
           _alarmList[index] = updatedAlarm;
         });
         
-        // アラーム更新後に自動保存
-        await _saveAlarmData();
+        // 繧｢繝ｩ繝ｼ繝譖ｴ譁ｰ蠕後↓閾ｪ蜍穂ｿ晏ｭ・        await _saveAlarmData();
         
-        debugPrint('アラーム更新完了: インデックス $index');
+        debugPrint('繧｢繝ｩ繝ｼ繝譖ｴ譁ｰ螳御ｺ・ 繧､繝ｳ繝・ャ繧ｯ繧ｹ $index');
       }
     } catch (e) {
-      debugPrint('アラーム更新エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝譖ｴ譁ｰ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームの有効/無効切り替え（指定パス方式）
-  Future<void> toggleAlarm(int index) async {
+  // 繧｢繝ｩ繝ｼ繝縺ｮ譛牙柑/辟｡蜉ｹ蛻・ｊ譖ｿ縺茨ｼ域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・  Future<void> toggleAlarm(int index) async {
     try {
       if (index >= 0 && index < _alarmList.length) {
         final alarm = _alarmList[index];
         final newEnabled = !(alarm['enabled'] as bool? ?? true);
         
-        // ✅ 追加：変更前スナップショット
-        await _saveSnapshotBeforeChange('アラーム切替_${alarm['name']}_${newEnabled ? '有効' : '無効'}');
+        // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+        await _saveSnapshotBeforeChange('繧｢繝ｩ繝ｼ繝蛻・崛_${alarm['name']}_${newEnabled ? '譛牙柑' : '辟｡蜉ｹ'}');
         setState(() {
           alarm['enabled'] = newEnabled;
         });
         
-        // アラーム切り替え後に自動保存
-        await _saveAlarmData();
+        // 繧｢繝ｩ繝ｼ繝蛻・ｊ譖ｿ縺亥ｾ後↓閾ｪ蜍穂ｿ晏ｭ・        await _saveAlarmData();
         
-        debugPrint('アラーム切り替え完了: インデックス $index, 有効=$newEnabled');
+        debugPrint('繧｢繝ｩ繝ｼ繝蛻・ｊ譖ｿ縺亥ｮ御ｺ・ 繧､繝ｳ繝・ャ繧ｯ繧ｹ $index, 譛牙柑=$newEnabled');
       }
     } catch (e) {
-      debugPrint('アラーム切り替えエラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝蛻・ｊ譖ｿ縺医お繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームデータの検証
+  // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ讀懆ｨｼ
   Future<void> _validateAlarmData() async {
     try {
-      debugPrint('=== アラームデータ検証 ===');
-      debugPrint('アラーム数: ${_alarmList.length}件');
+      debugPrint('=== 繧｢繝ｩ繝ｼ繝繝・・繧ｿ讀懆ｨｼ ===');
+      debugPrint('繧｢繝ｩ繝ｼ繝謨ｰ: ${_alarmList.length}莉ｶ');
       
       for (int i = 0; i < _alarmList.length; i++) {
         final alarm = _alarmList[i];
-        debugPrint('アラーム $i:');
-        debugPrint('  タイトル: ${alarm['title'] ?? 'なし'}');
-        debugPrint('  時間: ${alarm['time'] ?? 'なし'}');
-        debugPrint('  有効: ${alarm['enabled'] ?? false}');
-        debugPrint('  メッセージ: ${alarm['message'] ?? 'なし'}');
+        debugPrint('繧｢繝ｩ繝ｼ繝 $i:');
+        debugPrint('  繧ｿ繧､繝医Ν: ${alarm['title'] ?? '縺ｪ縺・}');
+        debugPrint('  譎る俣: ${alarm['time'] ?? '縺ｪ縺・}');
+        debugPrint('  譛牙柑: ${alarm['enabled'] ?? false}');
+        debugPrint('  繝｡繝・そ繝ｼ繧ｸ: ${alarm['message'] ?? '縺ｪ縺・}');
       }
       
-      debugPrint('アラーム設定: ${_alarmSettings.length}件');
+      debugPrint('繧｢繝ｩ繝ｼ繝險ｭ螳・ ${_alarmSettings.length}莉ｶ');
       for (final entry in _alarmSettings.entries) {
         debugPrint('  ${entry.key}: ${entry.value}');
       }
       
-      debugPrint('=== アラームデータ検証完了 ===');
+      debugPrint('=== 繧｢繝ｩ繝ｼ繝繝・・繧ｿ讀懆ｨｼ螳御ｺ・===');
     } catch (e) {
-      debugPrint('アラームデータ検証エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ讀懆ｨｼ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アラームデータの整合性チェック
+  // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ謨ｴ蜷域ｧ繝√ぉ繝・け
   Future<void> _checkAlarmDataIntegrity() async {
     try {
-      // アラームデータの整合性をチェック
+      // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ縺ｮ謨ｴ蜷域ｧ繧偵メ繧ｧ繝・け
       for (int i = 0; i < _alarmList.length; i++) {
         final alarm = _alarmList[i];
         
-        // 必須フィールドのチェック
+        // 蠢・医ヵ繧｣繝ｼ繝ｫ繝峨・繝√ぉ繝・け
         if (!alarm.containsKey('title') || alarm['title'] == null) {
-          alarm['title'] = '服用アラーム';
+          alarm['title'] = '譛咲畑繧｢繝ｩ繝ｼ繝';
         }
         if (!alarm.containsKey('time') || alarm['time'] == null) {
           alarm['time'] = '09:00';
@@ -4039,27 +3554,24 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           alarm['enabled'] = true;
         }
         if (!alarm.containsKey('message') || alarm['message'] == null) {
-          alarm['message'] = '薬を服用する時間です';
+          alarm['message'] = '阮ｬ繧呈恪逕ｨ縺吶ｋ譎る俣縺ｧ縺・;
         }
       }
       
-      // データを再保存
-      await _saveAlarmData();
+      // 繝・・繧ｿ繧貞・菫晏ｭ・      await _saveAlarmData();
       
-      debugPrint('アラームデータ整合性チェック完了');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ謨ｴ蜷域ｧ繝√ぉ繝・け螳御ｺ・);
     } catch (e) {
-      debugPrint('アラームデータ整合性チェックエラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ謨ｴ蜷域ｧ繝√ぉ繝・け繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // カレンダーマークの保存
-  Future<void> _saveCalendarMarks() async {
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ縺ｮ菫晏ｭ・  Future<void> _saveCalendarMarks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final marksJson = <String, dynamic>{};
       
-      // 選択された日付を保存
-      for (final date in _selectedDates) {
+      // 驕ｸ謚槭＆繧後◆譌･莉倥ｒ菫晏ｭ・      for (final date in _selectedDates) {
         marksJson[date.toIso8601String()] = {
           'date': date.toIso8601String(),
           'hasData': _addedMedications.isNotEmpty,
@@ -4067,41 +3579,44 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         };
       }
       
-      final jsonString = jsonEncode(marksJson);
+      final success1 = await prefs.setString('calendar_marks', jsonEncode(marksJson));
+      final success2 = await prefs.setString('calendar_marks_backup', jsonEncode(marksJson));
+      final success3 = await prefs.setInt('calendar_marks_count', _selectedDates.length);
       
-      // ✅ バックアップも同時に保存（複数のキーで保存）
-      await Future.wait([
-        prefs.setString('calendar_marks', jsonString),
-        prefs.setString('calendar_marks_backup', jsonString),
-        prefs.setString('calendar_marks_backup2', jsonString),
-        prefs.setString('calendar_marks_backup3', jsonString),
-        prefs.setInt('calendar_marks_count', _selectedDates.length),
-      ]);
-      
-      debugPrint('カレンダーマーク保存完了: ${_selectedDates.length}件（バックアップ含む）');
+      if (success1 && success2 && success3) {
+        debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ菫晏ｭ伜ｮ御ｺ・ ${_selectedDates.length}莉ｶ');
+      } else {
+        debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ菫晏ｭ倥↓螟ｱ謨・);
+      }
     } catch (e) {
-      debugPrint('カレンダーマーク保存エラー: $e');
+      debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // カレンダーマークの読み込み
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadCalendarMarks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      String? marksStr;
       
-      // ✅ 複数のバックアップキーから試行
-      final keys = [
-        'calendar_marks',
-        'calendar_marks_backup',
-        'calendar_marks_backup2',
-        'calendar_marks_backup3'
-      ];
+      final keys = ['calendar_marks', 'calendar_marks_backup'];
       
       for (final key in keys) {
-        final jsonString = prefs.getString(key);
-        if (jsonString != null && jsonString.isNotEmpty) {
-          try {
-            final marksJson = jsonDecode(jsonString) as Map<String, dynamic>;
+        try {
+          marksStr = prefs.getString(key);
+          if (marksStr != null && marksStr.isNotEmpty) {
+            debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key');
+            break;
+          }
+        } catch (e) {
+          debugPrint('繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
+          continue;
+        }
+      }
+      
+      if (marksStr != null && marksStr.isNotEmpty) {
+        try {
+          final marksJson = jsonDecode(marksStr) as Map<String, dynamic>;
           _selectedDates.clear();
           
           for (final entry in marksJson.entries) {
@@ -4110,25 +3625,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             _selectedDates.add(_normalizeDate(date));
           }
           
-            debugPrint('カレンダーマーク読み込み完了: ${_selectedDates.length}件 ($key)');
-            return;
+          debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_selectedDates.length}莉ｶ');
         } catch (e) {
-            debugPrint('カレンダーマーク解析エラー ($key): $e');
-            continue;
+          debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯJSON繝・さ繝ｼ繝峨お繝ｩ繝ｼ: $e');
+          _selectedDates.clear();
         }
-        }
-      }
-      
-        debugPrint('カレンダーマークが見つかりません');
+      } else {
+        debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
         _selectedDates.clear();
+      }
     } catch (e) {
-      debugPrint('カレンダーマーク読み込みエラー: $e');
+      debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _selectedDates.clear();
     }
   }
   
-  // ユーザー設定の保存
-  Future<void> _saveUserPreferences() async {
+  // 繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壹・菫晏ｭ・  Future<void> _saveUserPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final preferencesJson = <String, dynamic>{
@@ -4144,16 +3656,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final success2 = await prefs.setString('user_preferences_backup', jsonEncode(preferencesJson));
       
       if (success1 && success2) {
-        debugPrint('ユーザー設定保存完了');
+        debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壻ｿ晏ｭ伜ｮ御ｺ・);
       } else {
-        debugPrint('ユーザー設定保存に失敗');
+        debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壻ｿ晏ｭ倥↓螟ｱ謨・);
       }
     } catch (e) {
-      debugPrint('ユーザー設定保存エラー: $e');
+      debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壻ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // ユーザー設定の読み込み
+  // 繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadUserPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -4165,11 +3677,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         try {
           preferencesStr = prefs.getString(key);
           if (preferencesStr != null && preferencesStr.isNotEmpty) {
-            debugPrint('ユーザー設定読み込み成功: $key');
+            debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key');
             break;
           }
         } catch (e) {
-          debugPrint('キー $key の読み込みエラー: $e');
+          debugPrint('繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
           continue;
         }
       }
@@ -4186,85 +3698,81 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           _isAlarmPlaying = preferencesJson['isAlarmPlaying'] ?? false;
           _notificationError = preferencesJson['notificationError'] ?? false;
           
-          debugPrint('ユーザー設定読み込み完了');
+          debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
         } catch (e) {
-          debugPrint('ユーザー設定JSONデコードエラー: $e');
+          debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳哽SON繝・さ繝ｼ繝峨お繝ｩ繝ｼ: $e');
         }
       } else {
-        debugPrint('ユーザー設定が見つかりません');
+        debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳壹′隕九▽縺九ｊ縺ｾ縺帙ｓ');
       }
     } catch (e) {
-      debugPrint('ユーザー設定読み込みエラー: $e');
+      debugPrint('繝ｦ繝ｼ繧ｶ繝ｼ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // 日別色設定の保存
-  Future<void> _saveDayColors() async {
+  // 譌･蛻･濶ｲ險ｭ螳壹・菫晏ｭ・  Future<void> _saveDayColors() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final colorsJson = <String, dynamic>{};
       
-      if (_dayColors.isEmpty) {
-        await prefs.remove('day_colors');
-        await prefs.remove('day_colors_backup');
-        await prefs.remove('day_colors_backup2');
-        await prefs.remove('day_colors_backup3');
-        debugPrint('日別色設定をクリアしました');
-      } else {
-        final colorsJson = <String, int>{};
       for (final entry in _dayColors.entries) {
         colorsJson[entry.key] = entry.value.value;
       }
       
-        final jsonString = jsonEncode(colorsJson);
-        
-        // ✅ バックアップも同時に保存
-        await Future.wait([
-          prefs.setString('day_colors', jsonString),
-          prefs.setString('day_colors_backup', jsonString),
-          prefs.setString('day_colors_backup2', jsonString),
-          prefs.setString('day_colors_backup3', jsonString),
-        ]);
-        
-        debugPrint('日別色設定保存完了: ${_dayColors.length}件（バックアップ含む）');
+      final success1 = await prefs.setString('day_colors', jsonEncode(colorsJson));
+      final success2 = await prefs.setString('day_colors_backup', jsonEncode(colorsJson));
+      
+      if (success1 && success2) {
+        debugPrint('譌･蛻･濶ｲ險ｭ螳壻ｿ晏ｭ伜ｮ御ｺ・ ${_dayColors.length}莉ｶ');
+      } else {
+        debugPrint('譌･蛻･濶ｲ險ｭ螳壻ｿ晏ｭ倥↓螟ｱ謨・);
       }
     } catch (e) {
-      debugPrint('日別色設定保存エラー: $e');
+      debugPrint('譌･蛻･濶ｲ險ｭ螳壻ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 日別色設定の読み込み
+  // 譌･蛻･濶ｲ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadDayColors() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      String? colorsStr;
       
-      // ✅ 複数のバックアップキーから試行
-      final keys = ['day_colors', 'day_colors_backup', 'day_colors_backup2', 'day_colors_backup3'];
+      final keys = ['day_colors', 'day_colors_backup'];
       
       for (final key in keys) {
-        final jsonString = prefs.getString(key);
-        if (jsonString != null && jsonString.isNotEmpty) {
-          try {
-            final Map<String, dynamic> decoded = jsonDecode(jsonString);
-            _dayColors = decoded.map((key, value) => MapEntry(key, Color(value)));
-            debugPrint('日別色設定読み込み完了: ${_dayColors.length}件 ($key)');
-            return;
+        try {
+          colorsStr = prefs.getString(key);
+          if (colorsStr != null && colorsStr.isNotEmpty) {
+            debugPrint('譌･蛻･濶ｲ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key');
+            break;
+          }
         } catch (e) {
-            debugPrint('日別色設定解析エラー ($key): $e');
+          debugPrint('繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
           continue;
         }
       }
-      }
       
-        debugPrint('日別色設定が見つかりません');
+      if (colorsStr != null && colorsStr.isNotEmpty) {
+        try {
+          final Map<String, dynamic> decoded = jsonDecode(colorsStr);
+          _dayColors = decoded.map((key, value) => MapEntry(key, Color(value)));
+          debugPrint('譌･蛻･濶ｲ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_dayColors.length}莉ｶ');
+        } catch (e) {
+          debugPrint('譌･蛻･濶ｲ險ｭ螳哽SON繝・さ繝ｼ繝峨お繝ｩ繝ｼ: $e');
+          _dayColors = {};
+        }
+      } else {
+        debugPrint('譌･蛻･濶ｲ險ｭ螳壹′隕九▽縺九ｊ縺ｾ縺帙ｓ');
         _dayColors = {};
+      }
     } catch (e) {
-      debugPrint('日別色設定読み込みエラー: $e');
+      debugPrint('譌･蛻･濶ｲ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _dayColors = {};
     }
   }
   
-  // 統計データの保存
-  Future<void> _saveStatistics() async {
+  // 邨ｱ險医ョ繝ｼ繧ｿ縺ｮ菫晏ｭ・  Future<void> _saveStatistics() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final statisticsJson = <String, dynamic>{
@@ -4277,16 +3785,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final success2 = await prefs.setString('statistics_backup', jsonEncode(statisticsJson));
       
       if (success1 && success2) {
-        debugPrint('統計データ保存完了');
+        debugPrint('邨ｱ險医ョ繝ｼ繧ｿ菫晏ｭ伜ｮ御ｺ・);
       } else {
-        debugPrint('統計データ保存に失敗');
+        debugPrint('邨ｱ險医ョ繝ｼ繧ｿ菫晏ｭ倥↓螟ｱ謨・);
       }
     } catch (e) {
-      debugPrint('統計データ保存エラー: $e');
+      debugPrint('邨ｱ險医ョ繝ｼ繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 統計データの読み込み
+  // 邨ｱ險医ョ繝ｼ繧ｿ縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadStatistics() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -4298,11 +3806,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         try {
           statisticsStr = prefs.getString(key);
           if (statisticsStr != null && statisticsStr.isNotEmpty) {
-            debugPrint('統計データ読み込み成功: $key');
+            debugPrint('邨ｱ險医ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key');
             break;
           }
         } catch (e) {
-          debugPrint('キー $key の読み込みエラー: $e');
+          debugPrint('繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
           continue;
         }
       }
@@ -4311,23 +3819,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         try {
           final statisticsJson = jsonDecode(statisticsStr) as Map<String, dynamic>;
           _adherenceRates = Map<String, double>.from(statisticsJson['adherenceRates'] ?? {});
-          debugPrint('統計データ読み込み完了');
+          debugPrint('邨ｱ險医ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
         } catch (e) {
-          debugPrint('統計データJSONデコードエラー: $e');
+          debugPrint('邨ｱ險医ョ繝ｼ繧ｿJSON繝・さ繝ｼ繝峨お繝ｩ繝ｼ: $e');
           _adherenceRates = {};
         }
       } else {
-        debugPrint('統計データが見つかりません');
+        debugPrint('邨ｱ險医ョ繝ｼ繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
         _adherenceRates = {};
       }
     } catch (e) {
-      debugPrint('統計データ読み込みエラー: $e');
+      debugPrint('邨ｱ險医ョ繝ｼ繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _adherenceRates = {};
     }
   }
   
-  // アプリ設定の保存
-  Future<void> _saveAppSettings() async {
+  // 繧｢繝励Μ險ｭ螳壹・菫晏ｭ・  Future<void> _saveAppSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final settingsJson = <String, dynamic>{
@@ -4341,17 +3848,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final success2 = await prefs.setString('app_settings_backup', jsonEncode(settingsJson));
       
       if (success1 && success2) {
-        debugPrint('アプリ設定保存完了');
+        debugPrint('繧｢繝励Μ險ｭ螳壻ｿ晏ｭ伜ｮ御ｺ・);
       } else {
-        debugPrint('アプリ設定保存に失敗');
+        debugPrint('繧｢繝励Μ險ｭ螳壻ｿ晏ｭ倥↓螟ｱ謨・);
       }
     } catch (e) {
-      debugPrint('アプリ設定保存エラー: $e');
+      debugPrint('繧｢繝励Μ險ｭ螳壻ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 服用回数別状態の保存
-  Future<void> _saveMedicationDoseStatus() async {
+  // 譛咲畑蝗樊焚蛻･迥ｶ諷九・菫晏ｭ・  Future<void> _saveMedicationDoseStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final doseStatusJson = <String, dynamic>{};
@@ -4376,49 +3882,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         doseStatusJson[dateStr] = memoStatusJson;
       }
       
-      final jsonString = jsonEncode(doseStatusJson);
+      final success1 = await prefs.setString('medication_dose_status', jsonEncode(doseStatusJson));
+      final success2 = await prefs.setString('medication_dose_status_backup', jsonEncode(doseStatusJson));
       
-      // ✅ バックアップも同時に保存（複数のキーで保存）
-      await Future.wait([
-        prefs.setString('medication_dose_status', jsonString),
-        prefs.setString('medication_dose_status_backup', jsonString),
-        prefs.setString('medication_dose_status_backup2', jsonString),
-        prefs.setString('medication_dose_status_backup3', jsonString),
-      ]);
-      
-      debugPrint('服用チェック状態保存完了: ${_weekdayMedicationDoseStatus.length}件（バックアップ含む）');
+      if (success1 && success2) {
+        debugPrint('譛咲畑蝗樊焚蛻･迥ｶ諷倶ｿ晏ｭ伜ｮ御ｺ・);
+      } else {
+        debugPrint('譛咲畑蝗樊焚蛻･迥ｶ諷倶ｿ晏ｭ倥↓螟ｱ謨・);
+      }
     } catch (e) {
-      debugPrint('服用回数別状態保存エラー: $e');
+      debugPrint('譛咲畑蝗樊焚蛻･迥ｶ諷倶ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 服用回数別状態の読み込み
+  // 譛咲畑蝗樊焚蛻･迥ｶ諷九・隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadMedicationDoseStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // ✅ 複数のバックアップキーから試行
-      final keys = [
-        'medication_dose_status',
-        'medication_dose_status_backup',
-        'medication_dose_status_backup2',
-        'medication_dose_status_backup3'
-      ];
-      
-      String? doseStatusStr;
-      for (final key in keys) {
-        doseStatusStr = prefs.getString(key);
-        if (doseStatusStr != null && doseStatusStr.isNotEmpty) {
-          debugPrint('服用チェック状態読み込み成功: $key');
-          break;
-        }
-      }
-      
-      if (doseStatusStr == null || doseStatusStr.isEmpty) {
-        debugPrint('服用チェック状態が見つかりません');
-        return;
-      }
-      
+      final doseStatusStr = prefs.getString('medication_dose_status') ?? 
+                           prefs.getString('medication_dose_status_backup') ?? '{}';
       final doseStatusJson = jsonDecode(doseStatusStr) as Map<String, dynamic>;
       
       _weekdayMedicationDoseStatus.clear();
@@ -4443,13 +3925,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _weekdayMedicationDoseStatus[dateStr] = memoStatusMap;
       }
       
-      debugPrint('服用回数別状態読み込み完了');
+      debugPrint('譛咲畑蝗樊焚蛻･迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
     } catch (e) {
-      debugPrint('服用回数別状態読み込みエラー: $e');
+      debugPrint('譛咲畑蝗樊焚蛻･迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // アプリ設定の読み込み
+  // 繧｢繝励Μ險ｭ螳壹・隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadAppSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -4461,11 +3943,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         try {
           settingsStr = prefs.getString(key);
           if (settingsStr != null && settingsStr.isNotEmpty) {
-            debugPrint('アプリ設定読み込み成功: $key');
+            debugPrint('繧｢繝励Μ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key');
             break;
           }
         } catch (e) {
-          debugPrint('キー $key の読み込みエラー: $e');
+          debugPrint('繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
           continue;
         }
       }
@@ -4473,64 +3955,57 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (settingsStr != null && settingsStr.isNotEmpty) {
         try {
           final settingsJson = jsonDecode(settingsStr) as Map<String, dynamic>;
-          debugPrint('アプリ設定読み込み完了: ${settingsJson['appVersion']}');
+          debugPrint('繧｢繝励Μ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${settingsJson['appVersion']}');
         } catch (e) {
-          debugPrint('アプリ設定JSONデコードエラー: $e');
+          debugPrint('繧｢繝励Μ險ｭ螳哽SON繝・さ繝ｼ繝峨お繝ｩ繝ｼ: $e');
         }
       } else {
-        debugPrint('アプリ設定が見つかりません');
+        debugPrint('繧｢繝励Μ險ｭ螳壹′隕九▽縺九ｊ縺ｾ縺帙ｓ');
       }
     } catch (e) {
-      debugPrint('アプリ設定読み込みエラー: $e');
+      debugPrint('繧｢繝励Μ險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // その他の設定読み込み
+  // 縺昴・莉悶・險ｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadOtherSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // 日別の色設定
-      final colorsJson = prefs.getString('day_colors');
+      // 譌･蛻･縺ｮ濶ｲ險ｭ螳・      final colorsJson = prefs.getString('day_colors');
       if (colorsJson != null) {
         final Map<String, dynamic> decoded = jsonDecode(colorsJson);
         _dayColors = decoded.map((key, value) => MapEntry(key, Color(value)));
       }
       
-      debugPrint('その他設定読み込み完了');
+      debugPrint('縺昴・莉冶ｨｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
     } catch (e) {
-      debugPrint('その他設定読み込みエラー: $e');
+      debugPrint('縺昴・莉冶ｨｭ螳夊ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   void _setupControllerListeners() {
-    // 動的薬リストのリスナー設定は不要
-  }
+    // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・繝ｪ繧ｹ繝翫・險ｭ螳壹・荳崎ｦ・  }
   
-  /// 軽量な初期化処理（アプリ起動を阻害しない）
-  Future<void> _initializeAsync() async {
+  /// 霆ｽ驥上↑蛻晄悄蛹門・逅・ｼ医い繝励Μ襍ｷ蜍輔ｒ髦ｻ螳ｳ縺励↑縺・ｼ・  Future<void> _initializeAsync() async {
     try {
-      // 重複初期化を防ぐ
-      if (_isInitialized) {
-        debugPrint('初期化済みのためスキップ');
+      // 驥崎､・・譛溷喧繧帝亟縺・      if (_isInitialized) {
+        debugPrint('蛻晄悄蛹匁ｸ医∩縺ｮ縺溘ａ繧ｹ繧ｭ繝・・');
         return;
       }
       
-      // 軽量な初期化のみ実行
-      _notificationError = !await NotificationService.initialize();
+      // 霆ｽ驥上↑蛻晄悄蛹悶・縺ｿ螳溯｡・      _notificationError = !await NotificationService.initialize();
       
-      // 重い処理は後回し
-      Future.delayed(const Duration(milliseconds: 500), () {
+      // 驥阪＞蜃ｦ逅・・蠕悟屓縺・      Future.delayed(const Duration(milliseconds: 500), () {
         _loadHeavyData();
       });
       
-      debugPrint('軽量初期化完了');
+      debugPrint('霆ｽ驥丞・譛溷喧螳御ｺ・);
     } catch (e) {
-      debugPrint('初期化エラー: $e');
+      debugPrint('蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 重いデータ読み込み（後回し）
-  Future<void> _loadHeavyData() async {
+  // 驥阪＞繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ・亥ｾ悟屓縺暦ｼ・  Future<void> _loadHeavyData() async {
     try {
       final futures = await Future.wait([
         MedicationService.loadMedicationData(),
@@ -4545,14 +4020,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _adherenceRates = futures[2] as Map<String, double>;
       });
       
-      debugPrint('重いデータ読み込み完了');
+      debugPrint('驥阪＞繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
     } catch (e) {
-      debugPrint('重いデータ読み込みエラー: $e');
+      debugPrint('驥阪＞繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
   
-  // SharedPreferencesからバックアップ復元
-  Future<void> _loadFromSharedPreferences() async {
+  // SharedPreferences縺九ｉ繝舌ャ繧ｯ繧｢繝・・蠕ｩ蜈・  Future<void> _loadFromSharedPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastSaveDate = prefs.getString('last_save_date');
@@ -4561,34 +4035,34 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         final backupData = prefs.getString('medication_backup_$lastSaveDate');
         if (backupData != null) {
           final dataJson = jsonDecode(backupData) as Map<String, dynamic>;
-          debugPrint('バックアップデータ復元: $lastSaveDate');
+          debugPrint('繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ蠕ｩ蜈・ $lastSaveDate');
         }
       }
     } catch (e) {
-      debugPrint('バックアップ復元エラー: $e');
+      debugPrint('繝舌ャ繧ｯ繧｢繝・・蠕ｩ蜈・お繝ｩ繝ｼ: $e');
     }
   }
   @override
   void dispose() {
-    // ✅ 修正：すべてのタイマーとコントローラーを適切に解放
+    // 笨・菫ｮ豁｣・壹☆縺ｹ縺ｦ縺ｮ繧ｿ繧､繝槭・縺ｨ繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ繧帝←蛻・↓隗｣謾ｾ
     _debounce?.cancel();
     _debounce = null;
     _saveDebounceTimer?.cancel();
     _saveDebounceTimer = null;
     
-    // ✅ 修正：StreamSubscriptionの完全解放
+    // 笨・菫ｮ豁｣・售treamSubscription縺ｮ螳悟・隗｣謾ｾ
     _subscription?.cancel();
     _subscription = null;
     
-    // ✅ 修正：動的薬リストのリスナー解放
+    // 笨・菫ｮ豁｣・壼虚逧・脈繝ｪ繧ｹ繝医・繝ｪ繧ｹ繝翫・隗｣謾ｾ
     for (final medication in _addedMedications) {
-      // 各薬のコントローラーがあれば解放
+      // 蜷・脈縺ｮ繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ縺後≠繧後・隗｣謾ｾ
       if (medication.containsKey('controller')) {
         (medication['controller'] as TextEditingController?)?.dispose();
       }
     }
     
-    // ✅ 修正：メモコントローラーとフォーカスノードのクリーンアップ
+    // 笨・菫ｮ豁｣・壹Γ繝｢繧ｳ繝ｳ繝医Ο繝ｼ繝ｩ繝ｼ縺ｨ繝輔か繝ｼ繧ｫ繧ｹ繝弱・繝峨・繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・
     _memoController.dispose();
     _memoFocusNode.dispose();
     _tabController.dispose();
@@ -4599,14 +4073,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _customDaysController.dispose();
     _customDaysFocusNode.dispose();
     
-    // ✅ 修正：購入サービスも解放
+    // 笨・菫ｮ豁｣・夊ｳｼ蜈･繧ｵ繝ｼ繝薙せ繧りｧ｣謾ｾ
     InAppPurchaseService.dispose();
     
-    // ✅ 修正：Hiveボックスのクリーンアップ
+    // 笨・菫ｮ豁｣・唏ive繝懊ャ繧ｯ繧ｹ縺ｮ繧ｯ繝ｪ繝ｼ繝ｳ繧｢繝・・
     try {
       Hive.close();
     } catch (e) {
-      Logger.warning('Hiveの解放エラー: $e');
+      Logger.warning('Hive縺ｮ隗｣謾ｾ繧ｨ繝ｩ繝ｼ: $e');
     }
     
     super.dispose();
@@ -4624,8 +4098,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           final dateStr = DateFormat('yyyy-MM-dd').format(date);
           final dayData = _medicationData[dateStr];
         
-        // 動的薬リストの統計
-          if (dayData != null) {
+        // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・          if (dayData != null) {
             for (final timeSlot in dayData.values) {
               if (timeSlot.medicine.isNotEmpty) {
                 totalDoses++;
@@ -4634,40 +4107,35 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             }
           }
         
-        // 曜日設定された薬の統計（服用メモのチェック状態を反映）
-        final weekday = date.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+        // 譖懈律險ｭ螳壹＆繧後◆阮ｬ縺ｮ邨ｱ險茨ｼ域恪逕ｨ繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ蜿肴丐・・        final weekday = date.weekday % 7; // 0=譌･譖懈律, 1=譛域屆譌･, ..., 6=蝨滓屆譌･
         final weekdayMemos = _medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
         
         for (final memo in weekdayMemos) {
           totalDoses++;
-          // 服用メモのチェック状態を確認
-          if (_medicationMemoStatus[memo.id] == true) {
+          // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ遒ｺ隱・          if (_medicationMemoStatus[memo.id] == true) {
             takenDoses++;
           }
         }
         }
-        stats['$period日間'] = totalDoses > 0 ? (takenDoses / totalDoses * 100) : 0;
+        stats['$period譌･髢・] = totalDoses > 0 ? (takenDoses / totalDoses * 100) : 0;
       }
       setState(() => _adherenceRates = stats);
       await MedicationService.saveAdherenceStats(stats);
     } catch (e) {
     }
   }
-  // ✅ 修正：デバウンス保存の実装
-  void _saveCurrentDataDebounced() {
+  // 笨・菫ｮ豁｣・壹ョ繝舌え繝ｳ繧ｹ菫晏ｭ倥・螳溯｣・  void _saveCurrentDataDebounced() {
     _saveDebounceTimer?.cancel();
     _saveDebounceTimer = Timer(const Duration(seconds: 2), () {
       _saveCurrentDataDebounced();
     });
   }
 
-  // 強化されたデータ保存メソッド（差分保存対応）
-  void _saveCurrentData() async {
+  // 蠑ｷ蛹悶＆繧後◆繝・・繧ｿ菫晏ｭ倥Γ繧ｽ繝・ラ・亥ｷｮ蛻・ｿ晏ｭ伜ｯｾ蠢懶ｼ・  void _saveCurrentData() async {
     try {
       if (!_isInitialized) return;
       
-      // ✅ 修正：変更があった部分のみ保存
-      if (_medicationMemoStatusChanged) {
+      // 笨・菫ｮ豁｣・壼､画峩縺後≠縺｣縺滄Κ蛻・・縺ｿ菫晏ｭ・      if (_medicationMemoStatusChanged) {
         await _saveMedicationMemoStatus();
         _medicationMemoStatusChanged = false;
       }
@@ -4682,30 +4150,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _addedMedicationsChanged = false;
       }
       
-      // 服用メモの保存（Hiveベース）
-      for (final memo in _medicationMemos) {
+      // 譛咲畑繝｡繝｢縺ｮ菫晏ｭ假ｼ・ive繝吶・繧ｹ・・      for (final memo in _medicationMemos) {
         await AppPreferences.saveMedicationMemo(memo);
       }
       
-      // メモの保存
-      await _saveMemo();
+      // 繝｡繝｢縺ｮ菫晏ｭ・      await _saveMemo();
       
-      // 統計の再計算
-      await _calculateAdherenceStats();
+      // 邨ｱ險医・蜀崎ｨ育ｮ・      await _calculateAdherenceStats();
       
     } catch (e) {
     }
   }
   
-  // 動的薬リストの保存
-  Future<void> _saveAddedMedications() async {
+  // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・菫晏ｭ・  Future<void> _saveAddedMedications() async {
     try {
       if (_selectedDay == null) return;
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
       _medicationData.putIfAbsent(dateStr, () => {});
       
-      // 動的薬リストの保存（個別に保存）
-      for (final medication in _addedMedications) {
+      // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・菫晏ｭ假ｼ亥句挨縺ｫ菫晏ｭ假ｼ・      for (final medication in _addedMedications) {
         final key = 'added_medication_${medication.hashCode}';
         _medicationData[dateStr]![key] = MedicationInfo(
           checked: medication['isChecked'] as bool,
@@ -4719,8 +4182,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // 服用メモの状態保存
-  Future<void> _saveMedicationMemoStatus() async {
+  // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷倶ｿ晏ｭ・  Future<void> _saveMedicationMemoStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final memoStatusJson = <String, dynamic>{};
@@ -4729,16 +4191,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         memoStatusJson[entry.key] = entry.value;
       }
       
-      // ✅ 修正：統一されたキーとバックアップ保存
-      final data = jsonEncode(memoStatusJson);
+      // 笨・菫ｮ豁｣・夂ｵｱ荳縺輔ｌ縺溘く繝ｼ縺ｨ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ・      final data = jsonEncode(memoStatusJson);
       await prefs.setString(_medicationMemoStatusKey, data);
       await prefs.setString(_medicationMemoStatusKey + _backupSuffix, data);
     } catch (e) {
     }
   }
   
-  // 曜日設定薬の状態保存
-  Future<void> _saveWeekdayMedicationStatus() async {
+  // 譖懈律險ｭ螳夊脈縺ｮ迥ｶ諷倶ｿ晏ｭ・  Future<void> _saveWeekdayMedicationStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final weekdayStatusJson = <String, dynamic>{};
@@ -4747,39 +4207,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         weekdayStatusJson[dateEntry.key] = dateEntry.value;
       }
       
-      final jsonString = jsonEncode(weekdayStatusJson);
-      
-      // ✅ バックアップも同時に保存（複数のキーで保存）
-      await Future.wait([
-        prefs.setString('weekday_medication_status', jsonString),
-        prefs.setString('weekday_medication_status_backup', jsonString),
-        prefs.setString('weekday_medication_status_backup2', jsonString),
-        prefs.setString('weekday_medication_status_backup3', jsonString),
-      ]);
-      
-      debugPrint('曜日別服用状態保存完了: ${_weekdayMedicationStatus.length}件（バックアップ含む）');
+      await prefs.setString('weekday_medication_status', jsonEncode(weekdayStatusJson));
     } catch (e) {
-      debugPrint('曜日別服用状態保存エラー: $e');
     }
   }
   
-  // 強化されたデータ読み込みメソッド
+  // 蠑ｷ蛹悶＆繧後◆繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ繝｡繧ｽ繝・ラ
   Future<void> _loadCurrentData() async {
     try {
-      // 服用メモの状態読み込み
+      // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ
       await _loadMedicationMemoStatus();
       
-      // 曜日設定薬の状態読み込み
+      // 譖懈律險ｭ螳夊脈縺ｮ迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ
       await _loadWeekdayMedicationStatus();
       
-      // メモの読み込み
+      // 繝｡繝｢縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
       await _loadMemo();
       
     } catch (e) {
     }
   }
   
-  // 服用メモの状態読み込み
+  // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadMedicationMemoStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -4794,60 +4243,37 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 服用メモの初期状態を未チェックに設定
-      for (final memo in _medicationMemos) {
+      // 譛咲畑繝｡繝｢縺ｮ蛻晄悄迥ｶ諷九ｒ譛ｪ繝√ぉ繝・け縺ｫ險ｭ螳・      for (final memo in _medicationMemos) {
         if (!_medicationMemoStatus.containsKey(memo.id)) {
           _medicationMemoStatus[memo.id] = false;
         }
       }
     } catch (e) {
-      // エラー時も初期状態を未チェックに設定
-      for (final memo in _medicationMemos) {
+      // 繧ｨ繝ｩ繝ｼ譎ゅｂ蛻晄悄迥ｶ諷九ｒ譛ｪ繝√ぉ繝・け縺ｫ險ｭ螳・      for (final memo in _medicationMemos) {
         _medicationMemoStatus[memo.id] = false;
       }
     }
   }
   
-  // 曜日設定薬の状態読み込み
+  // 譖懈律險ｭ螳夊脈縺ｮ迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadWeekdayMedicationStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final weekdayStatusJson = prefs.getString('weekday_medication_status');
       
-      // ✅ 複数のバックアップキーから試行
-      final keys = [
-        'weekday_medication_status',
-        'weekday_medication_status_backup',
-        'weekday_medication_status_backup2',
-        'weekday_medication_status_backup3'
-      ];
-      
-      String? weekdayStatusJson;
-      for (final key in keys) {
-        weekdayStatusJson = prefs.getString(key);
-        if (weekdayStatusJson != null && weekdayStatusJson.isNotEmpty) {
-          debugPrint('曜日別服用状態読み込み成功: $key');
-          break;
-        }
-      }
-      
-      if (weekdayStatusJson != null && weekdayStatusJson.isNotEmpty) {
+      if (weekdayStatusJson != null) {
         final Map<String, dynamic> weekdayStatusData = jsonDecode(weekdayStatusJson);
         _weekdayMedicationStatus.clear();
         
         for (final dateEntry in weekdayStatusData.entries) {
           _weekdayMedicationStatus[dateEntry.key] = Map<String, bool>.from(dateEntry.value);
         }
-        
-        debugPrint('曜日別服用状態読み込み完了: ${_weekdayMedicationStatus.length}件');
-      } else {
-        debugPrint('曜日別服用状態が見つかりません');
       }
     } catch (e) {
-      debugPrint('曜日別服用状態読み込みエラー: $e');
     }
   }
   
-  // メモの読み込み
+  // 繝｡繝｢縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadMemo() async {
     try {
       if (_selectedDay != null) {
@@ -4863,8 +4289,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   }
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     try {
-      // トライアル制限チェック（当日以外の選択時）
-      final isExpired = await TrialService.isTrialExpired();
+      // 繝医Λ繧､繧｢繝ｫ蛻ｶ髯舌メ繧ｧ繝・け・亥ｽ捺律莉･螟悶・驕ｸ謚樊凾・・      final isExpired = await TrialService.isTrialExpired();
       final today = DateTime.now();
       final isToday = selectedDay.year == today.year && 
                       selectedDay.month == today.month && 
@@ -4873,16 +4298,16 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (isExpired && !isToday) {
         showDialog(
           context: context,
-          builder: (context) => TrialLimitDialog(featureName: 'カレンダー'),
+          builder: (context) => TrialLimitDialog(featureName: '繧ｫ繝ｬ繝ｳ繝繝ｼ'),
         );
         return;
       }
       
-      // ✅ 修正：先にデータ準備
+      // 笨・菫ｮ豁｣・壼・縺ｫ繝・・繧ｿ貅門ｙ
       final normalizedDay = _normalizeDate(selectedDay);
       final wasSelected = _selectedDates.contains(normalizedDay);
       
-      // ✅ 修正：1回のsetStateで全て更新
+      // 笨・菫ｮ豁｣・・蝗槭・setState縺ｧ蜈ｨ縺ｦ譖ｴ譁ｰ
       setState(() {
         if (wasSelected) {
           _selectedDates.remove(normalizedDay);
@@ -4895,22 +4320,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _focusedDay = focusedDay;
       });
       
-      // ✅ 修正：非同期処理は外で実行
-      if (!wasSelected && _selectedDay != null) {
+      // 笨・菫ｮ豁｣・夐撼蜷梧悄蜃ｦ逅・・螟悶〒螳溯｡・      if (!wasSelected && _selectedDay != null) {
         await _updateMedicineInputsForSelectedDate();
         await _loadCurrentData();
       }
       
-      // メモスナップショット保存フラグをリセット
+      // 繝｡繝｢繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥ヵ繝ｩ繧ｰ繧偵Μ繧ｻ繝・ヨ
       _memoSnapshotSaved = false;
     } catch (e) {
-      _showSnackBar('日付の選択に失敗しました: $e');
+      _showSnackBar('譌･莉倥・驕ｸ謚槭↓螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
   
   
-  // カレンダースタイルを動的に生成（日付の色に基づく）
-  CalendarStyle _buildCalendarStyle() {
+  // 繧ｫ繝ｬ繝ｳ繝繝ｼ繧ｹ繧ｿ繧､繝ｫ繧貞虚逧・↓逕滓・・域律莉倥・濶ｲ縺ｫ蝓ｺ縺･縺擾ｼ・  CalendarStyle _buildCalendarStyle() {
     return CalendarStyle(
       outsideDaysVisible: false,
       cellMargin: const EdgeInsets.all(2),
@@ -4986,8 +4409,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // カスタム日付装飾を取得
-  BoxDecoration? _getCustomDayDecoration(DateTime day) {
+  // 繧ｫ繧ｹ繧ｿ繝譌･莉倩｣・｣ｾ繧貞叙蠕・  BoxDecoration? _getCustomDayDecoration(DateTime day) {
     final dateKey = DateFormat('yyyy-MM-dd').format(day);
     final customColor = _dayColors[dateKey];
     
@@ -5008,7 +4430,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return null;
   }
   
-  // 色選択ダイアログ
+  // 濶ｲ驕ｸ謚槭ム繧､繧｢繝ｭ繧ｰ
   void _showColorPickerDialog(String dateKey) {
     final colors = [
       Colors.red,
@@ -5026,21 +4448,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('日付の色を選択'),
+        title: const Text('譌･莉倥・濶ｲ繧帝∈謚・),
         content: Wrap(
           spacing: 8,
           runSpacing: 8,
           children: colors.map((color) => GestureDetector(
             onTap: () async {
-              // ✅ 変更前スナップショット（カレンダー日付色の設定）
-              await _saveSnapshotBeforeChange('日付色変更_$dateKey');
+              // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・医き繝ｬ繝ｳ繝繝ｼ譌･莉倩牡縺ｮ險ｭ螳夲ｼ・              await _saveSnapshotBeforeChange('譌･莉倩牡螟画峩_$dateKey');
               _dayColors[dateKey] = color;
               _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
               _saveDayColors();
               Navigator.pop(context);
-              _showSnackBar('色を設定しました');
-              // カレンダーを再描画
-              // 部分更新はNotifierで反映済み
+              _showSnackBar('濶ｲ繧定ｨｭ螳壹＠縺ｾ縺励◆');
+              // 繧ｫ繝ｬ繝ｳ繝繝ｼ繧貞・謠冗判
+              // 驛ｨ蛻・峩譁ｰ縺ｯNotifier縺ｧ蜿肴丐貂医∩
             },
             child: Container(
               width: 40,
@@ -5056,21 +4477,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () async {
-              // ✅ 変更前スナップショット（カレンダー日付色のリセット）
-              await _saveSnapshotBeforeChange('日付色リセット_$dateKey');
+              // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・医き繝ｬ繝ｳ繝繝ｼ譌･莉倩牡縺ｮ繝ｪ繧ｻ繝・ヨ・・              await _saveSnapshotBeforeChange('譌･莉倩牡繝ｪ繧ｻ繝・ヨ_$dateKey');
               _dayColors.remove(dateKey);
               _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
               _saveDayColors();
               Navigator.pop(context);
-              _showSnackBar('色を削除しました');
-              // カレンダーを再描画
-              // 部分更新はNotifierで反映済み
+              _showSnackBar('濶ｲ繧貞炎髯､縺励∪縺励◆');
+              // 繧ｫ繝ｬ繝ｳ繝繝ｼ繧貞・謠冗判
+              // 驛ｨ蛻・峩譁ｰ縺ｯNotifier縺ｧ蜿肴丐貂医∩
             },
-            child: const Text('色を削除'),
+            child: const Text('濶ｲ繧貞炎髯､'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
+            child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
           ),
         ],
       ),
@@ -5081,14 +4501,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (_selectedDay != null) {
         final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
         final dayData = _medicationData[dateStr];
-        // 動的薬リストの復元
-        _addedMedications = [];
+        // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・蠕ｩ蜈・        _addedMedications = [];
         if (dayData != null) {
           for (final entry in dayData.entries) {
             if (entry.key.startsWith('added_medication_')) {
               _addedMedications.add({
                 'name': entry.value.medicine,
-                'type': '薬',
+                'type': '阮ｬ',
                 'color': Colors.blue,
                 'dosage': '',
                 'notes': '',
@@ -5097,7 +4516,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             }
           }
         }
-        // メモの読み込み
+        // 繝｡繝｢縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
         _loadMemoForSelectedDate();
       } else {
         _addedMedications = [];
@@ -5124,47 +4543,44 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   }
 
 
-  // ✅ 改善版：服用メモ読み込み機能（多重バックアップ付き）
-  Future<void> _loadMedicationMemos() async {
+  // 笨・謾ｹ蝟・沿・壽恪逕ｨ繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ讖溯・・亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・  Future<void> _loadMedicationMemos() async {
     try {
-      debugPrint('📖 服用メモ読み込み開始...');
+      debugPrint('当 譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ髢句ｧ・..');
       
-      // ✅ 1. Hiveボックスから読み込み
+      // 笨・1. Hive繝懊ャ繧ｯ繧ｹ縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         final memos = box.values.toList();
-        debugPrint('✅ Hiveから服用メモ読み込み成功: ${memos.length}件');
+        debugPrint('笨・Hive縺九ｉ譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: ${memos.length}莉ｶ');
         
         setState(() {
           _medicationMemos = memos;
         });
         
-        // ✅ バックアップとしてSharedPreferencesにも保存
-        await _backupMemosToSharedPreferences();
+        // 笨・繝舌ャ繧ｯ繧｢繝・・縺ｨ縺励※SharedPreferences縺ｫ繧ゆｿ晏ｭ・        await _backupMemosToSharedPreferences();
         return;
       }
       
-      // ✅ 2. Hiveが開いていない場合、SharedPreferencesから読み込み
-      debugPrint('⚠️ Hiveボックスが開いていません。SharedPreferencesから読み込み...');
+      // 笨・2. Hive縺碁幕縺・※縺・↑縺・ｴ蜷医ヾharedPreferences縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ
+      debugPrint('笞・・Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺・※縺・∪縺帙ｓ縲４haredPreferences縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ...');
       final memos = await _loadMemosFromSharedPreferences();
       
       setState(() {
         _medicationMemos = memos;
       });
       
-      debugPrint('✅ SharedPreferencesから服用メモ読み込み完了: ${memos.length}件');
+      debugPrint('笨・SharedPreferences縺九ｉ譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${memos.length}莉ｶ');
     } catch (e, stackTrace) {
-      debugPrint('❌ 服用メモ読み込みエラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+      debugPrint('笶・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
+      debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       
-      // ✅ 3. エラー時は空のリストで初期化
-      setState(() {
+      // 笨・3. 繧ｨ繝ｩ繝ｼ譎ゅ・遨ｺ縺ｮ繝ｪ繧ｹ繝医〒蛻晄悄蛹・      setState(() {
         _medicationMemos = [];
       });
     }
   }
   
-  // ✅ SharedPreferencesからの服用メモ読み込み
+  // 笨・SharedPreferences縺九ｉ縺ｮ譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ
   Future<List<MedicationMemo>> _loadMemosFromSharedPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -5184,25 +4600,24 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             final memos = memosList
                 .map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>))
                 .toList();
-            debugPrint('✅ SharedPreferencesから復元: ${memos.length}件 ($key)');
+            debugPrint('笨・SharedPreferences縺九ｉ蠕ｩ蜈・ ${memos.length}莉ｶ ($key)');
             return memos;
       }
     } catch (e) {
-          debugPrint('⚠️ キー $key の読み込みエラー: $e');
+          debugPrint('笞・・繧ｭ繝ｼ $key 縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
           continue;
         }
       }
       
-      debugPrint('⚠️ 全てのバックアップが見つかりません');
+      debugPrint('笞・・蜈ｨ縺ｦ縺ｮ繝舌ャ繧ｯ繧｢繝・・縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
       return [];
     } catch (e) {
-      debugPrint('❌ SharedPreferences読み込みエラー: $e');
+      debugPrint('笶・SharedPreferences隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       return [];
     }
   }
   
-  // ✅ SharedPreferencesへのバックアップ保存
-  Future<void> _backupMemosToSharedPreferences() async {
+  // 笨・SharedPreferences縺ｸ縺ｮ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ・  Future<void> _backupMemosToSharedPreferences() async {
     try {
       if (_medicationMemos.isEmpty) return;
       
@@ -5210,119 +4625,109 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final memosJson = _medicationMemos.map((memo) => memo.toJson()).toList();
       final jsonString = jsonEncode(memosJson);
       
-      // ✅ 複数キーに保存（3重バックアップ）
-      await Future.wait([
+      // 笨・隍・焚繧ｭ繝ｼ縺ｫ菫晏ｭ假ｼ・驥阪ヰ繝・け繧｢繝・・・・      await Future.wait([
         prefs.setString('medication_memos_backup', jsonString),
         prefs.setString('medication_memos_backup2', jsonString),
         prefs.setString('medication_memos_backup3', jsonString),
         prefs.setString('medication_memos_v2', jsonString),
       ]);
       
-      debugPrint('✅ 服用メモバックアップ保存完了: ${_medicationMemos.length}件');
+      debugPrint('笨・譛咲畑繝｡繝｢繝舌ャ繧ｯ繧｢繝・・菫晏ｭ伜ｮ御ｺ・ ${_medicationMemos.length}莉ｶ');
     } catch (e) {
-      debugPrint('❌ 服用メモバックアップ保存エラー: $e');
+      debugPrint('笶・譛咲畑繝｡繝｢繝舌ャ繧ｯ繧｢繝・・菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // ✅ 改善版：服用メモ保存機能（多重バックアップ付き）
-  Future<void> _saveMedicationMemoWithBackup(MedicationMemo memo) async {
+  // 笨・謾ｹ蝟・沿・壽恪逕ｨ繝｡繝｢菫晏ｭ俶ｩ溯・・亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・  Future<void> _saveMedicationMemoWithBackup(MedicationMemo memo) async {
     try {
-      debugPrint('💾 服用メモ保存開始: ${memo.name}');
+      debugPrint('沈 譛咲畑繝｡繝｢菫晏ｭ倬幕蟋・ ${memo.name}');
       
-      // ✅ 1. Hiveボックスに保存
-      if (Hive.isBoxOpen('medication_memos')) {
+      // 笨・1. Hive繝懊ャ繧ｯ繧ｹ縺ｫ菫晏ｭ・      if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         await box.put(memo.id, memo);
-        debugPrint('✅ Hiveに服用メモ保存完了');
+        debugPrint('笨・Hive縺ｫ譛咲畑繝｡繝｢菫晏ｭ伜ｮ御ｺ・);
       } else {
-        debugPrint('⚠️ Hiveボックスが開いていません');
+        debugPrint('笞・・Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺・※縺・∪縺帙ｓ');
       }
       
-      // ✅ 2. SharedPreferencesにもバックアップ保存
-      await _backupMemosToSharedPreferences();
+      // 笨・2. SharedPreferences縺ｫ繧ゅヰ繝・け繧｢繝・・菫晏ｭ・      await _backupMemosToSharedPreferences();
       
-      debugPrint('✅ 服用メモ保存完了: ${memo.name}');
+      debugPrint('笨・譛咲畑繝｡繝｢菫晏ｭ伜ｮ御ｺ・ ${memo.name}');
     } catch (e, stackTrace) {
-      debugPrint('❌ 服用メモ保存エラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+      debugPrint('笶・譛咲畑繝｡繝｢菫晏ｭ倥お繝ｩ繝ｼ: $e');
+      debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       
-      // ✅ エラー時もSharedPreferencesに保存を試行
-      try {
+      // 笨・繧ｨ繝ｩ繝ｼ譎ゅｂSharedPreferences縺ｫ菫晏ｭ倥ｒ隧ｦ陦・      try {
         await _backupMemosToSharedPreferences();
-        debugPrint('✅ フォールバック保存成功');
+        debugPrint('笨・繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ菫晏ｭ俶・蜉・);
       } catch (backupError) {
-        debugPrint('❌ フォールバック保存も失敗: $backupError');
+        debugPrint('笶・繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ菫晏ｭ倥ｂ螟ｱ謨・ $backupError');
       }
     }
   }
   
-  // ✅ 改善版：服用メモ削除機能（多重バックアップ付き）
-  Future<void> _deleteMedicationMemoWithBackup(String memoId) async {
+  // 笨・謾ｹ蝟・沿・壽恪逕ｨ繝｡繝｢蜑企勁讖溯・・亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・  Future<void> _deleteMedicationMemoWithBackup(String memoId) async {
     try {
-      debugPrint('🗑️ 服用メモ削除開始: $memoId');
+      debugPrint('卵・・譛咲畑繝｡繝｢蜑企勁髢句ｧ・ $memoId');
       
-      // ✅ 1. Hiveボックスから削除
+      // 笨・1. Hive繝懊ャ繧ｯ繧ｹ縺九ｉ蜑企勁
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         await box.delete(memoId);
-        debugPrint('✅ Hiveから服用メモ削除完了');
+        debugPrint('笨・Hive縺九ｉ譛咲畑繝｡繝｢蜑企勁螳御ｺ・);
       } else {
-        debugPrint('⚠️ Hiveボックスが開いていません');
+        debugPrint('笞・・Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺・※縺・∪縺帙ｓ');
       }
       
-      // ✅ 2. SharedPreferencesにもバックアップ保存
-      await _backupMemosToSharedPreferences();
+      // 笨・2. SharedPreferences縺ｫ繧ゅヰ繝・け繧｢繝・・菫晏ｭ・      await _backupMemosToSharedPreferences();
       
-      debugPrint('✅ 服用メモ削除完了: $memoId');
+      debugPrint('笨・譛咲畑繝｡繝｢蜑企勁螳御ｺ・ $memoId');
     } catch (e, stackTrace) {
-      debugPrint('❌ 服用メモ削除エラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+      debugPrint('笶・譛咲畑繝｡繝｢蜑企勁繧ｨ繝ｩ繝ｼ: $e');
+      debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
       
-      // ✅ エラー時もSharedPreferencesに保存を試行
-      try {
+      // 笨・繧ｨ繝ｩ繝ｼ譎ゅｂSharedPreferences縺ｫ菫晏ｭ倥ｒ隧ｦ陦・      try {
         await _backupMemosToSharedPreferences();
-        debugPrint('✅ フォールバック保存成功');
+        debugPrint('笨・繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ菫晏ｭ俶・蜉・);
       } catch (backupError) {
-        debugPrint('❌ フォールバック保存も失敗: $backupError');
+        debugPrint('笶・繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ菫晏ｭ倥ｂ螟ｱ謨・ $backupError');
       }
     }
   }
   
-  // ✅ 新規追加：リトライ機能付きの服用メモ読み込み
+  // 笨・譁ｰ隕剰ｿｽ蜉・壹Μ繝医Λ繧､讖溯・莉倥″縺ｮ譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ
   Future<void> _loadMedicationMemosWithRetry({int maxRetries = 3}) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        debugPrint('🔄 服用メモ読み込み試行 $attempt/$maxRetries');
+        debugPrint('売 譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ隧ｦ陦・$attempt/$maxRetries');
         
-        // Hiveボックスが開いているか確認
-        if (!Hive.isBoxOpen('medication_memos')) {
-          debugPrint('⚠️ medication_memosボックスが開いていません。再度開きます...');
+        // Hive繝懊ャ繧ｯ繧ｹ縺碁幕縺・※縺・ｋ縺狗｢ｺ隱・        if (!Hive.isBoxOpen('medication_memos')) {
+          debugPrint('笞・・medication_memos繝懊ャ繧ｯ繧ｹ縺碁幕縺・※縺・∪縺帙ｓ縲ょ・蠎ｦ髢九″縺ｾ縺・..');
           await Hive.openBox<MedicationMemo>('medication_memos');
         }
         
-        // データ読み込み
+        // 繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ
         final memos = await AppPreferences.loadMedicationMemos();
         
         if (memos.isNotEmpty || attempt == maxRetries) {
           setState(() {
             _medicationMemos = memos;
           });
-          debugPrint('✅ 服用メモ読み込み成功: ${memos.length}件（試行$attempt回目）');
+          debugPrint('笨・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ謌仙粥: ${memos.length}莉ｶ・郁ｩｦ陦・attempt蝗樒岼・・);
           return;
         }
         
-        // データが空の場合、次の試行前に少し待つ
+        // 繝・・繧ｿ縺檎ｩｺ縺ｮ蝣ｴ蜷医∵ｬ｡縺ｮ隧ｦ陦悟燕縺ｫ蟆代＠蠕・▽
         if (attempt < maxRetries) {
-          debugPrint('⚠️ データが空です。${attempt + 1}回目の試行を実行します...');
+          debugPrint('笞・・繝・・繧ｿ縺檎ｩｺ縺ｧ縺吶・{attempt + 1}蝗樒岼縺ｮ隧ｦ陦後ｒ螳溯｡後＠縺ｾ縺・..');
           await Future.delayed(Duration(milliseconds: 500 * attempt));
         }
     } catch (e) {
-        debugPrint('❌ 服用メモ読み込みエラー（試行$attempt回目）: $e');
+        debugPrint('笶・譛咲畑繝｡繝｢隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ・郁ｩｦ陦・attempt蝗樒岼・・ $e');
         
         if (attempt == maxRetries) {
-          debugPrint('❌ 最大試行回数に達しました。バックアップから復元を試みます...');
-          // バックアップから復元を試みる
-          await _restoreMedicationMemosFromBackup();
+          debugPrint('笶・譛螟ｧ隧ｦ陦悟屓謨ｰ縺ｫ驕斐＠縺ｾ縺励◆縲ゅヰ繝・け繧｢繝・・縺九ｉ蠕ｩ蜈・ｒ隧ｦ縺ｿ縺ｾ縺・..');
+          // 繝舌ャ繧ｯ繧｢繝・・縺九ｉ蠕ｩ蜈・ｒ隧ｦ縺ｿ繧・          await _restoreMedicationMemosFromBackup();
         } else {
           await Future.delayed(Duration(milliseconds: 500 * attempt));
         }
@@ -5330,14 +4735,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // ✅ 新規追加：バックアップからの復元
-  Future<void> _restoreMedicationMemosFromBackup() async {
+  // 笨・譁ｰ隕剰ｿｽ蜉・壹ヰ繝・け繧｢繝・・縺九ｉ縺ｮ蠕ｩ蜈・  Future<void> _restoreMedicationMemosFromBackup() async {
     try {
-      debugPrint('🔄 バックアップから服用メモを復元中...');
+      debugPrint('売 繝舌ャ繧ｯ繧｢繝・・縺九ｉ譛咲畑繝｡繝｢繧貞ｾｩ蜈・ｸｭ...');
       final prefs = await SharedPreferences.getInstance();
       
-      // 複数のバックアップキーを試す
-      final backupKeys = [
+      // 隍・焚縺ｮ繝舌ャ繧ｯ繧｢繝・・繧ｭ繝ｼ繧定ｩｦ縺・      final backupKeys = [
         'medication_memos_backup',
         'medication_memos_backup2',
         'medication_memos_backup3',
@@ -5353,8 +4756,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 .toList();
             
             if (memos.isNotEmpty) {
-              // Hiveボックスに復元
-              final box = Hive.box<MedicationMemo>('medication_memos');
+              // Hive繝懊ャ繧ｯ繧ｹ縺ｫ蠕ｩ蜈・              final box = Hive.box<MedicationMemo>('medication_memos');
               await box.clear();
               for (final memo in memos) {
                 await box.put(memo.id, memo);
@@ -5364,13 +4766,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _medicationMemos = memos;
       });
       
-              debugPrint('✅ バックアップから復元成功: ${memos.length}件 ($key)');
+              debugPrint('笨・繝舌ャ繧ｯ繧｢繝・・縺九ｉ蠕ｩ蜈・・蜉・ ${memos.length}莉ｶ ($key)');
       
-              // 成功メッセージを表示
+              // 謌仙粥繝｡繝・そ繝ｼ繧ｸ繧定｡ｨ遉ｺ
       if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('バックアップから${memos.length}件のメモを復元しました'),
+                    content: Text('繝舌ャ繧ｯ繧｢繝・・縺九ｉ${memos.length}莉ｶ縺ｮ繝｡繝｢繧貞ｾｩ蜈・＠縺ｾ縺励◆'),
                     backgroundColor: Colors.green,
                     duration: const Duration(seconds: 3),
                   ),
@@ -5379,15 +4781,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               return;
       }
     } catch (e) {
-            debugPrint('⚠️ バックアップ解析エラー ($key): $e');
+            debugPrint('笞・・繝舌ャ繧ｯ繧｢繝・・隗｣譫舌お繝ｩ繝ｼ ($key): $e');
             continue;
           }
         }
       }
       
-      debugPrint('⚠️ 全てのバックアップが見つかりません');
+      debugPrint('笞・・蜈ｨ縺ｦ縺ｮ繝舌ャ繧ｯ繧｢繝・・縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
     } catch (e) {
-      debugPrint('❌ バックアップ復元エラー: $e');
+      debugPrint('笶・繝舌ャ繧ｯ繧｢繝・・蠕ｩ蜈・お繝ｩ繝ｼ: $e');
     }
   }
 
@@ -5412,19 +4814,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     } catch (e) {
     }
   }
-  // 完全に作り直されたカレンダーイベント取得
-  List<Widget> _getEventsForDay(DateTime day) {
+  // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺溘き繝ｬ繝ｳ繝繝ｼ繧､繝吶Φ繝亥叙蠕・  List<Widget> _getEventsForDay(DateTime day) {
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(day);
       final weekday = day.weekday % 7;
       
-      // 完全に作り直されたチェック
+      // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺溘メ繧ｧ繝・け
       bool hasMedications = false;
       bool allTaken = true;
       int takenCount = 0;
       int totalCount = 0;
       
-      // 動的薬リストのチェック
+      // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・繝√ぉ繝・け
       if (_addedMedications.isNotEmpty) {
         hasMedications = true;
         totalCount += _addedMedications.length;
@@ -5437,7 +4838,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 服用メモのチェック
+      // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け
       for (final memo in _medicationMemos) {
         if (memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)) {
           hasMedications = true;
@@ -5450,14 +4851,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 完全に作り直されたマーク表示（すべてのマークを削除）
-      // 赤丸を含むすべてのマークを削除
+      // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺溘・繝ｼ繧ｯ陦ｨ遉ｺ・医☆縺ｹ縺ｦ縺ｮ繝槭・繧ｯ繧貞炎髯､・・      // 襍､荳ｸ繧貞性繧縺吶∋縺ｦ縺ｮ繝槭・繧ｯ繧貞炎髯､
       return [];
     } catch (e) {
       return [];
     }
   }
-  // 服用記録の件数を取得するヘルパーメソッド
+  // 譛咲畑險倬鹸縺ｮ莉ｶ謨ｰ繧貞叙蠕励☆繧九・繝ｫ繝代・繝｡繧ｽ繝・ラ
   int _getMedicationRecordCount() {
     return _addedMedications.length + _getMedicationsForSelectedDay().length;
   }
@@ -5475,13 +4875,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         
         return Column(
             children: [
-            // ✅ スワイプ可能なカレンダーエリア
+            // 笨・繧ｹ繝ｯ繧､繝怜庄閭ｽ縺ｪ繧ｫ繝ｬ繝ｳ繝繝ｼ繧ｨ繝ｪ繧｢
               Expanded(
                 flex: 1,
               child: NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
-                  // スクロール通知を処理
-                  return true;
+                  // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ騾夂衍繧貞・逅・                  return true;
                   },
                   child: SingleChildScrollView(
           controller: _calendarScrollController,
@@ -5495,8 +4894,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           child: Column(
             children: [
-                          // メモフィールド
-              if (_selectedDay != null)
+                          // 繝｡繝｢繝輔ぅ繝ｼ繝ｫ繝・              if (_selectedDay != null)
                 Container(
                               margin: const EdgeInsets.only(bottom: 16),
                   padding: EdgeInsets.fromLTRB(
@@ -5524,7 +4922,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       Row(
                         children: [
                           Text(
-                            '今日のメモ',
+                            '莉頑律縺ｮ繝｡繝｢',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -5538,21 +4936,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
                         
-                            // ✅ カレンダー本体（スワイプ検出を改善）
-                            GestureDetector(
-                              // ✅ 修正：スワイプを確実に検出
+                            // 笨・繧ｫ繝ｬ繝ｳ繝繝ｼ譛ｬ菴難ｼ医せ繝ｯ繧､繝玲､懷・繧呈隼蝟・ｼ・                            GestureDetector(
+                              // 笨・菫ｮ豁｣・壹せ繝ｯ繧､繝励ｒ遒ｺ螳溘↓讀懷・
                               behavior: HitTestBehavior.translucent,
                               onVerticalDragStart: (_) {
-                                // ドラッグ開始を検出
-                                debugPrint('カレンダー: ドラッグ開始');
+                                // 繝峨Λ繝・げ髢句ｧ九ｒ讀懷・
+                                debugPrint('繧ｫ繝ｬ繝ｳ繝繝ｼ: 繝峨Λ繝・げ髢句ｧ・);
                               },
                               onVerticalDragUpdate: (details) {
-                                // スワイプの方向と距離を検出
+                                // 繧ｹ繝ｯ繧､繝励・譁ｹ蜷代→霍晞屬繧呈､懷・
                                 final delta = details.delta.dy;
                                 
-                                if (delta < -3) { // 上スワイプ（感度を調整）
-                                  // 下にスクロール（服用記録を表示）
-                                  if (_calendarScrollController.hasClients) {
+                                if (delta < -3) { // 荳翫せ繝ｯ繧､繝暦ｼ域─蠎ｦ繧定ｪｿ謨ｴ・・                                  // 荳九↓繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ・域恪逕ｨ險倬鹸繧定｡ｨ遉ｺ・・                                  if (_calendarScrollController.hasClients) {
                                     final maxScroll = _calendarScrollController.position.maxScrollExtent;
                                     final currentScroll = _calendarScrollController.offset;
                                     final targetScroll = (currentScroll + 30).clamp(0.0, maxScroll);
@@ -5563,9 +4958,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       curve: Curves.easeOut,
                                     );
                                   }
-                                } else if (delta > 3) { // 下スワイプ（感度を調整）
-                                  // 上にスクロール（カレンダーを表示）
-                                  if (_calendarScrollController.hasClients) {
+                                } else if (delta > 3) { // 荳九せ繝ｯ繧､繝暦ｼ域─蠎ｦ繧定ｪｿ謨ｴ・・                                  // 荳翫↓繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ・医き繝ｬ繝ｳ繝繝ｼ繧定｡ｨ遉ｺ・・                                  if (_calendarScrollController.hasClients) {
                                     final currentScroll = _calendarScrollController.offset;
                                     final targetScroll = (currentScroll - 30).clamp(0.0, double.infinity);
                                     
@@ -5578,20 +4971,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                 }
                               },
                               onVerticalDragEnd: (details) {
-                                // ドラッグ終了時の処理
-                                final velocity = details.primaryVelocity ?? 0;
+                                // 繝峨Λ繝・げ邨ゆｺ・凾縺ｮ蜃ｦ逅・                                final velocity = details.primaryVelocity ?? 0;
                                 
                                 if (!_calendarScrollController.hasClients) return;
                                 
-                                if (velocity < -300) { // 上スワイプ（速い）
-                                  // 服用記録まで一気にスクロール
+                                if (velocity < -300) { // 荳翫せ繝ｯ繧､繝暦ｼ磯溘＞・・                                  // 譛咲畑險倬鹸縺ｾ縺ｧ荳豌励↓繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ
                                   _calendarScrollController.animateTo(
                                     _calendarScrollController.position.maxScrollExtent,
                                     duration: const Duration(milliseconds: 300),
                                     curve: Curves.easeOut,
                                   );
-                                } else if (velocity > 300) { // 下スワイプ（速い）
-                                  // カレンダーまで一気にスクロール
+                                } else if (velocity > 300) { // 荳九せ繝ｯ繧､繝暦ｼ磯溘＞・・                                  // 繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｾ縺ｧ荳豌励↓繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ
                                   _calendarScrollController.animateTo(
                                     0,
                                     duration: const Duration(milliseconds: 300),
@@ -5623,8 +5013,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
                               child: Stack(
                                 children: [
-                                      // カレンダー本体
-                                      ClipRRect(
+                                      // 繧ｫ繝ｬ繝ｳ繝繝ｼ譛ｬ菴・                                      ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                     child: TableCalendar<dynamic>(
                       firstDay: DateTime.utc(2020, 1, 1),
@@ -5633,9 +5022,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       calendarFormat: CalendarFormat.month,
                       eventLoader: _getEventsForDay,
                       startingDayOfWeek: StartingDayOfWeek.monday,
-                      locale: 'ja_JP', // 日本語ロケール（initializeDateFormattingで初期化済み）
-                                          // ✅ カレンダー独自のジェスチャーを無効化
-                                          availableGestures: AvailableGestures.none,
+                      locale: 'ja_JP', // 譌･譛ｬ隱槭Ο繧ｱ繝ｼ繝ｫ・・nitializeDateFormatting縺ｧ蛻晄悄蛹匁ｸ医∩・・                                          // 笨・繧ｫ繝ｬ繝ｳ繝繝ｼ迢ｬ閾ｪ縺ｮ繧ｸ繧ｧ繧ｹ繝√Ε繝ｼ繧堤┌蜉ｹ蛹・                                          availableGestures: AvailableGestures.none,
                       calendarBuilders: CalendarBuilders(
                         defaultBuilder: (context, day, focusedDay) {
                                         return _buildCalendarDay(day);
@@ -5691,7 +5078,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
                                 
-                                      // 左上：左移動ボタン
+                                      // 蟾ｦ荳奇ｼ壼ｷｦ遘ｻ蜍輔・繧ｿ繝ｳ
                                 Positioned(
                                   top: 12,
                                   left: 12,
@@ -5726,7 +5113,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                                 
-                                      // 右上：右移動ボタン
+                                      // 蜿ｳ荳奇ｼ壼承遘ｻ蜍輔・繧ｿ繝ｳ
                                 Positioned(
                                   top: 12,
                                   right: 12,
@@ -5761,7 +5148,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                                 
-                                      // 左矢印アイコンの右側：色変更アイコン
+                                      // 蟾ｦ遏｢蜊ｰ繧｢繧､繧ｳ繝ｳ縺ｮ蜿ｳ蛛ｴ・夊牡螟画峩繧｢繧､繧ｳ繝ｳ
                                 Positioned(
                                   top: 12,
                                         left: 60,
@@ -5800,13 +5187,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         
                           const SizedBox(height: 12),
                           
-                          // 今日の服用状況表示
+                          // 莉頑律縺ｮ譛咲畑迥ｶ豕∬｡ｨ遉ｺ
               if (_selectedDay != null)
                 _buildMedicationStats(),
                           
               const SizedBox(height: 8),
                           
-                          // 服用記録セクション
+                          // 譛咲畑險倬鹸繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ
               if (_selectedDay != null)
                 _buildMedicationRecords(),
                           
@@ -5825,24 +5212,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // ✅ ③④ カレンダーの日付セル（曜日マーク・チェックマーク表示）
-  Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false}) {
+  // 笨・竭｢竭｣ 繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｮ譌･莉倥そ繝ｫ・域屆譌･繝槭・繧ｯ繝ｻ繝√ぉ繝・け繝槭・繧ｯ陦ｨ遉ｺ・・  Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false}) {
     final dateStr = DateFormat('yyyy-MM-dd').format(day);
     final weekday = day.weekday % 7;
     
-    // ③服用メモで設定された曜日かチェック
+    // 竭｢譛咲畑繝｡繝｢縺ｧ險ｭ螳壹＆繧後◆譖懈律縺九メ繧ｧ繝・け
     final hasScheduledMemo = _medicationMemos.any((memo) => 
       memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)
     );
     
-    // ④服用記録が100%かチェック
+    // 竭｣譛咲畑險倬鹸縺・00%縺九メ繧ｧ繝・け
     final stats = _calculateDayMedicationStats(day);
     final total = stats['total'] ?? 0;
     final taken = stats['taken'] ?? 0;
     final isComplete = total > 0 && taken == total;
     
-    // カスタム色取得
-    final customColor = _dayColors[dateStr];
+    // 繧ｫ繧ｹ繧ｿ繝濶ｲ蜿門ｾ・    final customColor = _dayColors[dateStr];
     
     return Container(
       margin: const EdgeInsets.all(2),
@@ -5870,8 +5255,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       ),
       child: Stack(
         children: [
-          // 日付
-          Center(
+          // 譌･莉・          Center(
             child: Text(
               '${day.day}',
               style: TextStyle(
@@ -5882,8 +5266,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             ),
           ),
           
-          // ③曜日マーク（左上）
-          if (hasScheduledMemo)
+          // 竭｢譖懈律繝槭・繧ｯ・亥ｷｦ荳奇ｼ・          if (hasScheduledMemo)
             Positioned(
               top: 2,
               left: 2,
@@ -5903,8 +5286,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
             ),
           
-          // ④完了チェックマーク（右下）
-          if (isComplete)
+          // 竭｣螳御ｺ・メ繧ｧ繝・け繝槭・繧ｯ・亥承荳具ｼ・          if (isComplete)
             Positioned(
               bottom: 2,
               right: 2,
@@ -5932,23 +5314,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // 日別の服用統計を計算
-  Map<String, int> _calculateDayMedicationStats(DateTime day) {
+  // 譌･蛻･縺ｮ譛咲畑邨ｱ險医ｒ險育ｮ・  Map<String, int> _calculateDayMedicationStats(DateTime day) {
     final dateStr = DateFormat('yyyy-MM-dd').format(day);
     final weekday = day.weekday % 7;
     
     int totalMedications = 0;
     int takenMedications = 0;
     
-    // 動的薬リストの統計
-    if (_medicationData.containsKey(dateStr)) {
+    // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・    if (_medicationData.containsKey(dateStr)) {
       final dayData = _medicationData[dateStr]!;
       totalMedications += dayData.length;
       takenMedications += dayData.values.where((info) => info.checked).length;
     }
     
-    // 服用メモの統計
-    for (final memo in _medicationMemos) {
+    // 譛咲畑繝｡繝｢縺ｮ邨ｱ險・    for (final memo in _medicationMemos) {
       if (memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)) {
         totalMedications += memo.dosageFrequency;
         final checkedCount = _getMedicationMemoCheckedCountForDate(memo.id, dateStr);
@@ -5959,69 +5338,64 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return {'total': totalMedications, 'taken': takenMedications};
   }
 
-  // 指定日のメモの服用済み回数を取得
-  int _getMedicationMemoCheckedCountForDate(String memoId, String dateStr) {
+  // 謖・ｮ壽律縺ｮ繝｡繝｢縺ｮ譛咲畑貂医∩蝗樊焚繧貞叙蠕・  int _getMedicationMemoCheckedCountForDate(String memoId, String dateStr) {
     final doseStatus = _weekdayMedicationDoseStatus[dateStr]?[memoId];
     if (doseStatus == null) return 0;
     return doseStatus.values.where((isChecked) => isChecked).length;
   }
 
-  // 日付の色を変更するメソッド
+  // 譌･莉倥・濶ｲ繧貞､画峩縺吶ｋ繝｡繧ｽ繝・ラ
   void _changeDayColor() {
     if (_selectedDay == null) return;
     
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     final colors = [
-      {'color': const Color(0xFFff6b6b), 'name': '赤'},
-      {'color': const Color(0xFF4ecdc4), 'name': '青緑'},
-      {'color': const Color(0xFF45b7d1), 'name': '青'},
-      {'color': const Color(0xFFf9ca24), 'name': '黄色'},
-      {'color': const Color(0xFFf0932b), 'name': 'オレンジ'},
-      {'color': const Color(0xFFeb4d4b), 'name': 'ピンク'},
-      {'color': const Color(0xFF6c5ce7), 'name': '紫'},
-      {'color': const Color(0xFFa29bfe), 'name': '薄紫'},
-      {'color': const Color(0xFF00d2d3), 'name': 'ターコイズ'},
-      {'color': const Color(0xFF1e3799), 'name': '濃紺'},
-      {'color': const Color(0xFFe55039), 'name': 'トマト'},
-      {'color': const Color(0xFF2ecc71), 'name': 'エメラルド'},
+      {'color': const Color(0xFFff6b6b), 'name': '襍､'},
+      {'color': const Color(0xFF4ecdc4), 'name': '髱堤ｷ・},
+      {'color': const Color(0xFF45b7d1), 'name': '髱・},
+      {'color': const Color(0xFFf9ca24), 'name': '鮟・牡'},
+      {'color': const Color(0xFFf0932b), 'name': '繧ｪ繝ｬ繝ｳ繧ｸ'},
+      {'color': const Color(0xFFeb4d4b), 'name': '繝斐Φ繧ｯ'},
+      {'color': const Color(0xFF6c5ce7), 'name': '邏ｫ'},
+      {'color': const Color(0xFFa29bfe), 'name': '阮・ｴｫ'},
+      {'color': const Color(0xFF00d2d3), 'name': '繧ｿ繝ｼ繧ｳ繧､繧ｺ'},
+      {'color': const Color(0xFF1e3799), 'name': '豼・ｴｺ'},
+      {'color': const Color(0xFFe55039), 'name': '繝医・繝・},
+      {'color': const Color(0xFF2ecc71), 'name': '繧ｨ繝｡繝ｩ繝ｫ繝・},
     ];
     
-    // 色選択ダイアログを表示
+    // 濶ｲ驕ｸ謚槭ム繧､繧｢繝ｭ繧ｰ繧定｡ｨ遉ｺ
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text(
-            'カレンダーの色を選択',
+            '繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｮ濶ｲ繧帝∈謚・,
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           content: SizedBox(
             width: double.maxFinite,
-            height: 300, // 高さを制限
-            child: GridView.builder(
+            height: 300, // 鬮倥＆繧貞宛髯・            child: GridView.builder(
               shrinkWrap: true,
-              physics: const BouncingScrollPhysics(), // スクロール可能
+              physics: const BouncingScrollPhysics(), // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蜿ｯ閭ｽ
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 13.7,
                 childAspectRatio: 1,
               ),
-              itemCount: colors.length + 1, // +1 for "色をリセット"
+              itemCount: colors.length + 1, // +1 for "濶ｲ繧偵Μ繧ｻ繝・ヨ"
               itemBuilder: (context, index) {
                 if (index == colors.length) {
-                  // 色をリセットボタン（デフォルト色に戻す）
-                  return GestureDetector(
+                  // 濶ｲ繧偵Μ繧ｻ繝・ヨ繝懊ち繝ｳ・医ョ繝輔か繝ｫ繝郁牡縺ｫ謌ｻ縺呻ｼ・                  return GestureDetector(
                     onTap: () async {
-                      // ✅ 追加：変更前スナップショット
-                      await _saveSnapshotBeforeChange('カレンダー色リセット_$dateStr');
+                      // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+                      await _saveSnapshotBeforeChange('繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ繝ｪ繧ｻ繝・ヨ_$dateStr');
                       setState(() {
-                        // デフォルト色（何も指定していない最初の色）に戻す
-                        _dayColors.remove(dateStr);
+                        // 繝・ヵ繧ｩ繝ｫ繝郁牡・井ｽ輔ｂ謖・ｮ壹＠縺ｦ縺・↑縺・怙蛻昴・濶ｲ・峨↓謌ｻ縺・                        _dayColors.remove(dateStr);
                         _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
                       });
-                      await _saveDayColors(); // データ保存
-                      Navigator.of(context).pop();
+                      await _saveDayColors(); // 繝・・繧ｿ菫晏ｭ・                      Navigator.of(context).pop();
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -6035,7 +5409,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           Icon(Icons.clear, color: Colors.grey, size: 32),
                           SizedBox(height: 4),
                           Text(
-                            'リセット',
+                            '繝ｪ繧ｻ繝・ヨ',
                             style: TextStyle(
                               fontSize: 10,
                               color: Colors.grey,
@@ -6056,14 +5430,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 
                 return GestureDetector(
                   onTap: () async {
-                    // ✅ 追加：変更前スナップショット
-                    await _saveSnapshotBeforeChange('カレンダー色変更_${dateStr}_$name');
+                    // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+                    await _saveSnapshotBeforeChange('繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ螟画峩_${dateStr}_$name');
                     setState(() {
                       _dayColors[dateStr] = color;
                       _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
                     });
-                    await _saveDayColors(); // データ保存
-                    Navigator.of(context).pop();
+                    await _saveDayColors(); // 繝・・繧ｿ菫晏ｭ・                    Navigator.of(context).pop();
                   },
                   child: Container(
                     decoration: BoxDecoration(
@@ -6122,7 +5495,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('キャンセル'),
+              child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
             ),
           ],
         );
@@ -6144,13 +5517,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         ],
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min, // 最小サイズに制限
-        children: [
-          // ヘッダー
+        mainAxisSize: MainAxisSize.min, // 譛蟆上し繧､繧ｺ縺ｫ蛻ｶ髯・        children: [
+          // 繝倥ャ繝繝ｼ
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20), // パディング削減
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20), // 繝代ョ繧｣繝ｳ繧ｰ蜑頑ｸ・            decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
                 begin: Alignment.topLeft,
@@ -6164,35 +5535,31 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             child: Column(
               children: [
                 Text(
-                  '${DateFormat('yyyy年M月d日', 'ja_JP').format(_selectedDay!)}の服用記録',
+                  '${DateFormat('yyyy蟷ｴM譛・譌･', 'ja_JP').format(_selectedDay!)}縺ｮ譛咲畑險倬鹸',
                   style: const TextStyle(
-                    fontSize: 18, // フォントサイズ削減
-                    fontWeight: FontWeight.bold,
+                    fontSize: 18, // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                    fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 4), // 間隔削減
-                Text(
-                  '今日の服用状況を確認しましょう',
+                const SizedBox(height: 4), // 髢馴囈蜑頑ｸ・                Text(
+                  '莉頑律縺ｮ譛咲畑迥ｶ豕√ｒ遒ｺ隱阪＠縺ｾ縺励ｇ縺・,
                   style: TextStyle(
-                    fontSize: 12, // フォントサイズ削減
-                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                    color: Colors.white.withOpacity(0.9),
                   ),
                   textAlign: TextAlign.center,
                 ),
               ],
             ),
           ),
-          // 完全に作り直された服用記録リスト
-          Container(
+          // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺滓恪逕ｨ險倬鹸繝ｪ繧ｹ繝・          Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                  // メモ選択時は選択されたメモのみ表示
+                  // 繝｡繝｢驕ｸ謚樊凾縺ｯ驕ｸ謚槭＆繧後◆繝｡繝｢縺ｮ縺ｿ陦ｨ遉ｺ
                   if (_isMemoSelected && _selectedMemo != null) ...[
-                    // 戻るボタン
+                    // 謌ｻ繧九・繧ｿ繝ｳ
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
                       child: Row(
@@ -6217,7 +5584,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   Icon(Icons.arrow_back, color: Colors.blue, size: 16),
                                   const SizedBox(width: 8),
                             Text(
-                                    '戻る',
+                                    '謌ｻ繧・,
                               style: TextStyle(
                                       color: Colors.blue,
                                 fontWeight: FontWeight.bold,
@@ -6232,20 +5599,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     ),
                     _buildWeekdayMedicationRecord(_selectedMemo!)
                   ] else ...[
-                    // カレンダー下の位置マーカー
+                    // 繧ｫ繝ｬ繝ｳ繝繝ｼ荳九・菴咲ｽｮ繝槭・繧ｫ繝ｼ
                     SizedBox(
                       key: _calendarBottomKey,
-                      height: 1, // 見えないマーカー
+                      height: 1, // 隕九∴縺ｪ縺・・繝ｼ繧ｫ繝ｼ
                     ),
-                    // ✅ 修正：服用記録リスト（ページめくり方式・SizedBox）
-                    _getMedicationListLength() == 0
+                    // 笨・菫ｮ豁｣・壽恪逕ｨ險倬鹸繝ｪ繧ｹ繝茨ｼ医・繝ｼ繧ｸ繧√￥繧頑婿蠑上・SizedBox・・                    _getMedicationListLength() == 0
                         ? SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.4, // MediaQuery使用
+                            height: MediaQuery.of(context).size.height * 0.4, // MediaQuery菴ｿ逕ｨ
                             child: _buildNoMedicationMessage(),
                           )
                         : SizedBox(
-                            height: 400, // 固定高さを設定
-                            child: PageView.builder(
+                            height: 400, // 蝗ｺ螳夐ｫ倥＆繧定ｨｭ螳・                            child: PageView.builder(
                               controller: _medicationPageController,
                               onPageChanged: (index) {
                                 setState(() {
@@ -6258,8 +5623,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                               },
                             ),
                           ),
-                    // 服用数の表示UI（メモ0のときは表示しない）
-                    if (_getMedicationListLength() > 0 && _getMedicationListLength() != 1)
+                    // 譛咲畑謨ｰ縺ｮ陦ｨ遉ｺUI・医Γ繝｢0縺ｮ縺ｨ縺阪・陦ｨ遉ｺ縺励↑縺・ｼ・                    if (_getMedicationListLength() > 0 && _getMedicationListLength() != 1)
                       Container(
                         margin: const EdgeInsets.symmetric(vertical: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -6269,7 +5633,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           border: Border.all(color: Colors.blue, width: 1),
                         ),
                         child: Text(
-                          '${_currentMedicationPage + 1}/${_getMedicationListLength()} 服用の数',
+                          '${_currentMedicationPage + 1}/${_getMedicationListLength()} 譛咲畑縺ｮ謨ｰ',
                           style: const TextStyle(
                             color: Colors.blue,
                             fontWeight: FontWeight.bold,
@@ -6278,7 +5642,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           textAlign: TextAlign.center,
                         ),
                       ),
-                    // ページめくりボタン
+                    // 繝壹・繧ｸ繧√￥繧翫・繧ｿ繝ｳ
                     if (_getMedicationListLength() > 1)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -6301,7 +5665,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                                 child: const Text(
-                                  '前の\n服用内容',
+                                  '蜑阪・\n譛咲畑蜀・ｮｹ',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(fontSize: 12),
                                 ),
@@ -6325,7 +5689,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                                 child: const Text(
-                                  '次の\n服用内容',
+                                  '谺｡縺ｮ\n譛咲畑蜀・ｮｹ',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(fontSize: 12),
                                 ),
@@ -6338,45 +5702,41 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ],
             ),
           ),
-          // フッター統計（削除）
-        ],
+          // 繝輔ャ繧ｿ繝ｼ邨ｱ險茨ｼ亥炎髯､・・        ],
       ),
     );
   }
 
-  // 安全な最大高さを計算する関数
+  // 螳牙・縺ｪ譛螟ｧ鬮倥＆繧定ｨ育ｮ励☆繧矩未謨ｰ
 
-  // 服用記録リストの長さを取得
-  int _getMedicationListLength() {
+  // 譛咲畑險倬鹸繝ｪ繧ｹ繝医・髟ｷ縺輔ｒ蜿門ｾ・  int _getMedicationListLength() {
     final addedCount = _addedMedications.length;
     final memoCount = _getMedicationsForSelectedDay().length;
     final hasNoData = addedCount == 0 && memoCount == 0;
     return addedCount + memoCount + (hasNoData ? 1 : 0);
   }
 
-  // 服用記録アイテムを構築
-  Widget _buildMedicationItem(int index) {
+  // 譛咲畑險倬鹸繧｢繧､繝・Β繧呈ｧ狗ｯ・  Widget _buildMedicationItem(int index) {
     final addedCount = _addedMedications.length;
     final memoCount = _getMedicationsForSelectedDay().length;
     
     if (index < addedCount) {
-      // 追加された薬
+      // 霑ｽ蜉縺輔ｌ縺溯脈
       return _buildAddedMedicationRecord(_addedMedications[index]);
     } else if (index < addedCount + memoCount) {
-      // 服用メモ
+      // 譛咲畑繝｡繝｢
       final memoIndex = index - addedCount;
       return _buildMedicationMemoCheckbox(_getMedicationsForSelectedDay()[memoIndex]);
     } else {
-      // データなしメッセージ
+      // 繝・・繧ｿ縺ｪ縺励Γ繝・そ繝ｼ繧ｸ
       return _buildNoMedicationMessage();
     }
   }
 
-  // 服用メモが未追加の場合のメッセージ表示
+  // 譛咲畑繝｡繝｢縺梧悴霑ｽ蜉縺ｮ蝣ｴ蜷医・繝｡繝・そ繝ｼ繧ｸ陦ｨ遉ｺ
   Widget _buildNoMedicationMessage() {
     return Container(
-      height: 450, // 高さを450pxに設定
-      margin: const EdgeInsets.symmetric(vertical: 20),
+      height: 450, // 鬮倥＆繧・50px縺ｫ險ｭ螳・      margin: const EdgeInsets.symmetric(vertical: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.blue.withOpacity(0.05),
@@ -6395,7 +5755,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 16),
           Text(
-            '服用メモから服用スケジュール\n(毎日、曜日)を選択してください',
+            '譛咲畑繝｡繝｢縺九ｉ譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ\n(豈取律縲∵屆譌･)繧帝∈謚槭＠縺ｦ縺上□縺輔＞',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -6407,7 +5767,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 8),
           Text(
-            '服用メモタブで薬品やサプリメントを追加してから、\nカレンダーページで服用スケジュールを管理できます。',
+            '譛咲畑繝｡繝｢繧ｿ繝悶〒阮ｬ蜩√ｄ繧ｵ繝励Μ繝｡繝ｳ繝医ｒ霑ｽ蜉縺励※縺九ｉ縲―n繧ｫ繝ｬ繝ｳ繝繝ｼ繝壹・繧ｸ縺ｧ譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ繧堤ｮ｡逅・〒縺阪∪縺吶・,
             style: TextStyle(
               fontSize: 14,
               color: Theme.of(context).brightness == Brightness.dark 
@@ -6419,11 +5779,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () {
-              // 服用メモタブに切り替え
-              _tabController.animateTo(1);
+              // 譛咲畑繝｡繝｢繧ｿ繝悶↓蛻・ｊ譖ｿ縺・              _tabController.animateTo(1);
             },
             icon: const Icon(Icons.add),
-            label: const Text('服用メモを追加'),
+            label: const Text('譛咲畑繝｡繝｢繧定ｿｽ蜉'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
@@ -6438,11 +5797,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // 服用メモのチェックボックス（カレンダーページ用・拡大版）
-  Widget _buildMedicationMemoCheckbox(MedicationMemo memo) {
+  // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ・医き繝ｬ繝ｳ繝繝ｼ繝壹・繧ｸ逕ｨ繝ｻ諡｡螟ｧ迚茨ｼ・  Widget _buildMedicationMemoCheckbox(MedicationMemo memo) {
     final isSelected = _isMemoSelected && _selectedMemo?.id == memo.id;
-    // 服用回数に応じたチェック状況を取得
-    final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
+    // 譛咲畑蝗樊焚縺ｫ蠢懊§縺溘メ繧ｧ繝・け迥ｶ豕√ｒ蜿門ｾ・    final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
     final totalCount = memo.dosageFrequency;
     
     return Container(
@@ -6476,15 +5833,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 上部：アイコン、薬名、服用回数情報
+              // 荳企Κ・壹い繧､繧ｳ繝ｳ縲∬脈蜷阪∵恪逕ｨ蝗樊焚諠・ｱ
               Row(
                 children: [
-                  // 大きなアイコン
+                  // 螟ｧ縺阪↑繧｢繧､繧ｳ繝ｳ
                   CircleAvatar(
                     backgroundColor: memo.color,
                     radius: 20,
                     child: Icon(
-                      memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
+                      memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Icons.eco : Icons.medication,
                       color: Colors.white,
                       size: 20,
                     ),
@@ -6494,8 +5851,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 薬名と種類
-                        Text(
+                        // 阮ｬ蜷阪→遞ｮ鬘・                        Text(
                           memo.name,
                           style: TextStyle(
                             fontSize: 18,
@@ -6526,38 +5882,35 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ],
               ),
-              // 服用回数に応じたチェックボックス
+              // 譛咲畑蝗樊焚縺ｫ蠢懊§縺溘メ繧ｧ繝・け繝懊ャ繧ｯ繧ｹ
               const SizedBox(height: 12),
               Row(
                 children: List.generate(totalCount, (index) {
                   final isChecked = _getMedicationMemoDoseStatusForSelectedDay(memo.id, index);
                   return Expanded(
                     child: Semantics(
-                      label: '${memo.name}の服用記録 ${index + 1}回目',
-                      hint: 'タップして服用状態を切り替え',
+                      label: '${memo.name}縺ｮ譛咲畑險倬鹸 ${index + 1}蝗樒岼',
+                      hint: '繧ｿ繝・・縺励※譛咲畑迥ｶ諷九ｒ蛻・ｊ譖ｿ縺・,
                     child: GestureDetector(
                       onTap: () async {
                         if (_selectedDay != null) {
-                          // ✅ 追加：変更前スナップショット
-                          await _saveSnapshotBeforeChange('服用回数チェック_${memo.name}_${index + 1}回目_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                          // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+                          await _saveSnapshotBeforeChange('譛咲畑蝗樊焚繝√ぉ繝・け_${memo.name}_${index + 1}蝗樒岼_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                           final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
                           setState(() {
-                            // 日付別の服用メモ状態を更新
+                            // 譌･莉伜挨縺ｮ譛咲畑繝｡繝｢迥ｶ諷九ｒ譖ｴ譁ｰ
                             _weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
                             _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
                             _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memo.id, () => {});
                             _weekdayMedicationDoseStatus[dateStr]![memo.id]![index] = !isChecked;
                             
-                            // 全体の服用状況を更新（全回数完了時に服用済み）
-                            final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
+                            // 蜈ｨ菴薙・譛咲畑迥ｶ豕√ｒ譖ｴ譁ｰ・亥・蝗樊焚螳御ｺ・凾縺ｫ譛咲畑貂医∩・・                            final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
                             final totalCount = memo.dosageFrequency;
                             _weekdayMedicationStatus[dateStr]![memo.id] = checkedCount == totalCount;
                             _medicationMemoStatus[memo.id] = checkedCount == totalCount;
                           });
-                          // データ保存
-                          await _saveAllData();
-                          // 統計を再計算
-                          await _calculateAdherenceStats();
+                          // 繝・・繧ｿ菫晏ｭ・                          await _saveAllData();
+                          // 邨ｱ險医ｒ蜀崎ｨ育ｮ・                          await _calculateAdherenceStats();
                         }
                       },
                       child: Container(
@@ -6580,7 +5933,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${index + 1}回目',
+                              '${index + 1}蝗樒岼',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: isChecked ? Colors.white : Colors.grey[600],
@@ -6595,7 +5948,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   );
                 }),
               ),
-              // 服用回数情報
+              // 譛咲畑蝗樊焚諠・ｱ
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -6608,7 +5961,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     const Icon(Icons.repeat, size: 16, color: Colors.blue),
                     const SizedBox(width: 8),
                     Text(
-                      '服用回数: ${memo.dosageFrequency}回 (${checkedCount}/${totalCount})',
+                      '譛咲畑蝗樊焚: ${memo.dosageFrequency}蝗・(${checkedCount}/${totalCount})',
                       style: TextStyle(
                         fontSize: 14,
                         color: checkedCount == totalCount ? Colors.green : Colors.blue[700],
@@ -6627,7 +5980,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ],
                 ),
               ),
-              // 用量情報
+              // 逕ｨ驥乗ュ蝣ｱ
               if (memo.dosage.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
@@ -6641,7 +5994,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       const Icon(Icons.straighten, size: 16, color: Colors.grey),
                       const SizedBox(width: 8),
                       Text(
-                        '用量: ${memo.dosage}',
+                        '逕ｨ驥・ ${memo.dosage}',
                         style: TextStyle(
                           fontSize: 14,
                           color: checkedCount == totalCount ? Colors.green : Colors.grey[700],
@@ -6652,8 +6005,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
               ],
-              // メモ情報（タップ可能）
-              if (memo.notes.isNotEmpty) ...[
+              // 繝｡繝｢諠・ｱ・医ち繝・・蜿ｯ閭ｽ・・              if (memo.notes.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 GestureDetector(
                   onTap: () {
@@ -6675,7 +6027,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           const Icon(Icons.note, size: 16, color: Colors.blue),
                           const SizedBox(width: 8),
                           const Text(
-                            'メモ',
+                            '繝｡繝｢',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -6697,7 +6049,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       ),
                         const SizedBox(height: 4),
                         Text(
-                          'タップしてメモを表示',
+                          '繧ｿ繝・・縺励※繝｡繝｢繧定｡ｨ遉ｺ',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.blue.withOpacity(0.7),
@@ -6715,7 +6067,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // メモ詳細ダイアログを表示
+  // 繝｡繝｢隧ｳ邏ｰ繝繧､繧｢繝ｭ繧ｰ繧定｡ｨ遉ｺ
   void _showMemoDetailDialog(BuildContext context, String medicationName, String memo) {
     showDialog(
       context: context,
@@ -6730,14 +6082,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ヘッダー
+              // 繝倥ャ繝繝ｼ
               Row(
                 children: [
                   const Icon(Icons.note, size: 24, color: Colors.blue),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '$medicationName のメモ',
+                      '$medicationName 縺ｮ繝｡繝｢',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -6752,7 +6104,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ],
               ),
               const Divider(height: 20),
-              // メモ内容
+              // 繝｡繝｢蜀・ｮｹ
               Expanded(
                 child: SingleChildScrollView(
                   child: Container(
@@ -6775,13 +6127,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
               ),
               const SizedBox(height: 20),
-              // フッターボタン
+              // 繝輔ャ繧ｿ繝ｼ繝懊ち繝ｳ
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('閉じる'),
+                    child: const Text('髢峨§繧・),
                   ),
                 ],
               ),
@@ -6792,19 +6144,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // ページネーション機能（大量データ対応）
-  static const int _pageSize = 20; // 1ページあたりの件数
+  // 繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ讖溯・・亥､ｧ驥上ョ繝ｼ繧ｿ蟇ｾ蠢懶ｼ・  static const int _pageSize = 20; // 1繝壹・繧ｸ縺ゅ◆繧翫・莉ｶ謨ｰ
   int _currentPage = 0;
   List<MedicationMemo> _displayedMemos = [];
   bool _isLoadingMore = false;
   final ScrollController _memoScrollController = ScrollController();
   
-  // アラーム制限機能
-  static const int maxAlarms = 100; // アラーム上限
-  static const int maxMemos = 1000; // メモ上限
+  // 繧｢繝ｩ繝ｼ繝蛻ｶ髯先ｩ溯・
+  static const int maxAlarms = 100; // 繧｢繝ｩ繝ｼ繝荳企剞
+  static const int maxMemos = 1000; // 繝｡繝｢荳企剞
 
-  // Hive最適化データベースサービス（大量データ対応）
-  static Box<MedicationMemo>? _memoBox;
+  // Hive譛驕ｩ蛹悶ョ繝ｼ繧ｿ繝吶・繧ｹ繧ｵ繝ｼ繝薙せ・亥､ｧ驥上ョ繝ｼ繧ｿ蟇ｾ蠢懶ｼ・  static Box<MedicationMemo>? _memoBox;
   
   static Future<Box<MedicationMemo>> get _getMemoBox async {
     if (_memoBox != null) return _memoBox!;
@@ -6812,8 +6162,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return _memoBox!;
   }
   
-  // ページネーション付きメモ取得
-  static Future<List<MedicationMemo>> getMemos({
+  // 繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ莉倥″繝｡繝｢蜿門ｾ・  static Future<List<MedicationMemo>> getMemos({
     int limit = 20,
     int offset = 0,
   }) async {
@@ -6823,7 +6172,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return allMemos.skip(offset).take(limit).toList();
   }
   
-  // 検索機能
+  // 讀懃ｴ｢讖溯・
   static Future<List<MedicationMemo>> searchMemos(String keyword) async {
     final box = await _getMemoBox;
     return box.values
@@ -6832,27 +6181,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         .toList();
   }
   
-  // メモ保存
-  static Future<void> saveMemo(MedicationMemo memo) async {
+  // 繝｡繝｢菫晏ｭ・  static Future<void> saveMemo(MedicationMemo memo) async {
     final box = await _getMemoBox;
     await box.put(memo.id, memo);
   }
   
-  // メモ削除
+  // 繝｡繝｢蜑企勁
   static Future<void> deleteMemo(String id) async {
     final box = await _getMemoBox;
     await box.delete(id);
   }
   
-  // リアクティブストリーム
+  // 繝ｪ繧｢繧ｯ繝・ぅ繝悶せ繝医Μ繝ｼ繝
   static Stream<List<MedicationMemo>> watchMemos() async* {
     final box = await _getMemoBox;
     yield box.values.toList();
     yield* box.watch().map((_) => box.values.toList());
   }
 
-  // 統一データサービス（重複削除）
-  Future<void> _saveAllDataUnified() async {
+  // 邨ｱ荳繝・・繧ｿ繧ｵ繝ｼ繝薙せ・磯㍾隍・炎髯､・・  Future<void> _saveAllDataUnified() async {
     try {
       await Future.wait([
         _saveMedicationData(),
@@ -6861,9 +6208,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _saveUserPreferences(),
         _saveAppSettings(),
       ]);
-      debugPrint('統一データサービス: 全データ保存完了');
+      debugPrint('邨ｱ荳繝・・繧ｿ繧ｵ繝ｼ繝薙せ: 蜈ｨ繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・);
     } catch (e) {
-      debugPrint('統一データサービス保存エラー: $e');
+      debugPrint('邨ｱ荳繝・・繧ｿ繧ｵ繝ｼ繝薙せ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
@@ -6876,19 +6223,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _loadUserPreferences(),
         _loadAppSettings(),
       ]);
-      debugPrint('統一データサービス: 全データ読み込み完了');
+      debugPrint('邨ｱ荳繝・・繧ｿ繧ｵ繝ｼ繝薙せ: 蜈ｨ繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・);
     } catch (e) {
-      debugPrint('統一データサービス読み込みエラー: $e');
+      debugPrint('邨ｱ荳繝・・繧ｿ繧ｵ繝ｼ繝薙せ隱ｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
 
-  // ページネーション機能の実装
-  Future<void> _loadMoreMemos() async {
+  // 繝壹・繧ｸ繝阪・繧ｷ繝ｧ繝ｳ讖溯・縺ｮ螳溯｣・  Future<void> _loadMoreMemos() async {
     if (_isLoadingMore || _currentPage * _pageSize >= _medicationMemos.length) return;
     
     setState(() => _isLoadingMore = true);
     
-    // ページングで一部だけ読み込み
+    // 繝壹・繧ｸ繝ｳ繧ｰ縺ｧ荳驛ｨ縺縺題ｪｭ縺ｿ霎ｼ縺ｿ
       final startIndex = _currentPage * _pageSize;
       final endIndex = (startIndex + _pageSize).clamp(0, _medicationMemos.length);
       
@@ -6905,8 +6251,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // スクロール監視の初期化
-  void _initializeScrollListener() {
+  // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ逶｣隕悶・蛻晄悄蛹・  void _initializeScrollListener() {
     _memoScrollController.addListener(() {
       if (_memoScrollController.position.pixels >= 
           _memoScrollController.position.maxScrollExtent * 0.8) {
@@ -6915,17 +6260,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     });
   }
   
-  // アラーム制限チェック
+  // 繧｢繝ｩ繝ｼ繝蛻ｶ髯舌メ繧ｧ繝・け
   bool _canAddAlarm() {
     return _alarmList.length < maxAlarms;
   }
   
-  // メモ制限チェック
+  // 繝｡繝｢蛻ｶ髯舌メ繧ｧ繝・け
   bool _canAddMemo() {
     return _medicationMemos.length < maxMemos;
   }
   
-  // 制限ダイアログ表示
+  // 蛻ｶ髯舌ム繧､繧｢繝ｭ繧ｰ陦ｨ遉ｺ
   void _showLimitDialog(String type) {
     showDialog(
       context: context,
@@ -6934,29 +6279,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             const Icon(Icons.warning, color: Colors.orange),
             const SizedBox(width: 8),
-            Text('${type}上限'),
+            Text('${type}荳企剞'),
           ],
         ),
-        content: Text('${type}は最大${type == 'アラーム' ? maxAlarms : maxMemos}件まで設定できます。\n不要な${type}を削除してください。'),
+        content: Text('${type}縺ｯ譛螟ｧ${type == '繧｢繝ｩ繝ｼ繝' ? maxAlarms : maxMemos}莉ｶ縺ｾ縺ｧ險ｭ螳壹〒縺阪∪縺吶・n荳崎ｦ√↑${type}繧貞炎髯､縺励※縺上□縺輔＞縲・),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('了解'),
+            child: const Text('莠・ｧ｣'),
           ),
         ],
       ),
     );
   }
 
-  // 服用済みに追加（簡素化版）
-  void _addToTakenMedications(MedicationMemo memo) {
+  // 譛咲畑貂医∩縺ｫ霑ｽ蜉・育ｰ｡邏蛹也沿・・  void _addToTakenMedications(MedicationMemo memo) {
     if (_selectedDay == null) return;
     
-    // 重複チェック
+    // 驥崎､・メ繧ｧ繝・け
     final existingIndex = _addedMedications.indexWhere((med) => med['id'] == memo.id);
     
     if (existingIndex == -1) {
-      // 新規追加
+      // 譁ｰ隕剰ｿｽ蜉
       _addedMedications.add({
         'id': memo.id,
         'name': memo.name,
@@ -6968,30 +6312,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         'notes': memo.notes,
       });
     } else {
-      // 既存のものを更新
+      // 譌｢蟄倥・繧ゅ・繧呈峩譁ｰ
       _addedMedications[existingIndex]['taken'] = true;
       _addedMedications[existingIndex]['takenTime'] = DateTime.now();
     }
     
-    // メモの状態を更新
+    // 繝｡繝｢縺ｮ迥ｶ諷九ｒ譖ｴ譁ｰ
     _medicationMemoStatus[memo.id] = true;
     
-    // カレンダーマークを追加（服用状況に反映）
-    if (_selectedDay != null) {
+    // 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ繧定ｿｽ蜉・域恪逕ｨ迥ｶ豕√↓蜿肴丐・・    if (_selectedDay != null) {
       if (!_selectedDates.contains(_selectedDay!)) {
         _selectedDates.add(_selectedDay!);
       }
     }
     
-    // データ保存のみ
+    // 繝・・繧ｿ菫晏ｭ倥・縺ｿ
     _saveAllData();
   }
   
-  // 服用済みから削除（簡素化版）
-  void _removeFromTakenMedications(String memoId) {
+  // 譛咲畑貂医∩縺九ｉ蜑企勁・育ｰ｡邏蛹也沿・・  void _removeFromTakenMedications(String memoId) {
     _addedMedications.removeWhere((med) => med['id'] == memoId);
     
-    // その日の服用メモがすべてチェックされていない場合、カレンダーマークを削除
+    // 縺昴・譌･縺ｮ譛咲畑繝｡繝｢縺後☆縺ｹ縺ｦ繝√ぉ繝・け縺輔ｌ縺ｦ縺・↑縺・ｴ蜷医√き繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ繧貞炎髯､
     if (_selectedDay != null) {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
       final hasCheckedMemos = _medicationMemoStatus.values.any((status) => status);
@@ -7000,27 +6342,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
     }
     
-    // データ保存のみ
+    // 繝・・繧ｿ菫晏ｭ倥・縺ｿ
     _saveAllData();
   }
   
-  // 服用メモの状態を更新
+  // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷九ｒ譖ｴ譁ｰ
   void _updateMedicationMemoStatus(String memoId, bool isChecked) {
     setState(() {
       _medicationMemoStatus[memoId] = isChecked;
     });
-    // データ保存
-    _saveAllData();
+    // 繝・・繧ｿ菫晏ｭ・    _saveAllData();
   }
   
-  // こぱさん流：服用データを保存（確実なデータ保持）
-  Future<void> _saveMedicationData() async {
+  // 縺薙・縺輔ｓ豬・ｼ壽恪逕ｨ繝・・繧ｿ繧剃ｿ晏ｭ假ｼ育｢ｺ螳溘↑繝・・繧ｿ菫晄戟・・  Future<void> _saveMedicationData() async {
     try {
       if (_selectedDay != null) {
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
         final medicationData = <String, MedicationInfo>{};
         
-        // _addedMedicationsからMedicationInfoを作成
+        // _addedMedications縺九ｉMedicationInfo繧剃ｽ懈・
         for (final med in _addedMedications) {
           final name = med['name']?.toString() ?? '';
           final taken = med['taken'] is bool ? med['taken'] as bool : false;
@@ -7035,27 +6375,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           );
         }
         
-        // こぱさん流：awaitを確実に付けて保存
-        await MedicationService.saveMedicationData({dateStr: medicationData});
+        // 縺薙・縺輔ｓ豬・ｼ啾wait繧堤｢ｺ螳溘↓莉倥￠縺ｦ菫晏ｭ・        await MedicationService.saveMedicationData({dateStr: medicationData});
         await _saveToSharedPreferences(dateStr, medicationData);
         await _saveMemoStatus();
         await _saveAdditionalBackup(dateStr, medicationData);
         
-        // 服用薬データも保存
-        await _saveMedicationList();
+        // 譛咲畑阮ｬ繝・・繧ｿ繧ゆｿ晏ｭ・        await _saveMedicationList();
         
-        // アラームデータも保存
-        await _saveAlarmData();
+        // 繧｢繝ｩ繝ｼ繝繝・・繧ｿ繧ゆｿ晏ｭ・        await _saveAlarmData();
         
-        debugPrint('全データ保存完了: $dateStr（こぱさん流）');
+        debugPrint('蜈ｨ繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ $dateStr・医％縺ｱ縺輔ｓ豬・ｼ・);
       }
     } catch (e) {
-      debugPrint('データ保存エラー: $e');
+      debugPrint('繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 追加のバックアップ保存
-  Future<void> _saveAdditionalBackup(String dateStr, Map<String, MedicationInfo> data) async {
+  // 霑ｽ蜉縺ｮ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ・  Future<void> _saveAdditionalBackup(String dateStr, Map<String, MedicationInfo> data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final dataJson = <String, dynamic>{};
@@ -7064,29 +6400,26 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         dataJson[entry.key] = entry.value.toJson();
       }
       
-      // 複数のバックアップキーで保存
-      await prefs.setString('medication_backup_$dateStr', jsonEncode(dataJson));
+      // 隍・焚縺ｮ繝舌ャ繧ｯ繧｢繝・・繧ｭ繝ｼ縺ｧ菫晏ｭ・      await prefs.setString('medication_backup_$dateStr', jsonEncode(dataJson));
       await prefs.setString('medication_backup_latest', jsonEncode(dataJson));
       await prefs.setString('last_save_date', dateStr);
       await prefs.setString('last_save_timestamp', DateTime.now().toIso8601String());
       
-      // 強制的にフラッシュ
+      // 蠑ｷ蛻ｶ逧・↓繝輔Λ繝・す繝･
       await prefs.commit();
       
-      debugPrint('追加バックアップ保存完了: $dateStr');
+      debugPrint('霑ｽ蜉繝舌ャ繧ｯ繧｢繝・・菫晏ｭ伜ｮ御ｺ・ $dateStr');
     } catch (e) {
-      debugPrint('追加バックアップ保存エラー: $e');
+      debugPrint('霑ｽ蜉繝舌ャ繧ｯ繧｢繝・・菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // こぱさん流：服用薬データを保存（確実なデータ保持）
-  Future<void> _saveMedicationList() async {
+  // 縺薙・縺輔ｓ豬・ｼ壽恪逕ｨ阮ｬ繝・・繧ｿ繧剃ｿ晏ｭ假ｼ育｢ｺ螳溘↑繝・・繧ｿ菫晄戟・・  Future<void> _saveMedicationList() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final medicationListJson = <String, dynamic>{};
       
-      // 服用薬リストを保存
-      for (int i = 0; i < _addedMedications.length; i++) {
+      // 譛咲畑阮ｬ繝ｪ繧ｹ繝医ｒ菫晏ｭ・      for (int i = 0; i < _addedMedications.length; i++) {
         final med = _addedMedications[i];
         medicationListJson['medication_$i'] = {
           'id': med['id'],
@@ -7100,49 +6433,43 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         };
       }
       
-      // こぱさん流：awaitを確実に付けて保存
-      await prefs.setString('medicationList', jsonEncode(medicationListJson));
+      // 縺薙・縺輔ｓ豬・ｼ啾wait繧堤｢ｺ螳溘↓莉倥￠縺ｦ菫晏ｭ・      await prefs.setString('medicationList', jsonEncode(medicationListJson));
       await prefs.setString('medicationList_backup', jsonEncode(medicationListJson));
       await prefs.setInt('medicationList_count', _addedMedications.length);
       
-      debugPrint('服用薬データ保存完了: ${_addedMedications.length}件（こぱさん流）');
+      debugPrint('譛咲畑阮ｬ繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ ${_addedMedications.length}莉ｶ・医％縺ｱ縺輔ｓ豬・ｼ・);
     } catch (e) {
-      debugPrint('服用薬データ保存エラー: $e');
+      debugPrint('譛咲畑阮ｬ繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 確実なアラームデータ保存（指定パス方式を採用）
-  Future<void> _saveAlarmData() async {
+  // 遒ｺ螳溘↑繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ假ｼ域欠螳壹ヱ繧ｹ譁ｹ蠑上ｒ謗｡逕ｨ・・  Future<void> _saveAlarmData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // アラーム数を保存
-      await prefs.setInt('alarm_count', _alarmList.length);
+      // 繧｢繝ｩ繝ｼ繝謨ｰ繧剃ｿ晏ｭ・      await prefs.setInt('alarm_count', _alarmList.length);
       
-      // 各アラームのデータを個別に保存（指定パス方式）
-      for (int i = 0; i < _alarmList.length; i++) {
+      // 蜷・い繝ｩ繝ｼ繝縺ｮ繝・・繧ｿ繧貞句挨縺ｫ菫晏ｭ假ｼ域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・      for (int i = 0; i < _alarmList.length; i++) {
         final alarm = _alarmList[i];
         await prefs.setString('alarm_${i}_name', alarm['name'] ?? '');
         await prefs.setString('alarm_${i}_time', alarm['time'] ?? '00:00');
-        await prefs.setString('alarm_${i}_repeat', alarm['repeat'] ?? '一度だけ');
+        await prefs.setString('alarm_${i}_repeat', alarm['repeat'] ?? '荳蠎ｦ縺縺・);
         await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] ?? true);
         await prefs.setString('alarm_${i}_alarmType', alarm['alarmType'] ?? 'sound');
         await prefs.setInt('alarm_${i}_volume', alarm['volume'] ?? 80);
-        await prefs.setString('alarm_${i}_message', alarm['message'] ?? '薬を服用する時間です');
+        await prefs.setString('alarm_${i}_message', alarm['message'] ?? '阮ｬ繧呈恪逕ｨ縺吶ｋ譎る俣縺ｧ縺・);
       }
       
-      // バックアップも保存
-      await prefs.setString('alarm_backup_count', _alarmList.length.toString());
+      // 繝舌ャ繧ｯ繧｢繝・・繧ゆｿ晏ｭ・      await prefs.setString('alarm_backup_count', _alarmList.length.toString());
       await prefs.setString('alarm_last_save', DateTime.now().toIso8601String());
       
-      debugPrint('アラームデータ保存完了: ${_alarmList.length}件（指定パス方式）');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ伜ｮ御ｺ・ ${_alarmList.length}莉ｶ・域欠螳壹ヱ繧ｹ譁ｹ蠑擾ｼ・);
     } catch (e) {
-      debugPrint('アラームデータ保存エラー: $e');
+      debugPrint('繧｢繝ｩ繝ｼ繝繝・・繧ｿ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // SharedPreferencesにバックアップ保存
-  Future<void> _saveToSharedPreferences(String dateStr, Map<String, MedicationInfo> data) async {
+  // SharedPreferences縺ｫ繝舌ャ繧ｯ繧｢繝・・菫晏ｭ・  Future<void> _saveToSharedPreferences(String dateStr, Map<String, MedicationInfo> data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final dataJson = <String, dynamic>{};
@@ -7153,14 +6480,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       
       await prefs.setString('medication_backup_$dateStr', jsonEncode(dataJson));
       await prefs.setString('last_save_date', dateStr);
-      debugPrint('SharedPreferencesバックアップ保存完了: $dateStr');
+      debugPrint('SharedPreferences繝舌ャ繧ｯ繧｢繝・・菫晏ｭ伜ｮ御ｺ・ $dateStr');
     } catch (e) {
-      debugPrint('SharedPreferences保存エラー: $e');
+      debugPrint('SharedPreferences菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 🔴 最重要：メモの状態を保存（完全版）
-  Future<void> _saveMemoStatus() async {
+  // 閥 譛驥崎ｦ・ｼ壹Γ繝｢縺ｮ迥ｶ諷九ｒ菫晏ｭ假ｼ亥ｮ悟・迚茨ｼ・  Future<void> _saveMemoStatus() async {
     try {
       final memoStatusJson = <String, dynamic>{};
       
@@ -7168,44 +6494,27 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         memoStatusJson[entry.key] = entry.value;
       }
       
-      final jsonString = jsonEncode(memoStatusJson);
+      // 閥 譛驥崎ｦ・ｼ啾wait繧堤｢ｺ螳溘↓莉倥￠縺ｦ菫晏ｭ・      await AppPreferences.saveString('medicationMemoStatus', jsonEncode(memoStatusJson));
+      await AppPreferences.saveString('medication_memo_status', jsonEncode(memoStatusJson));
+      await AppPreferences.saveString('memo_status_backup', jsonEncode(memoStatusJson));
+      await AppPreferences.saveString('last_memo_save', DateTime.now().toIso8601String());
       
-      // ✅ バックアップも同時に保存（複数のキーで保存）
-      await Future.wait([
-        AppPreferences.saveString('medicationMemoStatus', jsonString),
-        AppPreferences.saveString('medication_memo_status', jsonString),
-        AppPreferences.saveString('medication_memo_status_backup', jsonString),
-        AppPreferences.saveString('medication_memo_status_backup2', jsonString),
-        AppPreferences.saveString('medication_memo_status_backup3', jsonString),
-        AppPreferences.saveString('memo_status_backup', jsonString),
-        AppPreferences.saveString('last_memo_save', DateTime.now().toIso8601String()),
-      ]);
-      
-      debugPrint('メモステータス保存完了: ${memoStatusJson.length}件（バックアップ含む）');
+      debugPrint('繝｡繝｢迥ｶ諷倶ｿ晏ｭ伜ｮ御ｺ・ ${memoStatusJson.length}莉ｶ・亥ｮ悟・迚茨ｼ・);
     } catch (e) {
-      debugPrint('メモステータス保存エラー: $e');
+      debugPrint('繝｡繝｢迥ｶ諷倶ｿ晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
   
-  // 🔴 最重要：メモの状態を読み込み（完全版）
-  Future<void> _loadMemoStatus() async {
+  // 閥 譛驥崎ｦ・ｼ壹Γ繝｢縺ｮ迥ｶ諷九ｒ隱ｭ縺ｿ霎ｼ縺ｿ・亥ｮ悟・迚茨ｼ・  Future<void> _loadMemoStatus() async {
     try {
       String? memoStatusStr;
       
-      // ✅ 複数のバックアップキーから試行
-      final keys = [
-        'medicationMemoStatus',
-        'medication_memo_status',
-        'medication_memo_status_backup',
-        'medication_memo_status_backup2',
-        'medication_memo_status_backup3',
-        'memo_status_backup'
-      ];
+      // 閥 譛驥崎ｦ・ｼ夊､・焚繧ｭ繝ｼ縺九ｉ隱ｭ縺ｿ霎ｼ縺ｿ・亥━蜈磯・ｽ堺ｻ倥″・・      final keys = ['medicationMemoStatus', 'medication_memo_status', 'memo_status_backup'];
       
       for (final key in keys) {
         memoStatusStr = AppPreferences.getString(key);
         if (memoStatusStr != null && memoStatusStr.isNotEmpty) {
-          debugPrint('メモステータス読み込み成功: $key');
+          debugPrint('繝｡繝｢迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ謌仙粥: $key・亥ｮ悟・迚茨ｼ・);
           break;
         }
       }
@@ -7213,45 +6522,40 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (memoStatusStr != null && memoStatusStr.isNotEmpty) {
         final memoStatusJson = jsonDecode(memoStatusStr) as Map<String, dynamic>;
         _medicationMemoStatus = memoStatusJson.map((key, value) => MapEntry(key, value as bool));
-        debugPrint('メモステータス読み込み完了: ${_medicationMemoStatus.length}件');
+        debugPrint('繝｡繝｢迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ ${_medicationMemoStatus.length}莉ｶ');
         
-        // 🔴 最重要：UIに反映
+        // 閥 譛驥崎ｦ・ｼ啅I縺ｫ蜿肴丐
         if (mounted) {
     setState(() {
-            // 保存された値があればそれを使う
-          });
+            // 菫晏ｭ倥＆繧後◆蛟､縺後≠繧後・縺昴ｌ繧剃ｽｿ縺・          });
         }
       } else {
-        debugPrint('メモステータスが見つかりません');
+        debugPrint('繝｡繝｢迥ｶ諷九ョ繝ｼ繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ・亥・譛溷､繧剃ｽｿ逕ｨ・・);
         _medicationMemoStatus = {};
       }
     } catch (e) {
-      debugPrint('メモ状態読み込みエラー: $e');
+      debugPrint('繝｡繝｢迥ｶ諷玖ｪｭ縺ｿ霎ｼ縺ｿ繧ｨ繝ｩ繝ｼ: $e');
       _medicationMemoStatus = {};
     }
   }
 
-  // 服用メモのチェック状態を取得
-  bool _getMedicationMemoStatus(String memoId) {
+  // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ蜿門ｾ・  bool _getMedicationMemoStatus(String memoId) {
     return _medicationMemoStatus[memoId] ?? false;
   }
   
-  // 選択された日付の服用メモのチェック状態を取得
-  bool _getMedicationMemoStatusForSelectedDay(String memoId) {
+  // 驕ｸ謚槭＆繧後◆譌･莉倥・譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ蜿門ｾ・  bool _getMedicationMemoStatusForSelectedDay(String memoId) {
     if (_selectedDay == null) return false;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     return _weekdayMedicationStatus[dateStr]?[memoId] ?? false;
   }
   
-  // 指定日のメモの服用回数別チェック状況を取得
-  bool _getMedicationMemoDoseStatusForSelectedDay(String memoId, int doseIndex) {
+  // 謖・ｮ壽律縺ｮ繝｡繝｢縺ｮ譛咲畑蝗樊焚蛻･繝√ぉ繝・け迥ｶ豕√ｒ蜿門ｾ・  bool _getMedicationMemoDoseStatusForSelectedDay(String memoId, int doseIndex) {
     if (_selectedDay == null) return false;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     return _weekdayMedicationDoseStatus[dateStr]?[memoId]?[doseIndex] ?? false;
   }
   
-  // 指定日のメモの服用済み回数を取得
-  int _getMedicationMemoCheckedCountForSelectedDay(String memoId) {
+  // 謖・ｮ壽律縺ｮ繝｡繝｢縺ｮ譛咲畑貂医∩蝗樊焚繧貞叙蠕・  int _getMedicationMemoCheckedCountForSelectedDay(String memoId) {
     if (_selectedDay == null) return 0;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     final doseStatus = _weekdayMedicationDoseStatus[dateStr]?[memoId];
@@ -7259,41 +6563,38 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return doseStatus.values.where((isChecked) => isChecked).length;
   }
   
-  // アプリ再起動時のデータ表示を確実にする
+  // 繧｢繝励Μ蜀崎ｵｷ蜍墓凾縺ｮ繝・・繧ｿ陦ｨ遉ｺ繧堤｢ｺ螳溘↓縺吶ｋ
   Future<void> _ensureDataDisplayOnRestart() async {
     try {
-      // データ読み込み完了を待つ
+      // 繝・・繧ｿ隱ｭ縺ｿ霎ｼ縺ｿ螳御ｺ・ｒ蠕・▽
       await Future.delayed(const Duration(milliseconds: 100));
       
-      // 選択された日付のデータを確認
-      if (_selectedDay != null) {
+      // 驕ｸ謚槭＆繧後◆譌･莉倥・繝・・繧ｿ繧堤｢ｺ隱・      if (_selectedDay != null) {
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-        debugPrint('再起動後データ表示確認: $dateStr');
+        debugPrint('蜀崎ｵｷ蜍募ｾ後ョ繝ｼ繧ｿ陦ｨ遉ｺ遒ｺ隱・ $dateStr');
         
-        // 服用メモの状態を再確認
-        for (final memo in _medicationMemos) {
+        // 譛咲畑繝｡繝｢縺ｮ迥ｶ諷九ｒ蜀咲｢ｺ隱・        for (final memo in _medicationMemos) {
           if (!_medicationMemoStatus.containsKey(memo.id)) {
             _medicationMemoStatus[memo.id] = false;
           }
         }
         
-        // UIを強制更新
+        // UI繧貞ｼｷ蛻ｶ譖ｴ譁ｰ
         if (mounted) {
     setState(() {
-            // データ表示を確実にする
+            // 繝・・繧ｿ陦ｨ遉ｺ繧堤｢ｺ螳溘↓縺吶ｋ
           });
         }
         
-        debugPrint('再起動後データ表示完了: メモ${_medicationMemos.length}件, 状態${_medicationMemoStatus.length}件');
+        debugPrint('蜀崎ｵｷ蜍募ｾ後ョ繝ｼ繧ｿ陦ｨ遉ｺ螳御ｺ・ 繝｡繝｢${_medicationMemos.length}莉ｶ, 迥ｶ諷・{_medicationMemoStatus.length}莉ｶ');
       }
     } catch (e) {
-      debugPrint('再起動後データ表示エラー: $e');
+      debugPrint('蜀崎ｵｷ蜍募ｾ後ョ繝ｼ繧ｿ陦ｨ遉ｺ繧ｨ繝ｩ繝ｼ: $e');
     }
   }
 
 
-  // 完全に作り直された服用記録リスト
-  Widget _buildAddedMedicationRecord(Map<String, dynamic> medication) {
+  // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺滓恪逕ｨ險倬鹸繝ｪ繧ｹ繝・  Widget _buildAddedMedicationRecord(Map<String, dynamic> medication) {
     final isChecked = medication['isChecked'] ?? false;
     final medicationName = medication['name'] ?? '';
     final medicationType = medication['type'] ?? '';
@@ -7329,35 +6630,31 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               : null,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24), // パディングを増加
+          padding: const EdgeInsets.all(24), // 繝代ョ繧｣繝ｳ繧ｰ繧貞｢怜刈
           child: Row(
             children: [
-              // 完全に作り直された服用済みチェックボックス
+              // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺滓恪逕ｨ貂医∩繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ
               GestureDetector(
                 onTap: () async {
-                  // ✅ 追加：変更前スナップショット（状態変更前）
-                  if (_selectedDay != null) {
-                    await _saveSnapshotBeforeChange('服用チェック_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・育憾諷句､画峩蜑搾ｼ・                  if (_selectedDay != null) {
+                    await _saveSnapshotBeforeChange('譛咲畑繝√ぉ繝・け_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                   }
                   
-                  // 強制的に状態を更新
+                  // 蠑ｷ蛻ｶ逧・↓迥ｶ諷九ｒ譖ｴ譁ｰ
                   setState(() {
                     medication['isChecked'] = !isChecked;
                   });
                   
-                  // データを即座に保存（遅延なし）
-                  _saveCurrentData();
+                  // 繝・・繧ｿ繧貞叉蠎ｧ縺ｫ菫晏ｭ假ｼ磯≦蟒ｶ縺ｪ縺暦ｼ・                  _saveCurrentData();
                   
-                  // カレンダーマークを更新
+                  // 繧ｫ繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ繧呈峩譁ｰ
                   _updateCalendarMarks();
                   
-                  // 統計を強制再計算
-                  setState(() {
-                    // 統計を強制再計算
-                  });
+                  // 邨ｱ險医ｒ蠑ｷ蛻ｶ蜀崎ｨ育ｮ・                  setState(() {
+                    // 邨ｱ險医ｒ蠑ｷ蛻ｶ蜀崎ｨ育ｮ・                  });
                 },
                 child: Container(
-                  width: 60, // サイズを大きく
+                  width: 60, // 繧ｵ繧､繧ｺ繧貞､ｧ縺阪￥
                   height: 60,
                   decoration: BoxDecoration(
                     color: isChecked ? Colors.green : Colors.grey.withOpacity(0.2),
@@ -7380,8 +6677,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
               ),
-              const SizedBox(width: 24), // 間隔を広く
-              // 薬の情報
+              const SizedBox(width: 24), // 髢馴囈繧貞ｺ・￥
+              // 阮ｬ縺ｮ諠・ｱ
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -7389,7 +6686,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     Row(
                       children: [
                         Icon(
-                          medicationType == 'サプリメント' ? Icons.eco : Icons.medication,
+                          medicationType == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Icons.eco : Icons.medication,
                           color: isChecked ? Colors.green : medicationColor,
                           size: 20,
                         ),
@@ -7411,7 +6708,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
-                              '服用済み',
+                              '譛咲畑貂医∩',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
@@ -7434,21 +6731,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ],
                 ),
               ),
-              // 削除ボタン
+              // 蜑企勁繝懊ち繝ｳ
               IconButton(
                 onPressed: () async {
-                  // ✅ 追加：変更前スナップショット
+                  // 笨・霑ｽ蜉・壼､画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
                   if (_selectedDay != null) {
-                    await _saveSnapshotBeforeChange('服用記録削除_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                    await _saveSnapshotBeforeChange('譛咲畑險倬鹸蜑企勁_${medicationName}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                   }
                   setState(() {
                     _addedMedications.remove(medication);
                   });
-                  // データを即座に保存（遅延なし）
-                  _saveCurrentData();
+                  // 繝・・繧ｿ繧貞叉蠎ｧ縺ｫ菫晏ｭ假ｼ磯≦蟒ｶ縺ｪ縺暦ｼ・                  _saveCurrentData();
                 },
                 icon: const Icon(Icons.delete, color: Colors.red),
-                tooltip: '削除',
+                tooltip: '蜑企勁',
               ),
             ],
           ),
@@ -7468,10 +6764,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.max, // 最大高さを使用
+              mainAxisSize: MainAxisSize.max, // 譛螟ｧ鬮倥＆繧剃ｽｿ逕ｨ
               children: [
                 Text(
-                  '服用メモ',
+                  '譛咲畑繝｡繝｢',
                   style: TextStyle(
                     fontSize: 24, 
                     fontWeight: FontWeight.bold,
@@ -7481,9 +6777,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
                 const SizedBox(height: 16),
-            // 服用メモリスト（無限スクロール対応・高さ最適化）
-            Expanded(
-              flex: 1, // 残りの高さを全て使用
+            // 譛咲畑繝｡繝｢繝ｪ繧ｹ繝茨ｼ育┌髯舌せ繧ｯ繝ｭ繝ｼ繝ｫ蟇ｾ蠢懊・鬮倥＆譛驕ｩ蛹厄ｼ・            Expanded(
+              flex: 1, // 谿九ｊ縺ｮ鬮倥＆繧貞・縺ｦ菴ｿ逕ｨ
               child: _medicationMemos.isEmpty
                       ? const Center(
                           child: Column(
@@ -7492,12 +6787,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                               Icon(Icons.note_alt_outlined, size: 72, color: Colors.grey),
                               SizedBox(height: 12),
                               Text(
-                                '服用メモがまだありません',
+                                '譛咲畑繝｡繝｢縺後∪縺縺ゅｊ縺ｾ縺帙ｓ',
                                 style: TextStyle(fontSize: 16),
                               ),
                               SizedBox(height: 8),
                               Text(
-                                '右下の+マークから新しいメモを追加できます。',
+                                '蜿ｳ荳九・+繝槭・繧ｯ縺九ｉ譁ｰ縺励＞繝｡繝｢繧定ｿｽ蜉縺ｧ縺阪∪縺吶・,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontSize: 13),
                               ),
@@ -7508,15 +6803,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           controller: _memoScrollController,
                           physics: const BouncingScrollPhysics(),
                       itemCount: _medicationMemos.length,
-                          // 無限スクロール用の最適化設定
-                          cacheExtent: 1000, // キャッシュ範囲を拡張（パフォーマンス向上）
-                          addAutomaticKeepAlives: true, // 自動的にKeepAliveを追加
-                          addRepaintBoundaries: true, // 再描画境界を追加
-                          addSemanticIndexes: true, // セマンティックインデックスを追加
-                          // スクロール動作の最適化
-                          shrinkWrap: true, // コンテンツに応じて高さを調整
-                          primary: false, // 高さ無制限のためfalseに設定
-                          itemBuilder: (context, index) {
+                          // 辟｡髯舌せ繧ｯ繝ｭ繝ｼ繝ｫ逕ｨ縺ｮ譛驕ｩ蛹冶ｨｭ螳・                          cacheExtent: 1000, // 繧ｭ繝｣繝・す繝･遽・峇繧呈僑蠑ｵ・医ヱ繝輔か繝ｼ繝槭Φ繧ｹ蜷台ｸ奇ｼ・                          addAutomaticKeepAlives: true, // 閾ｪ蜍慕噪縺ｫKeepAlive繧定ｿｽ蜉
+                          addRepaintBoundaries: true, // 蜀肴緒逕ｻ蠅・阜繧定ｿｽ蜉
+                          addSemanticIndexes: true, // 繧ｻ繝槭Φ繝・ぅ繝・け繧､繝ｳ繝・ャ繧ｯ繧ｹ繧定ｿｽ蜉
+                          // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蜍穂ｽ懊・譛驕ｩ蛹・                          shrinkWrap: true, // 繧ｳ繝ｳ繝・Φ繝・↓蠢懊§縺ｦ鬮倥＆繧定ｪｿ謨ｴ
+                          primary: false, // 鬮倥＆辟｡蛻ｶ髯舌・縺溘ａfalse縺ｫ險ｭ螳・                          itemBuilder: (context, index) {
                         final memo = _medicationMemos[index];
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -7529,14 +6820,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                 padding: const EdgeInsets.all(18),
                                 child: Column(
                                   children: [
-                                    // アイコンと名前を上に配置
+                                    // 繧｢繧､繧ｳ繝ｳ縺ｨ蜷榊燕繧剃ｸ翫↓驟咲ｽｮ
                                     Row(
                                       children: [
                                         CircleAvatar(
                                           backgroundColor: memo.color,
                                           radius: 24,
                                           child: Icon(
-                                            memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
+                                            memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Icons.eco : Icons.medication,
                                             color: Colors.white,
                                             size: 24,
                                           ),
@@ -7560,12 +6851,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 decoration: BoxDecoration(
-                                                  color: memo.type == 'サプリメント'
+                                                  color: memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・
                                                       ? Colors.green.withOpacity(0.1)
                                                       : Colors.blue.withOpacity(0.1),
                                                   borderRadius: BorderRadius.circular(12),
                                                   border: Border.all(
-                                                    color: memo.type == 'サプリメント'
+                                                    color: memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・
                                                         ? Colors.green.withOpacity(0.3)
                                                         : Colors.blue.withOpacity(0.3),
                                                   ),
@@ -7577,22 +6868,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                                     fontWeight: FontWeight.w500,
                                                     color: Theme.of(context).brightness == Brightness.dark 
                                                         ? Colors.white70 
-                                                        : (memo.type == 'サプリメント' ? Colors.green : Colors.blue),
+                                                        : (memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Colors.green : Colors.blue),
                                                   ),
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                        // アクションボタンを右上に配置
+                                        // 繧｢繧ｯ繧ｷ繝ｧ繝ｳ繝懊ち繝ｳ繧貞承荳翫↓驟咲ｽｮ
                                         PopupMenuButton<String>(
                                           onSelected: (value) async {
-                                            // トライアル制限チェック
+                                            // 繝医Λ繧､繧｢繝ｫ蛻ｶ髯舌メ繧ｧ繝・け
                                             final isExpired = await TrialService.isTrialExpired();
                                   if (isExpired) {
                                     showDialog(
                                       context: context,
-                                      builder: (context) => TrialLimitDialog(featureName: '服用メモ'),
+                                      builder: (context) => TrialLimitDialog(featureName: '譛咲畑繝｡繝｢'),
                                     );
                                     return;
                                   }
@@ -7615,7 +6906,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       children: [
                                         Icon(Icons.check_circle, color: Colors.green),
                                         SizedBox(width: 8),
-                                        Text('服用記録'),
+                                        Text('譛咲畑險倬鹸'),
                                       ],
                                     ),
                                   ),
@@ -7625,7 +6916,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       children: [
                                         Icon(Icons.edit, color: Colors.blue),
                                         SizedBox(width: 8),
-                                        Text('編集'),
+                                        Text('邱ｨ髮・),
                                       ],
                                     ),
                                   ),
@@ -7635,7 +6926,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       children: [
                                         Icon(Icons.delete, color: Colors.red),
                                         SizedBox(width: 8),
-                                        Text('削除'),
+                                        Text('蜑企勁'),
                                       ],
                                     ),
                                   ),
@@ -7645,11 +6936,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             ],
                           ),
                           const SizedBox(height: 14),
-                          // 詳細情報を下に配置
+                          // 隧ｳ邏ｰ諠・ｱ繧剃ｸ九↓驟咲ｽｮ
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 服用回数情報
+                              // 譛咲畑蝗樊焚諠・ｱ
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(14),
@@ -7662,7 +6953,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                     const Icon(Icons.repeat, size: 16, color: Colors.blue),
                                     const SizedBox(width: 8),
                                     Text(
-                                      '服用回数: ${memo.dosageFrequency}回',
+                                      '譛咲畑蝗樊焚: ${memo.dosageFrequency}蝗・,
                                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                                     ),
                                     if (memo.dosageFrequency >= 6) ...[
@@ -7691,7 +6982,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       const Icon(Icons.straighten, size: 16, color: Colors.grey),
                                       const SizedBox(width: 8),
                                       Text(
-                                        '用量: ${memo.dosage}',
+                                        '逕ｨ驥・ ${memo.dosage}',
                                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                                       ),
                                     ],
@@ -7721,8 +7012,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                 ),
                               if (memo.notes.isNotEmpty) const SizedBox(height: 10),
-                              // ✅ 改善版：曜日未設定の警告表示（目立つデザイン）
-                              if (memo.selectedWeekdays.isEmpty)
+                              // 笨・謾ｹ蝟・沿・壽屆譌･譛ｪ險ｭ螳壹・隴ｦ蜻願｡ｨ遉ｺ・育岼遶九▽繝・じ繧､繝ｳ・・                              if (memo.selectedWeekdays.isEmpty)
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.all(20),
@@ -7772,7 +7062,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                                  '⚠️ 服用スケジュール未設定',
+                                                  '笞・・譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ譛ｪ險ｭ螳・,
                                                   style: TextStyle(
                                                     fontSize: 18, 
                                                     color: Colors.red, 
@@ -7781,7 +7071,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                                 ),
                                                 SizedBox(height: 4),
                                                 Text(
-                                                  '曜日を設定してください',
+                                                  '譖懈律繧定ｨｭ螳壹＠縺ｦ縺上□縺輔＞',
                                               style: TextStyle(
                                                 fontSize: 14, 
                                                 color: Colors.orange, 
@@ -7806,7 +7096,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
-                                                'メモを編集して「服用スケジュール」から(毎日、曜日)を選択してください',
+                                                '繝｡繝｢繧堤ｷｨ髮・＠縺ｦ縲梧恪逕ｨ繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縲阪°繧・豈取律縲∵屆譌･)繧帝∈謚槭＠縺ｦ縺上□縺輔＞',
                                                 style: TextStyle(
                                                   fontSize: 13,
                                                   color: Colors.grey[800],
@@ -7834,7 +7124,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       const Icon(Icons.schedule, size: 16, color: Colors.green),
                                       const SizedBox(width: 8),
                                       Text(
-                                        '最後の服用:\n${DateFormat('yyyy/MM/dd HH:mm').format(memo.lastTaken!)}',
+                                        '譛蠕後・譛咲畑:\n${DateFormat('yyyy/MM/dd HH:mm').format(memo.lastTaken!)}',
                                         style: const TextStyle(fontSize: 14, color: Colors.green, fontWeight: FontWeight.w500),
                                         textAlign: TextAlign.center,
                                       ),
@@ -7877,13 +7167,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   Icon(Icons.lock, size: 80, color: Colors.orange),
                   SizedBox(height: 24),
                   Text(
-                    'トライアル期間が終了しました',
+                    '繝医Λ繧､繧｢繝ｫ譛滄俣縺檎ｵゆｺ・＠縺ｾ縺励◆',
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'アラーム機能は制限されています',
+                    '繧｢繝ｩ繝ｼ繝讖溯・縺ｯ蛻ｶ髯舌＆繧後※縺・∪縺・,
                     style: TextStyle(fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
@@ -7891,10 +7181,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ElevatedButton.icon(
                     onPressed: () async {
                       await TrialService.getPurchaseLink();
-                      // リンクを開く処理（後で実装）
-                    },
+                      // 繝ｪ繝ｳ繧ｯ繧帝幕縺丞・逅・ｼ亥ｾ後〒螳溯｣・ｼ・                    },
                     icon: Icon(Icons.shopping_cart),
-                    label: Text('👉 機能解除はこちら'),
+                    label: Text('痩 讖溯・隗｣髯､縺ｯ縺薙■繧・),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -7909,8 +7198,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
         
         return KeyedSubtree(
-          key: _alarmTabKey,  // ✅ キーを設定
-          child: const SimpleAlarmApp(),
+          key: _alarmTabKey,  // 笨・繧ｭ繝ｼ繧定ｨｭ螳・          child: const SimpleAlarmApp(),
         );
       },
     );
@@ -7937,13 +7225,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   Icon(Icons.lock, size: 80, color: Colors.orange),
                   SizedBox(height: 24),
                   Text(
-                    'トライアル期間が終了しました',
+                    '繝医Λ繧､繧｢繝ｫ譛滄俣縺檎ｵゆｺ・＠縺ｾ縺励◆',
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   SizedBox(height: 16),
                   Text(
-                    '統計機能は制限されています',
+                    '邨ｱ險域ｩ溯・縺ｯ蛻ｶ髯舌＆繧後※縺・∪縺・,
                     style: TextStyle(fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
@@ -7951,10 +7239,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ElevatedButton.icon(
                     onPressed: () async {
                       await TrialService.getPurchaseLink();
-                      // リンクを開く処理（後で実装）
-                    },
+                      // 繝ｪ繝ｳ繧ｯ繧帝幕縺丞・逅・ｼ亥ｾ後〒螳溯｣・ｼ・                    },
                     icon: Icon(Icons.shopping_cart),
-                    label: Text('👉 機能解除はこちら'),
+                    label: Text('痩 讖溯・隗｣髯､縺ｯ縺薙■繧・),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -7978,31 +7265,27 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         child: Container(
           padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisSize: MainAxisSize.max, // 最大高さを使用
+            mainAxisSize: MainAxisSize.max, // 譛螟ｧ鬮倥＆繧剃ｽｿ逕ｨ
             children: [
               const Text(
-                '服薬遵守率',
+                '譛崎脈驕ｵ螳育紫',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               Expanded(
-                flex: 1, // 残りの高さを全て使用
+                flex: 1, // 谿九ｊ縺ｮ鬮倥＆繧貞・縺ｦ菴ｿ逕ｨ
                 child: SingleChildScrollView(
                   controller: _statsScrollController,
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                   children: [
-                    // 遵守率グラフ
-                    _buildAdherenceChart(),
+                    // 驕ｵ螳育紫繧ｰ繝ｩ繝・                    _buildAdherenceChart(),
                     const SizedBox(height: 20),
-                    // 薬品別使用状況グラフ
-                    _buildMedicationUsageChart(),
+                    // 阮ｬ蜩∝挨菴ｿ逕ｨ迥ｶ豕√げ繝ｩ繝・                    _buildMedicationUsageChart(),
                     const SizedBox(height: 20),
-                    // 期間別遵守率カード
-                    ..._adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
+                    // 譛滄俣蛻･驕ｵ螳育紫繧ｫ繝ｼ繝・                    ..._adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
                       const SizedBox(height: 20),
-                      // 任意の日数の遵守率カード
-                    _buildCustomAdherenceCard(),
+                      // 莉ｻ諢上・譌･謨ｰ縺ｮ驕ｵ螳育紫繧ｫ繝ｼ繝・                    _buildCustomAdherenceCard(),
                   ],
                   ),
                 ),
@@ -8037,8 +7320,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // ✅ 任意の日数の遵守率カード（別画面へのナビゲーション）
-  Widget _buildCustomAdherenceCard() {
+  // 笨・莉ｻ諢上・譌･謨ｰ縺ｮ驕ｵ螳育紫繧ｫ繝ｼ繝会ｼ亥挨逕ｻ髱｢縺ｸ縺ｮ繝翫ン繧ｲ繝ｼ繧ｷ繝ｧ繝ｳ・・  Widget _buildCustomAdherenceCard() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -8054,11 +7336,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-              '任意の日数の遵守率',
+              '莉ｻ諢上・譌･謨ｰ縺ｮ驕ｵ螳育紫',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
                       Text(
-                        '指定した期間の遵守率を分析',
+                        '謖・ｮ壹＠縺滓悄髢薙・驕ｵ螳育紫繧貞・譫・,
                         style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                     ],
@@ -8069,7 +7351,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     _showCustomAdherenceDialog();
                   },
                   icon: const Icon(Icons.calculate),
-                  label: const Text('分析'),
+                  label: const Text('蛻・梵'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
@@ -8101,7 +7383,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: Column(
               children: [
                     Text(
-                      '${_customDaysResult}日間の遵守率',
+                      '${_customDaysResult}譌･髢薙・驕ｵ螳育紫',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -8130,7 +7412,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // ✅ カスタム遵守率ダイアログ表示
+  // 笨・繧ｫ繧ｹ繧ｿ繝驕ｵ螳育紫繝繧､繧｢繝ｭ繧ｰ陦ｨ遉ｺ
   void _showCustomAdherenceDialog() {
     showDialog(
       context: context,
@@ -8144,7 +7426,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      '任意の日数の遵守率',
+                      '莉ｻ諢上・譌･謨ｰ縺ｮ驕ｵ螳育紫',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -8156,7 +7438,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      '分析したい期間の日数を入力してください',
+                      '蛻・梵縺励◆縺・悄髢薙・譌･謨ｰ繧貞・蜉帙＠縺ｦ縺上□縺輔＞',
                       style: TextStyle(fontSize: 14),
                     ),
                     const SizedBox(height: 20),
@@ -8165,14 +7447,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       focusNode: _customDaysFocusNode,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                        labelText: '日数（1-365日）',
-                        hintText: '例: 30',
+                        labelText: '譌･謨ｰ・・-365譌･・・,
+                        hintText: '萓・ 30',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.calendar_today),
-                        helperText: '過去何日間のデータを分析しますか？',
+                        helperText: '驕主悉菴墓律髢薙・繝・・繧ｿ繧貞・譫舌＠縺ｾ縺吶°・・,
                     ),
                     onChanged: (value) {
-                        // 入力値の検証
+                        // 蜈･蜉帛､縺ｮ讀懆ｨｼ
                       },
                     ),
                     const SizedBox(height: 20),
@@ -8199,7 +7481,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: Column(
                   children: [
                     Text(
-                      '${_customDaysResult}日間の遵守率',
+                      '${_customDaysResult}譌･髢薙・驕ｵ螳育紫',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -8230,19 +7512,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text('キャンセル'),
+                  child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     final days = int.tryParse(_customDaysController.text);
                     if (days != null && days >= 1 && days <= 365) {
                       _calculateCustomAdherence(days);
-                      setDialogState(() {}); // ダイアログ内の状態を更新
+                      setDialogState(() {}); // 繝繧､繧｢繝ｭ繧ｰ蜀・・迥ｶ諷九ｒ譖ｴ譁ｰ
                     } else {
-                      _showSnackBar('1から365の範囲で日数を入力してください');
+                      _showSnackBar('1縺九ｉ365縺ｮ遽・峇縺ｧ譌･謨ｰ繧貞・蜉帙＠縺ｦ縺上□縺輔＞');
                     }
                   },
-                  child: const Text('分析実行'),
+                  child: const Text('蛻・梵螳溯｡・),
                 ),
               ],
             );
@@ -8252,16 +7534,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // ✅ カスタム遵守率計算
-  void _calculateCustomAdherence(int days) async {
+  // 笨・繧ｫ繧ｹ繧ｿ繝驕ｵ螳育紫險育ｮ・  void _calculateCustomAdherence(int days) async {
     try {
-      // 現在のスクロール位置を保存
-      final currentScrollPosition = _statsScrollController.hasClients 
+      // 迴ｾ蝨ｨ縺ｮ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ菴咲ｽｮ繧剃ｿ晏ｭ・      final currentScrollPosition = _statsScrollController.hasClients 
           ? _statsScrollController.offset 
           : 0.0;
       
-      // キーボードを閉じる
-      _customDaysFocusNode.unfocus();
+      // 繧ｭ繝ｼ繝懊・繝峨ｒ髢峨§繧・      _customDaysFocusNode.unfocus();
       FocusScope.of(context).unfocus();
       
       final now = DateTime.now();
@@ -8273,8 +7552,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         final dateStr = DateFormat('yyyy-MM-dd').format(date);
         final dayData = _medicationData[dateStr];
         
-        // 動的薬リストの統計
-        if (dayData != null) {
+        // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・        if (dayData != null) {
           for (final timeSlot in dayData.values) {
             if (timeSlot.medicine.isNotEmpty) {
               totalDoses++;
@@ -8283,38 +7561,35 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           }
         }
         
-        // 服用メモのチェック状況を統計に反映
-        final weekday = date.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+        // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ豕√ｒ邨ｱ險医↓蜿肴丐
+        final weekday = date.weekday % 7; // 0=譌･譖懈律, 1=譛域屆譌･, ..., 6=蝨滓屆譌･
         final weekdayMemos = _medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
         
         for (final memo in weekdayMemos) {
           totalDoses++;
-          // 日付別の服用メモ状態を確認
-          if (_weekdayMedicationStatus[dateStr]?[memo.id] == true) {
+          // 譌･莉伜挨縺ｮ譛咲畑繝｡繝｢迥ｶ諷九ｒ遒ｺ隱・          if (_weekdayMedicationStatus[dateStr]?[memo.id] == true) {
             takenDoses++;
           }
         }
       }
       
-      // データがない場合の警告
-      if (totalDoses == 0) {
-        _showSnackBar('指定した期間に服薬データがありません');
+      // 繝・・繧ｿ縺後↑縺・ｴ蜷医・隴ｦ蜻・      if (totalDoses == 0) {
+        _showSnackBar('謖・ｮ壹＠縺滓悄髢薙↓譛崎脈繝・・繧ｿ縺後≠繧翫∪縺帙ｓ');
         return;
       }
       
       final rate = (takenDoses / totalDoses * 100);
      
-      // 結果をカード内に表示
+      // 邨先棡繧偵き繝ｼ繝牙・縺ｫ陦ｨ遉ｺ
       setState(() {
         _customAdherenceResult = rate;
         _customDaysResult = days;
       });
       
-      // ダイアログを閉じる
+      // 繝繧､繧｢繝ｭ繧ｰ繧帝哩縺倥ｋ
       Navigator.of(context).pop();
       
-      // スクロール位置を復元（統計ページの一番下に戻る）
-      if (_statsScrollController.hasClients) {
+      // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ菴咲ｽｮ繧貞ｾｩ蜈・ｼ育ｵｱ險医・繝ｼ繧ｸ縺ｮ荳逡ｪ荳九↓謌ｻ繧具ｼ・      if (_statsScrollController.hasClients) {
         Future.delayed(const Duration(milliseconds: 300), () {
           _statsScrollController.animateTo(
             _statsScrollController.position.maxScrollExtent,
@@ -8325,12 +7600,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
       
     } catch (e) {
-      _showSnackBar('カスタム遵守率の計算に失敗しました: $e');
+      _showSnackBar('繧ｫ繧ｹ繧ｿ繝驕ｵ螳育紫縺ｮ險育ｮ励↓螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
   
-  // 遵守率グラフ
-  Widget _buildAdherenceChart() {
+  // 驕ｵ螳育紫繧ｰ繝ｩ繝・  Widget _buildAdherenceChart() {
     if (_adherenceRates.isEmpty) {
       return Card(
         child: Padding(
@@ -8338,12 +7612,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: Column(
             children: [
               const Text(
-                '遵守率グラフ',
+                '驕ｵ螳育紫繧ｰ繝ｩ繝・,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               const Text(
-                'データがありません',
+                '繝・・繧ｿ縺後≠繧翫∪縺帙ｓ',
                 style: TextStyle(fontSize: 16),
               ),
             ],
@@ -8360,12 +7634,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         child: Column(
           children: [
             const Text(
-              '遵守率グラフ',
+              '驕ｵ螳育紫繧ｰ繝ｩ繝・,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             SizedBox(
-              height: 250, // 高さを増加
+              height: 250, // 鬮倥＆繧貞｢怜刈
               child: LineChart(
                 LineChartData(
                   gridData: FlGridData(show: true),
@@ -8373,7 +7647,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 50, // 予約サイズを増加
+                        reservedSize: 50, // 莠育ｴ・し繧､繧ｺ繧貞｢怜刈
                         getTitlesWidget: (value, meta) {
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -8391,7 +7665,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 30, // 予約サイズを追加
+                        reservedSize: 30, // 莠育ｴ・し繧､繧ｺ繧定ｿｽ蜉
                         getTitlesWidget: (value, meta) {
                           if (value.toInt() < chartData.length) {
                             return Padding(
@@ -8451,13 +7725,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       ),
     );
   }
-  // 薬品別使用状況グラフ
-  Widget _buildMedicationUsageChart() {
-    // 薬品の使用回数を集計（服用メモのチェック状態も含める）
-    Map<String, int> medicationCount = {};
+  // 阮ｬ蜩∝挨菴ｿ逕ｨ迥ｶ豕√げ繝ｩ繝・  Widget _buildMedicationUsageChart() {
+    // 阮ｬ蜩√・菴ｿ逕ｨ蝗樊焚繧帝寔險茨ｼ域恪逕ｨ繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｂ蜷ｫ繧√ｋ・・    Map<String, int> medicationCount = {};
     
-    // 動的薬リストの統計
-    for (final dayData in _medicationData.values) {
+    // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・    for (final dayData in _medicationData.values) {
       for (final timeSlot in dayData.values) {
         if (timeSlot.medicine.isNotEmpty) {
           medicationCount[timeSlot.medicine] = (medicationCount[timeSlot.medicine] ?? 0) + 1;
@@ -8465,8 +7736,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
     }
     
-    // 服用メモのチェック状態を統計に反映（日付別）
-    for (final entry in _weekdayMedicationStatus.entries) {
+    // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ邨ｱ險医↓蜿肴丐・域律莉伜挨・・    for (final entry in _weekdayMedicationStatus.entries) {
       final dateStr = entry.key;
       final dayStatus = entry.value;
       
@@ -8483,12 +7753,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: Column(
             children: [
               const Text(
-                'くすり、サプリ別使用状況',
+                '縺上☆繧翫√し繝励Μ蛻･菴ｿ逕ｨ迥ｶ豕・,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               const Text(
-                'データがありません',
+                '繝・・繧ｿ縺後≠繧翫∪縺帙ｓ',
                 style: TextStyle(fontSize: 16),
               ),
             ],
@@ -8504,7 +7774,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         child: Column(
           children: [
             const Text(
-              'くすり、サプリ別使用状況',
+              '縺上☆繧翫√し繝励Μ蛻･菴ｿ逕ｨ迥ｶ豕・,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
@@ -8528,7 +7798,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     return PieChartSectionData(
                       color: colors[index % colors.length],
                       value: medication.value.toDouble(),
-                      title: '${medication.key}\n${medication.value}回',
+                      title: '${medication.key}\n${medication.value}蝗・,
                       radius: 60,
                       titleStyle: const TextStyle(
                         fontSize: 12,
@@ -8550,22 +7820,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Future<void> _applyBulkCheck() async {
     try {
       if (_selectedDates.isEmpty) {
-        _showSnackBar('日付を選択してから実行してください。');
+        _showSnackBar('譌･莉倥ｒ驕ｸ謚槭＠縺ｦ縺九ｉ螳溯｡後＠縺ｦ縺上□縺輔＞縲・);
         return;
       }
       bool hasData = false;
-      // 動的薬リストのチェック
+      // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・繝√ぉ繝・け
       if (_addedMedications.isNotEmpty) {
         hasData = true;
       }
       if (!hasData) {
-        _showSnackBar('薬名または服薬状況を入力してください。');
+        _showSnackBar('阮ｬ蜷阪∪縺溘・譛崎脈迥ｶ豕√ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・);
         return;
       }
       for (final date in _selectedDates) {
         final dateStr = DateFormat('yyyy-MM-dd').format(date);
         _medicationData.putIfAbsent(dateStr, () => {});
-        // 動的薬リストのコピー
+        // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・繧ｳ繝斐・
         for (final medication in _addedMedications) {
           final medicine = medication['name'] as String;
           final checked = medication['isChecked'] as bool;
@@ -8574,12 +7844,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             medicine: medicine,
             actualTime: checked ? DateTime.now() : null,
           );
-          await MedicationService.saveCsvRecord(dateStr, 'added_medication', medicine, checked ? '服薬済み' : '未服薬');
+          await MedicationService.saveCsvRecord(dateStr, 'added_medication', medicine, checked ? '譛崎脈貂医∩' : '譛ｪ譛崎脈');
         }
       }
       await MedicationService.saveMedicationData(_medicationData);
-      // 通知設定は簡素化
-      final notificationTimes = <String, List<TimeOfDay>>{};
+      // 騾夂衍險ｭ螳壹・邁｡邏蛹・      final notificationTimes = <String, List<TimeOfDay>>{};
       final notificationTypes = <String, NotificationType>{};
       await NotificationService.scheduleNotifications(notificationTimes, _medicationData, notificationTypes);
       setState(() {
@@ -8587,21 +7856,21 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _selectedDay = null;
       });
       _updateMedicineInputsForSelectedDate();
-      _showSnackBar('✅ 一括設定を適用しました。');
+      _showSnackBar('笨・荳諡ｬ險ｭ螳壹ｒ驕ｩ逕ｨ縺励∪縺励◆縲・);
     } catch (e) {
-      _showSnackBar('一括設定の適用に失敗しました: $e');
+      _showSnackBar('荳諡ｬ險ｭ螳壹・驕ｩ逕ｨ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
   Future<void> _applyBulkUncheck() async {
     try {
       if (_selectedDates.isEmpty) {
-        _showSnackBar('日付を選択してから実行してください。');
+        _showSnackBar('譌･莉倥ｒ驕ｸ謚槭＠縺ｦ縺九ｉ螳溯｡後＠縺ｦ縺上□縺輔＞縲・);
         return;
       }
       for (final date in _selectedDates) {
         final dateStr = DateFormat('yyyy-MM-dd').format(date);
         _medicationData.putIfAbsent(dateStr, () => {});
-        // 動的薬リストのコピー
+        // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・繧ｳ繝斐・
         for (final medication in _addedMedications) {
           final medicine = medication['name'] as String;
           _medicationData[dateStr]!['added_medication_${medication.hashCode}'] = MedicationInfo(
@@ -8609,12 +7878,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             medicine: medicine,
             actualTime: null,
           );
-          await MedicationService.saveCsvRecord(dateStr, 'added_medication', medicine, '未服薬');
+          await MedicationService.saveCsvRecord(dateStr, 'added_medication', medicine, '譛ｪ譛崎脈');
         }
       }
       await MedicationService.saveMedicationData(_medicationData);
-      // 通知設定は簡素化
-      final notificationTimes = <String, List<TimeOfDay>>{};
+      // 騾夂衍險ｭ螳壹・邁｡邏蛹・      final notificationTimes = <String, List<TimeOfDay>>{};
       final notificationTypes = <String, NotificationType>{};
       await NotificationService.scheduleNotifications(notificationTimes, _medicationData, notificationTypes);
       setState(() {
@@ -8622,9 +7890,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _selectedDay = null;
       });
       _updateMedicineInputsForSelectedDate();
-      _showSnackBar('❌ 一括解除を適用しました。');
+      _showSnackBar('笶・荳諡ｬ隗｣髯､繧帝←逕ｨ縺励∪縺励◆縲・);
     } catch (e) {
-      _showSnackBar('一括解除の適用に失敗しました: $e');
+      _showSnackBar('荳諡ｬ隗｣髯､縺ｮ驕ｩ逕ｨ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
   Future<void> _deleteMedicine(String name) async {
@@ -8633,9 +7901,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       setState(() {
         _medicines.removeWhere((medicine) => medicine.name == name);
       });
-      _showSnackBar('薬品を削除しました');
+      _showSnackBar('阮ｬ蜩√ｒ蜑企勁縺励∪縺励◆');
     } catch (e) {
-      _showSnackBar('薬品の削除に失敗しました: $e');
+      _showSnackBar('阮ｬ蜩√・蜑企勁縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
   void _addMemo() {
@@ -8644,11 +7912,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       builder: (context) => _MemoDialog(
         existingMemos: _medicationMemos,
         onMemoAdded: (memo) async {
-          // ✅ 変更前スナップショット
-          await _saveSnapshotBeforeChange('メモ追加_${memo.name.isEmpty ? '無題' : memo.name}');
+          // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+          await _saveSnapshotBeforeChange('繝｡繝｢霑ｽ蜉_${memo.name.isEmpty ? '辟｡鬘・ : memo.name}');
           try {
-            // タイトルが空なら自動連番で補完
-            MedicationMemo memoToSave = memo;
+            // 繧ｿ繧､繝医Ν縺檎ｩｺ縺ｪ繧芽・蜍暮｣逡ｪ縺ｧ陬懷ｮ・            MedicationMemo memoToSave = memo;
             final rawTitle = memo.name.trim();
             if (rawTitle.isEmpty) {
               final titles = _medicationMemos.map((m) => m.name).toList();
@@ -8666,22 +7933,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               );
             }
 
-            // ✅ 改善版：メモを保存（多重バックアップ付き）
-            await _saveMedicationMemoWithBackup(memoToSave);
+            // 笨・謾ｹ蝟・沿・壹Γ繝｢繧剃ｿ晏ｭ假ｼ亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・            await _saveMedicationMemoWithBackup(memoToSave);
             
-            // UIを更新（データ再読み込みは不要）
-          setState(() {
+            // UI繧呈峩譁ｰ・医ョ繝ｼ繧ｿ蜀崎ｪｭ縺ｿ霎ｼ縺ｿ縺ｯ荳崎ｦ・ｼ・          setState(() {
             _medicationMemos.add(memoToSave);
-              // 新しく追加されたメモを表示リストにも追加
+              // 譁ｰ縺励￥霑ｽ蜉縺輔ｌ縺溘Γ繝｢繧定｡ｨ遉ｺ繝ｪ繧ｹ繝医↓繧りｿｽ蜉
               _displayedMemos.add(memoToSave);
           });
             
-            // データを保存
-            await _saveAllData();
+            // 繝・・繧ｿ繧剃ｿ晏ｭ・            await _saveAllData();
             
-            _showSnackBar('服用メモを追加しました');
+            _showSnackBar('譛咲畑繝｡繝｢繧定ｿｽ蜉縺励∪縺励◆');
           } catch (e) {
-            _showSnackBar('メモの追加に失敗しました: $e');
+            _showSnackBar('繝｡繝｢縺ｮ霑ｽ蜉縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e');
           }
         },
       ),
@@ -8694,10 +7958,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         initialMemo: memo,
         existingMemos: _medicationMemos,
         onMemoAdded: (updatedMemo) async {
-          // ✅ 変更前スナップショット
-          await _saveSnapshotBeforeChange('メモ編集_${memo.name.isEmpty ? '無題' : memo.name}');
-          // タイトルが空なら自動連番で補完
-          MedicationMemo memoToSave = updatedMemo;
+          // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
+          await _saveSnapshotBeforeChange('繝｡繝｢邱ｨ髮・${memo.name.isEmpty ? '辟｡鬘・ : memo.name}');
+          // 繧ｿ繧､繝医Ν縺檎ｩｺ縺ｪ繧芽・蜍暮｣逡ｪ縺ｧ陬懷ｮ・          MedicationMemo memoToSave = updatedMemo;
           final rawTitle = updatedMemo.name.trim();
           if (rawTitle.isEmpty) {
             final titles = _medicationMemos.where((m) => m.id != memo.id).map((m) => m.name).toList();
@@ -8715,22 +7978,21 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             );
           }
 
-          // ✅ 改善版：メモを保存（多重バックアップ付き）
-          await _saveMedicationMemoWithBackup(memoToSave);
+          // 笨・謾ｹ蝟・沿・壹Γ繝｢繧剃ｿ晏ｭ假ｼ亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・          await _saveMedicationMemoWithBackup(memoToSave);
 
           setState(() {
             final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
             if (index != -1) {
               _medicationMemos[index] = memoToSave;
             }
-            // 表示リストも更新
+            // 陦ｨ遉ｺ繝ｪ繧ｹ繝医ｂ譖ｴ譁ｰ
             final displayedIndex = _displayedMemos.indexWhere((m) => m.id == memo.id);
             if (displayedIndex != -1) {
               _displayedMemos[displayedIndex] = memoToSave;
             }
           });
           
-          _showSnackBar('服用メモを更新しました');
+          _showSnackBar('譛咲畑繝｡繝｢繧呈峩譁ｰ縺励∪縺励◆');
         },
       ),
     );
@@ -8748,8 +8010,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       selectedWeekdays: memo.selectedWeekdays,
     );
     
-    // ✅ 改善版：メモを保存（多重バックアップ付き）
-    await _saveMedicationMemoWithBackup(updatedMemo);
+    // 笨・謾ｹ蝟・沿・壹Γ繝｢繧剃ｿ晏ｭ假ｼ亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・    await _saveMedicationMemoWithBackup(updatedMemo);
     
     setState(() {
       final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
@@ -8758,58 +8019,55 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
     });
     
-    _showSnackBar('${memo.name}の服用を記録しました');
+    _showSnackBar('${memo.name}縺ｮ譛咲畑繧定ｨ倬鹸縺励∪縺励◆');
   }
   void _deleteMemo(String id) async {
-    // ✅ 変更前スナップショット
+    // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ
     final target = _medicationMemos.firstWhere(
       (m) => m.id == id,
       orElse: () => MedicationMemo(
         id: id,
-        name: '無題',
-        type: '薬品',
+        name: '辟｡鬘・,
+        type: '阮ｬ蜩・,
         createdAt: DateTime.now(),
       ),
     );
-    await _saveSnapshotBeforeChange('メモ削除_${target.name}');
+    await _saveSnapshotBeforeChange('繝｡繝｢蜑企勁_${target.name}');
     try {
-      // ✅ 改善版：メモを削除（多重バックアップ付き）
-      await _deleteMedicationMemoWithBackup(id);
+      // 笨・謾ｹ蝟・沿・壹Γ繝｢繧貞炎髯､・亥､夐㍾繝舌ャ繧ｯ繧｢繝・・莉倥″・・      await _deleteMedicationMemoWithBackup(id);
       
-      // UIを更新
+      // UI繧呈峩譁ｰ
     setState(() {
       _medicationMemos.removeWhere((memo) => memo.id == id);
         _displayedMemos.removeWhere((memo) => memo.id == id);
-        // 関連データも削除
+        // 髢｢騾｣繝・・繧ｿ繧ょ炎髯､
         _medicationMemoStatus.remove(id);
         _weekdayMedicationStatus.remove(id);
-        // 日付別の服用状態も削除
+        // 譌･莉伜挨縺ｮ譛咲畑迥ｶ諷九ｂ蜑企勁
         for (final dateStr in _weekdayMedicationDoseStatus.keys) {
           _weekdayMedicationDoseStatus[dateStr]?.remove(id);
         }
       });
       
-      // データを保存
-      await _saveAllData();
+      // 繝・・繧ｿ繧剃ｿ晏ｭ・      await _saveAllData();
       
-    _showSnackBar('メモを削除しました');
+    _showSnackBar('繝｡繝｢繧貞炎髯､縺励∪縺励◆');
     } catch (e) {
-      _showSnackBar('削除に失敗しました: $e');
+      _showSnackBar('蜑企勁縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
 
-  // 空タイトル時の自動連番生成
+  // 遨ｺ繧ｿ繧､繝医Ν譎ゅ・閾ｪ蜍暮｣逡ｪ逕滓・
   String _generateDefaultTitle(List<String> existingTitles) {
     const int maxCount = 999;
     int count = 1;
-    while (count <= maxCount && existingTitles.contains('メモ$count')) {
+    while (count <= maxCount && existingTitles.contains('繝｡繝｢$count')) {
       count++;
     }
-    return 'メモ$count';
+    return '繝｡繝｢$count';
   }
 
-  // CSV共有機能の強化（未使用）
-  Future<void> _exportToCSV() async {
+  // CSV蜈ｱ譛画ｩ溯・縺ｮ蠑ｷ蛹厄ｼ域悴菴ｿ逕ｨ・・  Future<void> _exportToCSV() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
@@ -8817,17 +8075,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
      
       final csvContent = StringBuffer();
      
-      // ヘッダー行
-      csvContent.writeln('日付,時間,薬名,服薬状況,実際の服薬時間,遅延時間(分),遵守率');
+      // 繝倥ャ繝繝ｼ陦・      csvContent.writeln('譌･莉・譎る俣,阮ｬ蜷・譛崎脈迥ｶ豕・螳滄圀縺ｮ譛崎脈譎る俣,驕・ｻｶ譎る俣(蛻・,驕ｵ螳育紫');
      
-      // 統計情報を計算（服用メモのチェック状態も含める）
-      int totalDoses = 0;
+      // 邨ｱ險域ュ蝣ｱ繧定ｨ育ｮ暦ｼ域恪逕ｨ繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｂ蜷ｫ繧√ｋ・・      int totalDoses = 0;
       int takenDoses = 0;
       final Map<String, int> medicationCount = {};
       final Map<String, int> medicationTakenCount = {};
      
-      // 動的薬リストの統計
-      for (final entry in _medicationData.entries) {
+      // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・      for (final entry in _medicationData.entries) {
         final date = entry.key;
         final dayData = entry.value;
        
@@ -8839,8 +8094,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             totalDoses++;
             if (info.checked) takenDoses++;
            
-            // 薬品別カウント
-            medicationCount[info.medicine] = (medicationCount[info.medicine] ?? 0) + 1;
+            // 阮ｬ蜩∝挨繧ｫ繧ｦ繝ｳ繝・            medicationCount[info.medicine] = (medicationCount[info.medicine] ?? 0) + 1;
             if (info.checked) {
               medicationTakenCount[info.medicine] = (medicationTakenCount[info.medicine] ?? 0) + 1;
             }
@@ -8848,8 +8102,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 服用メモのチェック状態を統計に反映（日付別）
-      for (final entry in _weekdayMedicationStatus.entries) {
+      // 譛咲畑繝｡繝｢縺ｮ繝√ぉ繝・け迥ｶ諷九ｒ邨ｱ險医↓蜿肴丐・域律莉伜挨・・      for (final entry in _weekdayMedicationStatus.entries) {
         final dateStr = entry.key;
         final dayStatus = entry.value;
         
@@ -8863,15 +8116,15 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
      
-      // 統計サマリーを追加
+      // 邨ｱ險医し繝槭Μ繝ｼ繧定ｿｽ蜉
       csvContent.writeln('');
-      csvContent.writeln('=== 統計サマリー ===');
-      csvContent.writeln('総服薬回数,$totalDoses');
-      csvContent.writeln('服薬済み回数,$takenDoses');
-      csvContent.writeln('全体遵守率,${totalDoses > 0 ? (takenDoses / totalDoses * 100).toStringAsFixed(1) : 0}%');
+      csvContent.writeln('=== 邨ｱ險医し繝槭Μ繝ｼ ===');
+      csvContent.writeln('邱乗恪阮ｬ蝗樊焚,$totalDoses');
+      csvContent.writeln('譛崎脈貂医∩蝗樊焚,$takenDoses');
+      csvContent.writeln('蜈ｨ菴馴・螳育紫,${totalDoses > 0 ? (takenDoses / totalDoses * 100).toStringAsFixed(1) : 0}%');
       csvContent.writeln('');
-      csvContent.writeln('=== 薬品別統計 ===');
-      csvContent.writeln('薬品名,総回数,服薬済み回数,遵守率');
+      csvContent.writeln('=== 阮ｬ蜩∝挨邨ｱ險・===');
+      csvContent.writeln('阮ｬ蜩∝錐,邱丞屓謨ｰ,譛崎脈貂医∩蝗樊焚,驕ｵ螳育紫');
      
       for (final medication in medicationCount.keys) {
         final total = medicationCount[medication]!;
@@ -8883,11 +8136,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       await file.writeAsString(csvContent.toString());
      
       final xFile = XFile(file.path);
-      await Share.shareXFiles([xFile], text: '服薬データをエクスポートしました（統計情報付き）');
+      await Share.shareXFiles([xFile], text: '譛崎脈繝・・繧ｿ繧偵お繧ｯ繧ｹ繝昴・繝医＠縺ｾ縺励◆・育ｵｱ險域ュ蝣ｱ莉倥″・・);
      
-      _showSnackBar('CSVファイルをエクスポートしました（統計情報付き）');
+      _showSnackBar('CSV繝輔ぃ繧､繝ｫ繧偵お繧ｯ繧ｹ繝昴・繝医＠縺ｾ縺励◆・育ｵｱ險域ュ蝣ｱ莉倥″・・);
     } catch (e) {
-      _showSnackBar('CSVエクスポートに失敗しました: $e');
+      _showSnackBar('CSV繧ｨ繧ｯ繧ｹ繝昴・繝医↓螟ｱ謨励＠縺ｾ縺励◆: $e');
     }
   }
  
@@ -8916,7 +8169,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }
     });
     _updateMedicineInputsForSelectedDate();
-    _showSnackBar('今月のすべての日付を選択しました');
+    _showSnackBar('莉頑怦縺ｮ縺吶∋縺ｦ縺ｮ譌･莉倥ｒ驕ｸ謚槭＠縺ｾ縺励◆');
   }
 
   void _clearAllSelections() {
@@ -8925,25 +8178,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       _selectedDay = null;
     });
     _updateMedicineInputsForSelectedDate();
-    _showSnackBar('すべての選択を解除しました');
+    _showSnackBar('縺吶∋縺ｦ縺ｮ驕ｸ謚槭ｒ隗｣髯､縺励∪縺励◆');
   }
 
-  // 選択された日付の曜日に基づいて服用メモを取得
-  List<MedicationMemo> _getMedicationsForSelectedDay() {
+  // 驕ｸ謚槭＆繧後◆譌･莉倥・譖懈律縺ｫ蝓ｺ縺･縺・※譛咲畑繝｡繝｢繧貞叙蠕・  List<MedicationMemo> _getMedicationsForSelectedDay() {
     if (_selectedDay == null) return [];
     
-    final weekday = _selectedDay!.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
+    final weekday = _selectedDay!.weekday % 7; // 0=譌･譖懈律, 1=譛域屆譌･, ..., 6=蝨滓屆譌･
     return _medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
   }
 
-  // 曜日設定された薬の服用状況を取得
-  bool _getWeekdayMedicationStatus(String memoId) {
+  // 譖懈律險ｭ螳壹＆繧後◆阮ｬ縺ｮ譛咲畑迥ｶ豕√ｒ蜿門ｾ・  bool _getWeekdayMedicationStatus(String memoId) {
     if (_selectedDay == null) return false;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     return _weekdayMedicationStatus[dateStr]?[memoId] ?? false;
   }
 
-  // 曜日設定された薬の服用状況を更新
+  // 譖懈律險ｭ螳壹＆繧後◆阮ｬ縺ｮ譛咲畑迥ｶ豕√ｒ譖ｴ譁ｰ
   void _updateWeekdayMedicationStatus(String memoId, bool isTaken) {
     if (_selectedDay == null) return;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
@@ -8951,12 +8202,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     _weekdayMedicationStatus[dateStr]![memoId] = isTaken;
   }
 
-  // 曜日設定された薬を表示するウィジェット
+  // 譖懈律險ｭ螳壹＆繧後◆阮ｬ繧定｡ｨ遉ｺ縺吶ｋ繧ｦ繧｣繧ｸ繧ｧ繝・ヨ
   Widget _buildWeekdayMedicationRecord(MedicationMemo memo) {
     final isChecked = _getWeekdayMedicationStatus(memo.id);
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 20), // 間隔を広く
+      margin: const EdgeInsets.only(bottom: 20), // 髢馴囈繧貞ｺ・￥
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: isChecked
@@ -8989,14 +8240,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24), // パディングを増加
+          padding: const EdgeInsets.all(24), // 繝代ョ繧｣繝ｳ繧ｰ繧貞｢怜刈
           child: Row(
             children: [
-              // 服用済みチェックボックス
+              // 譛咲畑貂医∩繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ
               GestureDetector(
                 onTap: () async {
-                  // ✅ 変更前スナップショット（服用メモのチェック切替）
-                  await _saveSnapshotBeforeChange('服用チェック_${memo.name}');
+                  // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・域恪逕ｨ繝｡繝｢縺ｮ繝√ぉ繝・け蛻・崛・・                  await _saveSnapshotBeforeChange('譛咲畑繝√ぉ繝・け_${memo.name}');
                   setState(() {
                     _updateWeekdayMedicationStatus(memo.id, !isChecked);
                   });
@@ -9004,7 +8254,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   _updateCalendarMarks();
                 },
                 child: Container(
-                  width: 60, // サイズを大きく
+                  width: 60, // 繧ｵ繧､繧ｺ繧貞､ｧ縺阪￥
                   height: 60,
                   decoration: BoxDecoration(
                     color: isChecked ? memo.color : memo.color.withOpacity(0.2),
@@ -9027,7 +8277,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   ),
                 ),
               ),
-              const SizedBox(width: 24), // 間隔を広く
+              const SizedBox(width: 24), // 髢馴囈繧貞ｺ・￥
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -9035,7 +8285,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     Row(
                       children: [
                         Icon(
-                          memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
+                          memo.type == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Icons.eco : Icons.medication,
                           color: memo.color,
                           size: 20,
                         ),
@@ -9071,7 +8321,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     if (memo.dosage.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '用量: ${memo.dosage}',
+                        '逕ｨ驥・ ${memo.dosage}',
                         style: const TextStyle(
                           fontSize: 14,
                           color: Colors.grey,
@@ -9102,25 +8352,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
   void _addMedicationToTimeSlot(String medicationName) {
-    // ✅ 変更前スナップショット（非同期だが待たずに実行）
-    _saveSnapshotBeforeChange('薬追加_$medicationName');
-    // メモ制限チェック
+    // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・磯撼蜷梧悄縺縺悟ｾ・◆縺壹↓螳溯｡鯉ｼ・    _saveSnapshotBeforeChange('阮ｬ霑ｽ蜉_$medicationName');
+    // 繝｡繝｢蛻ｶ髯舌メ繧ｧ繝・け
     if (!_canAddMemo()) {
-      _showLimitDialog('メモ');
+      _showLimitDialog('繝｡繝｢');
       return;
     }
     
-    // 服用メモから薬の詳細情報を取得
-    final memo = _medicationMemos.firstWhere(
+    // 譛咲畑繝｡繝｢縺九ｉ阮ｬ縺ｮ隧ｳ邏ｰ諠・ｱ繧貞叙蠕・    final memo = _medicationMemos.firstWhere(
       (memo) => memo.name == medicationName,
       orElse: () {
-        // 空タイトルへの対応: 自動連番を割り当て
+        // 遨ｺ繧ｿ繧､繝医Ν縺ｸ縺ｮ蟇ｾ蠢・ 閾ｪ蜍暮｣逡ｪ繧貞牡繧雁ｽ薙※
         final titles = _medicationMemos.map((m) => m.name).toList();
         final autoTitle = _generateDefaultTitle(titles);
         return MedicationMemo(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: medicationName.trim().isEmpty ? autoTitle : medicationName,
-        type: '薬',
+        type: '阮ｬ',
         color: Colors.blue,
         dosage: '',
         notes: '',
@@ -9129,7 +8377,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       },
     );
     
-    // 新しい薬をリストに追加
+    // 譁ｰ縺励＞阮ｬ繧偵Μ繧ｹ繝医↓霑ｽ蜉
     setState(() {
       _addedMedications.add({
         'name': memo.name,
@@ -9142,32 +8390,30 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     });
     
     _saveCurrentDataDebounced();
-    _showSnackBar('$medicationName を服用記録に追加しました');
+    _showSnackBar('$medicationName 繧呈恪逕ｨ險倬鹸縺ｫ霑ｽ蜉縺励∪縺励◆');
   }
 
-  // 完全に作り直されたカレンダーマーク更新
+  // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺溘き繝ｬ繝ｳ繝繝ｼ繝槭・繧ｯ譖ｴ譁ｰ
   void _updateCalendarMarks() {
     if (_selectedDay == null) return;
     
-    // 強制的にカレンダーを更新
+    // 蠑ｷ蛻ｶ逧・↓繧ｫ繝ｬ繝ｳ繝繝ｼ繧呈峩譁ｰ
     setState(() {
-      // カレンダーのマークを強制更新
+      // 繧ｫ繝ｬ繝ｳ繝繝ｼ縺ｮ繝槭・繧ｯ繧貞ｼｷ蛻ｶ譖ｴ譁ｰ
     });
   }
 
-  // 軽量化された統計計算メソッド
+  // 霆ｽ驥丞喧縺輔ｌ縺溽ｵｱ險郁ｨ育ｮ励Γ繧ｽ繝・ラ
   Map<String, int> _calculateMedicationStats() {
     if (_selectedDay == null) return {'total': 0, 'taken': 0};
     
     int totalMedications = 0;
     int takenMedications = 0;
     
-    // 動的薬リストの統計
-    totalMedications += _addedMedications.length;
+    // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・    totalMedications += _addedMedications.length;
     takenMedications += _addedMedications.where((med) => med['isChecked'] == true).length;
     
-    // 服用メモの統計（軽量化）
-    final weekday = _selectedDay!.weekday % 7;
+    // 譛咲畑繝｡繝｢縺ｮ邨ｱ險茨ｼ郁ｻｽ驥丞喧・・    final weekday = _selectedDay!.weekday % 7;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     
     for (final memo in _medicationMemos) {
@@ -9185,16 +8431,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   Widget _buildMedicationStats() {
     if (_selectedDay == null) return const SizedBox.shrink();
     
-    // 完全に作り直された統計計算
-    int totalMedications = 0;
+    // 螳悟・縺ｫ菴懊ｊ逶ｴ縺輔ｌ縺溽ｵｱ險郁ｨ育ｮ・    int totalMedications = 0;
     int takenMedications = 0;
     
-    // 動的薬リストの統計
-    totalMedications += _addedMedications.length;
+    // 蜍慕噪阮ｬ繝ｪ繧ｹ繝医・邨ｱ險・    totalMedications += _addedMedications.length;
     takenMedications += _addedMedications.where((med) => med['isChecked'] == true).length;
     
-    // 服用メモの統計（今日の曜日に該当するもののみ）
-    final weekday = _selectedDay!.weekday % 7;
+    // 譛咲畑繝｡繝｢縺ｮ邨ｱ險茨ｼ井ｻ頑律縺ｮ譖懈律縺ｫ隧ｲ蠖薙☆繧九ｂ縺ｮ縺ｮ縺ｿ・・    final weekday = _selectedDay!.weekday % 7;
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
     
     for (final memo in _medicationMemos) {
@@ -9239,7 +8482,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '今日の服用状況',
+                      '莉頑律縺ｮ譛咲畑迥ｶ豕・,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -9250,7 +8493,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$takenMedications / $totalMedications 服用済み',
+                  '$takenMedications / $totalMedications 譛咲畑貂医∩',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -9306,37 +8549,32 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ✅ 修正：オーバーフローを防ぐためにFlexibleを使用
+        // 笨・菫ｮ豁｣・壹が繝ｼ繝舌・繝輔Ο繝ｼ繧帝亟縺舌◆繧√↓Flexible繧剃ｽｿ逕ｨ
         Row(
           children: [
             Icon(Icons.note_alt, color: Colors.blue, size: 16),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-              '今日のメモ',
+              '莉頑律縺ｮ繝｡繝｢',
               style: TextStyle(
-                fontSize: 14, // フォントサイズ削減
-                fontWeight: FontWeight.bold,
+                fontSize: 14, // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                fontWeight: FontWeight.bold,
                 color: Colors.grey,
                 ),
-                overflow: TextOverflow.ellipsis, // テキストオーバーフロー対策
-              ),
+                overflow: TextOverflow.ellipsis, // 繝・く繧ｹ繝医が繝ｼ繝舌・繝輔Ο繝ｼ蟇ｾ遲・              ),
             ),
             const Spacer(),
             if (_memoController.text.isNotEmpty)
               Flexible(
                 child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), // パディング削減
-                decoration: BoxDecoration(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), // 繝代ョ繧｣繝ｳ繧ｰ蜑頑ｸ・                decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8), // 角丸削減
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(8), // 隗剃ｸｸ蜑頑ｸ・                  border: Border.all(color: Colors.green.withOpacity(0.3)),
                 ),
                 child: const Text(
-                  '保存済み',
+                  '菫晏ｭ俶ｸ医∩',
                   style: TextStyle(
-                    fontSize: 10, // フォントサイズ削減
-                    color: Colors.green,
+                    fontSize: 10, // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                    color: Colors.green,
                     fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -9344,13 +8582,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
           ],
         ),
-        const SizedBox(height: 6), // 間隔削減
-        Container(
+        const SizedBox(height: 6), // 髢馴囈蜑頑ｸ・        Container(
           width: double.infinity,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(8), // 角丸削減
-            border: Border.all(
+            borderRadius: BorderRadius.circular(8), // 隗剃ｸｸ蜑頑ｸ・            border: Border.all(
               color: _isMemoFocused ? Colors.blue.withOpacity(0.5) : Colors.grey.withOpacity(0.3),
               width: _isMemoFocused ? 1.5 : 1,
             ),
@@ -9370,22 +8606,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               return TextField(
             controller: _memoController,
             focusNode: _memoFocusNode,
-            maxLines: 2, // 2行表示に固定
-            minLines: 2, // 最小行数を2に変更
+            maxLines: 2, // 2陦瑚｡ｨ遉ｺ縺ｫ蝗ｺ螳・            minLines: 2, // 譛蟆剰｡梧焚繧・縺ｫ螟画峩
             decoration: InputDecoration(
-              hintText: '副作用、病院、通院記録など',
+              hintText: '蜑ｯ菴懃畑縲∫羅髯｢縲・夐劼險倬鹸縺ｪ縺ｩ',
               hintStyle: const TextStyle(
                 color: Colors.grey,
-                fontSize: 12, // フォントサイズ削減
-              ),
+                fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・              ),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.all(12), // パディング削減
-              suffixIcon: (_memoController.text.isNotEmpty)
+              contentPadding: const EdgeInsets.all(12), // 繝代ョ繧｣繝ｳ繧ｰ蜑頑ｸ・              suffixIcon: (_memoController.text.isNotEmpty)
                   ? IconButton(
                       onPressed: () async {
-                        // ✅ 変更前スナップショット（メモクリア）
-                        if (_selectedDay != null) {
-                          await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                        // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・医Γ繝｢繧ｯ繝ｪ繧｢・・                        if (_selectedDay != null) {
+                          await _saveSnapshotBeforeChange('繝｡繝｢繧ｯ繝ｪ繧｢_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                         }
                         _memoTextNotifier.value = '';
                         _saveMemo();
@@ -9401,12 +8633,12 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   : Colors.black87,
             ),
             onTap: () async {
-              // トライアル制限チェック
+              // 繝医Λ繧､繧｢繝ｫ蛻ｶ髯舌メ繧ｧ繝・け
               final isExpired = await TrialService.isTrialExpired();
               if (isExpired) {
                 showDialog(
                   context: context,
-                  builder: (context) => TrialLimitDialog(featureName: 'メモ'),
+                  builder: (context) => TrialLimitDialog(featureName: '繝｡繝｢'),
                 );
                 FocusScope.of(context).unfocus();
                 return;
@@ -9416,23 +8648,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               });
             },
             onChanged: (value) {
-              // デバウンス処理でスナップショット保存を制限
-              _debounce?.cancel();
+              // 繝・ヰ繧ｦ繝ｳ繧ｹ蜃ｦ逅・〒繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥ｒ蛻ｶ髯・              _debounce?.cancel();
               _debounce = Timer(const Duration(milliseconds: 500), () async {
-                // デバウンス後にスナップショット保存（1回だけ）
-                if (_selectedDay != null && !_memoSnapshotSaved) {
-                await _saveSnapshotBeforeChange('メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                // 繝・ヰ繧ｦ繝ｳ繧ｹ蠕後↓繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ假ｼ・蝗槭□縺托ｼ・                if (_selectedDay != null && !_memoSnapshotSaved) {
+                await _saveSnapshotBeforeChange('繝｡繝｢螟画峩_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                   _memoSnapshotSaved = true;
               }
                 _memoTextNotifier.value = value;
                 _saveMemo();
               });
-              // 即座にUIを更新
+              // 蜊ｳ蠎ｧ縺ｫUI繧呈峩譁ｰ
               _memoTextNotifier.value = value;
             },
             onSubmitted: (value) {
-              // キーボードの決定ボタンで完了
-              _completeMemo();
+              // 繧ｭ繝ｼ繝懊・繝峨・豎ｺ螳壹・繧ｿ繝ｳ縺ｧ螳御ｺ・              _completeMemo();
             },
             onEditingComplete: () {
               _completeMemo();
@@ -9441,30 +8670,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             },
           ),
         ),
-        // メモ入力時の完了ボタン（コンパクト化）
-        if (_isMemoFocused) ...[
-          const SizedBox(height: 8), // 間隔削減
-          Row(
+        // 繝｡繝｢蜈･蜉帶凾縺ｮ螳御ｺ・・繧ｿ繝ｳ・医さ繝ｳ繝代け繝亥喧・・        if (_isMemoFocused) ...[
+          const SizedBox(height: 8), // 髢馴囈蜑頑ｸ・          Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               ElevatedButton.icon(
                 onPressed: () {
                   _completeMemo();
                 },
-                icon: const Icon(Icons.save, size: 16), // アイコンサイズ削減
-                label: const Text('保存', style: TextStyle(fontSize: 12)), // フォントサイズ削減
-                style: ElevatedButton.styleFrom(
+                icon: const Icon(Icons.save, size: 16), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ蜑頑ｸ・                label: const Text('菫晏ｭ・, style: TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // パディング削減
-                  minimumSize: const Size(0, 32), // 最小サイズ設定
-                ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ蜑頑ｸ・                  minimumSize: const Size(0, 32), // 譛蟆上し繧､繧ｺ險ｭ螳・                ),
               ),
               ElevatedButton.icon(
                 onPressed: () async {
-                  // ✅ 変更前スナップショット（メモクリア）
-                  if (_selectedDay != null) {
-                    await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+                  // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ・医Γ繝｢繧ｯ繝ｪ繧｢・・                  if (_selectedDay != null) {
+                    await _saveSnapshotBeforeChange('繝｡繝｢繧ｯ繝ｪ繧｢_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
                   }
                   setState(() {
                     _memoController.clear();
@@ -9473,14 +8695,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   _saveMemo();
                   FocusScope.of(context).unfocus();
                 },
-                icon: const Icon(Icons.clear, size: 16), // アイコンサイズ削減
-                label: const Text('クリア', style: TextStyle(fontSize: 12)), // フォントサイズ削減
-                style: ElevatedButton.styleFrom(
+                icon: const Icon(Icons.clear, size: 16), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ蜑頑ｸ・                label: const Text('繧ｯ繝ｪ繧｢', style: TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ蜑頑ｸ・                style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // パディング削減
-                  minimumSize: const Size(0, 32), // 最小サイズ設定
-                ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ蜑頑ｸ・                  minimumSize: const Size(0, 32), // 譛蟆上し繧､繧ｺ險ｭ螳・                ),
               ),
             ],
           ),
@@ -9503,28 +8721,27 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   void _completeMemo() {
     setState(() {
       _isMemoFocused = false;
-      _memoSnapshotSaved = false; // スナップショット保存フラグをリセット
+      _memoSnapshotSaved = false; // 繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥ヵ繝ｩ繧ｰ繧偵Μ繧ｻ繝・ヨ
     });
-    // カーソルの選択を外す
+    // 繧ｫ繝ｼ繧ｽ繝ｫ縺ｮ驕ｸ謚槭ｒ螟悶☆
     FocusScope.of(context).unfocus();
     _saveMemo().then((_) {
       if (_memoController.text.isNotEmpty) {
-        _showSnackBar('メモを保存しました');
+        _showSnackBar('繝｡繝｢繧剃ｿ晏ｭ倥＠縺ｾ縺励◆');
       } else {
-        _showSnackBar('メモをクリアしました');
+        _showSnackBar('繝｡繝｢繧偵け繝ｪ繧｢縺励∪縺励◆');
       }
     });
   }
 
-  // トライアル状態表示ダイアログ
+  // 繝医Λ繧､繧｢繝ｫ迥ｶ諷玖｡ｨ遉ｺ繝繧､繧｢繝ｭ繧ｰ
   Future<void> _showTrialStatus() async {
     final status = await TrialService.getPurchaseStatus();
     final remainingMinutes = await TrialService.getRemainingMinutes();
     
     if (!mounted) return;
     
-    // 状態に応じたアイコンと色を設定
-    IconData statusIcon;
+    // 迥ｶ諷九↓蠢懊§縺溘い繧､繧ｳ繝ｳ縺ｨ濶ｲ繧定ｨｭ螳・    IconData statusIcon;
     Color statusColor;
     String statusText;
     
@@ -9532,22 +8749,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       case TrialService.trialStatus:
         statusIcon = Icons.timer;
         statusColor = Colors.blue;
-        statusText = 'トライアル中';
+        statusText = '繝医Λ繧､繧｢繝ｫ荳ｭ';
         break;
       case TrialService.expiredStatus:
         statusIcon = Icons.warning;
         statusColor = Colors.red;
-        statusText = '期限切れ';
+        statusText = '譛滄剞蛻・ｌ';
         break;
       case TrialService.purchasedStatus:
         statusIcon = Icons.check_circle;
         statusColor = Colors.green;
-        statusText = '購入済み';
+        statusText = '雉ｼ蜈･貂医∩';
         break;
       default:
         statusIcon = Icons.timer;
         statusColor = Colors.blue;
-        statusText = 'トライアル中';
+        statusText = '繝医Λ繧､繧｢繝ｫ荳ｭ';
     }
     
     showDialog(
@@ -9560,34 +8777,34 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(statusIcon, color: statusColor),
             const SizedBox(width: 12),
-            const Text('購入状態'),
+            const Text('雉ｼ蜈･迥ｶ諷・),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStatusRow('現在の状態', statusText, statusColor),
+            _buildStatusRow('迴ｾ蝨ｨ縺ｮ迥ｶ諷・, statusText, statusColor),
             if (status == TrialService.trialStatus) ...[
             const SizedBox(height: 12),
-            _buildStatusRow('残り時間', 
-                  '${(remainingMinutes / (24 * 60)).ceil()}日',
+            _buildStatusRow('谿九ｊ譎る俣', 
+                  '${(remainingMinutes / (24 * 60)).ceil()}譌･',
                   Colors.orange),
             ],
             if (status == TrialService.expiredStatus) ...[
               const SizedBox(height: 12),
-              _buildStatusRow('期限', '7日間終了', Colors.red),
+              _buildStatusRow('譛滄剞', '7譌･髢鍋ｵゆｺ・, Colors.red),
             ],
             if (status == TrialService.purchasedStatus) ...[
               const SizedBox(height: 12),
-              _buildStatusRow('有効期限', '無制限', Colors.green),
+              _buildStatusRow('譛牙柑譛滄剞', '辟｡蛻ｶ髯・, Colors.green),
             ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
           if (status == TrialService.expiredStatus)
             ElevatedButton(
@@ -9595,7 +8812,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 Navigator.of(context).pop();
                 await _showPurchaseLinkDialog();
               },
-              child: const Text('購入する'),
+              child: const Text('雉ｼ蜈･縺吶ｋ'),
           ),
         ],
       ),
@@ -9633,7 +8850,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // 警告ダイアログを表示するメソッド
+  // 隴ｦ蜻翫ム繧､繧｢繝ｭ繧ｰ繧定｡ｨ遉ｺ縺吶ｋ繝｡繧ｽ繝・ラ
   void _showWarningDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -9645,7 +8862,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             const Icon(Icons.warning, color: Colors.orange),
             const SizedBox(width: 12),
-            const Text('注意'),
+            const Text('豕ｨ諢・),
           ],
         ),
         content: const Column(
@@ -9653,7 +8870,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
             Text(
-              '服用回数が多いため、',
+              '譛咲畑蝗樊焚縺悟､壹＞縺溘ａ縲・,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -9661,7 +8878,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               ),
             ),
             Text(
-              '医師の指示に従ってください',
+              '蛹ｻ蟶ｫ縺ｮ謖・､ｺ縺ｫ蠕薙▲縺ｦ縺上□縺輔＞',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -9673,21 +8890,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('了解'),
+            child: const Text('莠・ｧ｣'),
           ),
         ],
       ),
     );
     
-    // 3秒後に自動で閉じる
-    Future.delayed(const Duration(seconds: 3), () {
+    // 3遘貞ｾ後↓閾ｪ蜍輔〒髢峨§繧・    Future.delayed(const Duration(seconds: 3), () {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
     });
   }
   
-  // 購入状態に設定するメソッド
+  // 雉ｼ蜈･迥ｶ諷九↓險ｭ螳壹☆繧九Γ繧ｽ繝・ラ
   Future<void> _setPurchasedStatus() async {
     if (!mounted) return;
     
@@ -9701,7 +8917,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(Icons.check_circle, color: Colors.green),
             SizedBox(width: 12),
-            Text('購入状態に設定'),
+            Text('雉ｼ蜈･迥ｶ諷九↓險ｭ螳・),
           ],
         ),
         content: const Column(
@@ -9709,35 +8925,35 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
             Text(
-              'アプリを購入済み状態に設定しますか？',
+              '繧｢繝励Μ繧定ｳｼ蜈･貂医∩迥ｶ諷九↓險ｭ螳壹＠縺ｾ縺吶°・・,
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 16),
             Text(
-              '設定後は以下の機能が無制限で使用できます：',
+              '險ｭ螳壼ｾ後・莉･荳九・讖溯・縺檎┌蛻ｶ髯舌〒菴ｿ逕ｨ縺ｧ縺阪∪縺呻ｼ・,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
               ),
             ),
             SizedBox(height: 8),
-            Text('• メモの追加・編集'),
-            Text('• アラーム機能'),
-            Text('• 統計機能'),
-            Text('• カレンダー機能'),
+            Text('窶｢ 繝｡繝｢縺ｮ霑ｽ蜉繝ｻ邱ｨ髮・),
+            Text('窶｢ 繧｢繝ｩ繝ｼ繝讖溯・'),
+            Text('窶｢ 邨ｱ險域ｩ溯・'),
+            Text('窶｢ 繧ｫ繝ｬ繝ｳ繝繝ｼ讖溯・'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('キャンセル'),
+            child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
           ),
           ElevatedButton(
             onPressed: () async {
               await TrialService.setPurchaseStatus(TrialService.purchasedStatus);
               Navigator.of(context).pop();
               
-              // 実際の購入時と同じメッセージを表示
+              // 螳滄圀縺ｮ雉ｼ蜈･譎ゅ→蜷後§繝｡繝・そ繝ｼ繧ｸ繧定｡ｨ遉ｺ
               showDialog(
                 context: context,
                 barrierDismissible: false,
@@ -9749,14 +8965,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     children: [
                       Icon(Icons.check_circle, color: Colors.green, size: 32),
                       SizedBox(width: 12),
-                      Text('購入完了！'),
+                      Text('雉ｼ蜈･螳御ｺ・ｼ・),
                     ],
                   ),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        '商品購入後、期限が無期限になりました！',
+                        '蝠・刀雉ｼ蜈･蠕後∵悄髯舌′辟｡譛滄剞縺ｫ縺ｪ繧翫∪縺励◆・・,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -9775,7 +8991,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         child: const Column(
                   children: [
                             Text(
-                              '🎉 プレミアム機能が有効になりました！',
+                              '脂 繝励Ξ繝溘い繝讖溯・縺梧怏蜉ｹ縺ｫ縺ｪ繧翫∪縺励◆・・,
                       style: TextStyle(
                             fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -9784,7 +9000,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         ),
                             SizedBox(height: 8),
                             Text(
-                              '• メモの追加・編集\n• アラーム機能\n• 統計機能\n• カレンダー機能',
+                              '窶｢ 繝｡繝｢縺ｮ霑ｽ蜉繝ｻ邱ｨ髮・n窶｢ 繧｢繝ｩ繝ｼ繝讖溯・\n窶｢ 邨ｱ險域ｩ溯・\n窶｢ 繧ｫ繝ｬ繝ｳ繝繝ｼ讖溯・',
                               style: TextStyle(fontSize: 14),
                               textAlign: TextAlign.left,
                         ),
@@ -9801,7 +9017,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                       ),
-                      child: const Text('ありがとうございます！'),
+                      child: const Text('縺ゅｊ縺後→縺・＃縺悶＞縺ｾ縺呻ｼ・),
                     ),
                   ],
                 ),
@@ -9811,15 +9027,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
             ),
-            child: const Text('購入済みに設定'),
+            child: const Text('雉ｼ蜈･貂医∩縺ｫ險ｭ螳・),
           ),
         ],
       ),
     );
   }
 
-  // トライアル状態に設定
-  Future<void> _setTrialStatus() async {
+  // 繝医Λ繧､繧｢繝ｫ迥ｶ諷九↓險ｭ螳・  Future<void> _setTrialStatus() async {
     if (!mounted) return;
 
     showDialog(
@@ -9834,8 +9049,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('トライアル状態に'),
-                  Text('設定'),
+                  Text('繝医Λ繧､繧｢繝ｫ迥ｶ諷九↓'),
+                  Text('險ｭ螳・),
                   ],
                 ),
               ),
@@ -9846,38 +9061,37 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'アプリをトライアル状態に設定しますか？',
+              '繧｢繝励Μ繧偵ヨ繝ｩ繧､繧｢繝ｫ迥ｶ諷九↓險ｭ螳壹＠縺ｾ縺吶°・・,
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 16),
             Text(
-              '設定後は以下の制限が適用されます：',
+              '險ｭ螳壼ｾ後・莉･荳九・蛻ｶ髯舌′驕ｩ逕ｨ縺輔ｌ縺ｾ縺呻ｼ・,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
               ),
             ),
             SizedBox(height: 8),
-            Text('• トライアル期間: 7日間'),
-            Text('• 期限切れ後は機能制限'),
-            Text('• 購入で制限解除'),
+            Text('窶｢ 繝医Λ繧､繧｢繝ｫ譛滄俣: 7譌･髢・),
+            Text('窶｢ 譛滄剞蛻・ｌ蠕後・讖溯・蛻ｶ髯・),
+            Text('窶｢ 雉ｼ蜈･縺ｧ蛻ｶ髯占ｧ｣髯､'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('キャンセル'),
+            child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
           ),
           ElevatedButton(
             onPressed: () async {
-              // トライアルをリセットして新しいトライアルを開始
-              await TrialService.resetTrial();
+              // 繝医Λ繧､繧｢繝ｫ繧偵Μ繧ｻ繝・ヨ縺励※譁ｰ縺励＞繝医Λ繧､繧｢繝ｫ繧帝幕蟋・              await TrialService.resetTrial();
               await TrialService.initializeTrial();
               await TrialService.setPurchaseStatus(TrialService.trialStatus);
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('トライアル状態に設定しました（7日間）'),
+                  content: Text('繝医Λ繧､繧｢繝ｫ迥ｶ諷九↓險ｭ螳壹＠縺ｾ縺励◆・・譌･髢難ｼ・),
                   backgroundColor: Colors.blue,
                 ),
               );
@@ -9886,7 +9100,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
             ),
-            child: const Text('トライアルに設定'),
+            child: const Text('繝医Λ繧､繧｢繝ｫ縺ｫ險ｭ螳・),
           ),
         ],
       ),
@@ -9895,12 +9109,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
 
-  // アプリ内課金ダイアログを表示
+  // 繧｢繝励Μ蜀・ｪｲ驥代ム繧､繧｢繝ｭ繧ｰ繧定｡ｨ遉ｺ
   Future<void> _showPurchaseLinkDialog() async {
     if (!mounted) return;
     
-    // 商品情報を取得
-    final ProductDetails? product = await InAppPurchaseService.getProductDetails();
+    // 蝠・刀諠・ｱ繧貞叙蠕・    final ProductDetails? product = await InAppPurchaseService.getProductDetails();
     
     showDialog(
       context: context,
@@ -9912,7 +9125,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(Icons.payment, color: Colors.green),
             SizedBox(width: 12),
-            Text('アプリ内課金'),
+            Text('繧｢繝励Μ蜀・ｪｲ驥・),
           ],
         ),
         content: SingleChildScrollView(
@@ -9920,7 +9133,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 商品情報表示
+              // 蝠・刀諠・ｱ陦ｨ遉ｺ
               if (product != null) ...[
               Container(
       width: double.infinity,
@@ -9938,7 +9151,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           const Icon(Icons.shopping_bag, color: Colors.blue, size: 20),
               const SizedBox(width: 8),
               const Text(
-                            'プレミアム機能',
+                            '繝励Ξ繝溘い繝讖溯・',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -9949,17 +9162,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 12),
                       Text(
-                        '商品名: ${product.title}',
+                        '蝠・刀蜷・ ${product.title}',
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '説明: ${product.description}',
+                        '隱ｬ譏・ ${product.description}',
                         style: const TextStyle(fontSize: 12),
                     ),
                     const SizedBox(height: 8),
                       Text(
-                        '価格: ${product.price}',
+                        '萓｡譬ｼ: ${product.price}',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -9972,8 +9185,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 const SizedBox(height: 16),
               ],
               
-              // 機能説明
-                    Container(
+              // 讖溯・隱ｬ譏・                    Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.1),
@@ -9988,7 +9200,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         const Icon(Icons.info, color: Colors.orange, size: 20),
               const SizedBox(width: 8),
           const Text(
-                          'プレミアム機能',
+                          '繝励Ξ繝溘い繝讖溯・',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -9999,20 +9211,20 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ),
           const SizedBox(height: 12),
           const Text(
-                      '購入後は以下の機能が無制限で使用できます：',
+                      '雉ｼ蜈･蠕後・莉･荳九・讖溯・縺檎┌蛻ｶ髯舌〒菴ｿ逕ｨ縺ｧ縺阪∪縺呻ｼ・,
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
                     const SizedBox(height: 8),
-                    const Text('• メモの追加・編集'),
-                    const Text('• アラーム機能'),
-                    const Text('• 統計機能'),
-                    const Text('• カレンダー機能'),
+                    const Text('窶｢ 繝｡繝｢縺ｮ霑ｽ蜉繝ｻ邱ｨ髮・),
+                    const Text('窶｢ 繧｢繝ｩ繝ｼ繝讖溯・'),
+                    const Text('窶｢ 邨ｱ險域ｩ溯・'),
+                    const Text('窶｢ 繧ｫ繝ｬ繝ｳ繝繝ｼ讖溯・'),
                   ],
                 ),
               ),
               const SizedBox(height: 20),
               
-              // 購入ボタン
+              // 雉ｼ蜈･繝懊ち繝ｳ
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -10024,7 +9236,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: Column(
                   children: [
                     const Text(
-                      'アプリ内課金で購入',
+                      '繧｢繝励Μ蜀・ｪｲ驥代〒雉ｼ蜈･',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -10038,7 +9250,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         await _startPurchase(product);
                       } : null,
                       icon: const Icon(Icons.shopping_cart),
-                      label: Text(product != null ? '${product.price}で購入' : '商品情報を取得中...'),
+                      label: Text(product != null ? '${product.price}縺ｧ雉ｼ蜈･' : '蝠・刀諠・ｱ繧貞叙蠕嶺ｸｭ...'),
             style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -10055,10 +9267,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                         Navigator.of(context).pop();
                         await InAppPurchaseService.restorePurchases();
                         
-                        // 購入履歴復元の結果を確認
-                        final isPurchased = await InAppPurchaseService.isPurchased();
+                        // 雉ｼ蜈･螻･豁ｴ蠕ｩ蜈・・邨先棡繧堤｢ｺ隱・                        final isPurchased = await InAppPurchaseService.isPurchased();
                         if (isPurchased) {
-                          // 購入履歴が復元された場合の特別なメッセージ
+                          // 雉ｼ蜈･螻･豁ｴ縺悟ｾｩ蜈・＆繧後◆蝣ｴ蜷医・迚ｹ蛻･縺ｪ繝｡繝・そ繝ｼ繧ｸ
     showDialog(
       context: context,
                             barrierDismissible: false,
@@ -10075,8 +9286,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text('購入履歴復元'),
-                                        Text('完了！'),
+                                        Text('雉ｼ蜈･螻･豁ｴ蠕ｩ蜈・),
+                                        Text('螳御ｺ・ｼ・),
                   ],
                 ),
               ),
@@ -10086,7 +9297,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-                                    '商品購入後、期限が無期限になりました！',
+                                    '蝠・刀雉ｼ蜈･蠕後∵悄髯舌′辟｡譛滄剞縺ｫ縺ｪ繧翫∪縺励◆・・,
               style: TextStyle(
                                       fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -10096,7 +9307,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                   ),
                                   SizedBox(height: 16),
                                   Text(
-                                    '過去の購入履歴が復元され、プレミアム機能が有効になりました。',
+                                    '驕主悉縺ｮ雉ｼ蜈･螻･豁ｴ縺悟ｾｩ蜈・＆繧後√・繝ｬ繝溘い繝讖溯・縺梧怏蜉ｹ縺ｫ縺ｪ繧翫∪縺励◆縲・,
                                     style: TextStyle(fontSize: 14),
                                     textAlign: TextAlign.center,
                                   ),
@@ -10109,18 +9320,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                                     backgroundColor: Colors.blue,
                                     foregroundColor: Colors.white,
                                   ),
-                                  child: const Text('ありがとうございます！'),
+                                  child: const Text('縺ゅｊ縺後→縺・＃縺悶＞縺ｾ縺呻ｼ・),
                                 ),
                               ],
                             ),
                           );
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('購入履歴が見つかりませんでした')),
+                            const SnackBar(content: Text('雉ｼ蜈･螻･豁ｴ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆')),
                           );
                         }
                       },
-                      child: const Text('購入履歴を復元'),
+                      child: const Text('雉ｼ蜈･螻･豁ｴ繧貞ｾｩ蜈・),
                     ),
                   ],
                 ),
@@ -10131,7 +9342,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
         ],
       ),
@@ -10140,12 +9351,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
 
-  // 購入を開始
-  Future<void> _startPurchase(ProductDetails product) async {
-    // 購入結果の監視を開始
-    InAppPurchaseService.startPurchaseListener((success, error) {
+  // 雉ｼ蜈･繧帝幕蟋・  Future<void> _startPurchase(ProductDetails product) async {
+    // 雉ｼ蜈･邨先棡縺ｮ逶｣隕悶ｒ髢句ｧ・    InAppPurchaseService.startPurchaseListener((success, error) {
       if (success) {
-        // 購入成功時の特別なメッセージを表示
+        // 雉ｼ蜈･謌仙粥譎ゅ・迚ｹ蛻･縺ｪ繝｡繝・そ繝ｼ繧ｸ繧定｡ｨ遉ｺ
     showDialog(
       context: context,
           barrierDismissible: false,
@@ -10157,14 +9366,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
                 Icon(Icons.check_circle, color: Colors.green, size: 32),
             SizedBox(width: 12),
-                Text('購入完了！'),
+                Text('雉ｼ蜈･螳御ｺ・ｼ・),
           ],
         ),
             content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
                 const Text(
-                  '商品購入後、期限が無期限になりました！',
+                  '蝠・刀雉ｼ蜈･蠕後∵悄髯舌′辟｡譛滄剞縺ｫ縺ｪ繧翫∪縺励◆・・,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -10183,7 +9392,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   child: const Column(
                     children: [
             Text(
-                        '🎉 プレミアム機能が有効になりました！',
+                        '脂 繝励Ξ繝溘い繝讖溯・縺梧怏蜉ｹ縺ｫ縺ｪ繧翫∪縺励◆・・,
               style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -10192,7 +9401,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       ),
                       SizedBox(height: 8),
                       Text(
-                        '• メモの追加・編集\n• アラーム機能\n• 統計機能\n• カレンダー機能',
+                        '窶｢ 繝｡繝｢縺ｮ霑ｽ蜉繝ｻ邱ｨ髮・n窶｢ 繧｢繝ｩ繝ｼ繝讖溯・\n窶｢ 邨ｱ險域ｩ溯・\n窶｢ 繧ｫ繝ｬ繝ｳ繝繝ｼ讖溯・',
                         style: TextStyle(fontSize: 14),
                         textAlign: TextAlign.left,
                       ),
@@ -10209,7 +9418,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                 ),
-                child: const Text('ありがとうございます！'),
+                child: const Text('縺ゅｊ縺後→縺・＃縺悶＞縺ｾ縺呻ｼ・),
           ),
         ],
       ),
@@ -10217,27 +9426,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('購入に失敗しました: ${error ?? "不明なエラー"}'),
+            content: Text('雉ｼ蜈･縺ｫ螟ｱ謨励＠縺ｾ縺励◆: ${error ?? "荳肴・縺ｪ繧ｨ繝ｩ繝ｼ"}'),
             backgroundColor: Colors.red,
       ),
     );
   }
     });
     
-    // 購入を開始
-    final success = await InAppPurchaseService.purchaseProduct();
+    // 雉ｼ蜈･繧帝幕蟋・    final success = await InAppPurchaseService.purchaseProduct();
     if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('購入の開始に失敗しました'),
+          content: Text('雉ｼ蜈･縺ｮ髢句ｧ九↓螟ｱ謨励＠縺ｾ縺励◆'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  // ✅ バックアップ機能を実装
-  Future<void> _showBackupDialog() async {
+  // 笨・繝舌ャ繧ｯ繧｢繝・・讖溯・繧貞ｮ溯｣・  Future<void> _showBackupDialog() async {
     if (!mounted) return;
     
     showDialog(
@@ -10247,7 +9454,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(Icons.backup, color: Colors.orange),
             SizedBox(width: 8),
-            Text('バックアップ'),
+            Text('繝舌ャ繧ｯ繧｢繝・・'),
           ],
         ),
         content: SizedBox(
@@ -10263,10 +9470,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  '⏱ バックアップ間隔\n\n'
-                  '・毎日深夜2:00（自動）- フルバックアップ\n'
-                  '・操作後5分以内（自動）- 差分バックアップ\n'
-                  '・手動保存（任意）- 任意タイミングで保存',
+                  '竢ｱ 繝舌ャ繧ｯ繧｢繝・・髢馴囈\n\n'
+                  '繝ｻ豈取律豺ｱ螟・:00・郁・蜍包ｼ・ 繝輔Ν繝舌ャ繧ｯ繧｢繝・・\n'
+                  '繝ｻ謫堺ｽ懷ｾ・蛻・ｻ･蜀・ｼ郁・蜍包ｼ・ 蟾ｮ蛻・ヰ繝・け繧｢繝・・\n'
+                  '繝ｻ謇句虚菫晏ｭ假ｼ井ｻｻ諢擾ｼ・ 莉ｻ諢上ち繧､繝溘Φ繧ｰ縺ｧ菫晏ｭ・,
                   style: TextStyle(fontSize: 14),
                 ),
               ),
@@ -10279,7 +9486,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   await _createManualBackup();
                 },
                 icon: const Icon(Icons.save),
-                label: const Text('手動バックアップを作成'),
+                label: const Text('謇句虚繝舌ャ繧ｯ繧｢繝・・繧剃ｽ懈・'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
@@ -10295,7 +9502,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   await _showBackupHistory();
                 },
                 icon: const Icon(Icons.history),
-                label: const Text('保存履歴を見る'),
+                label: const Text('菫晏ｭ伜ｱ･豁ｴ繧定ｦ九ｋ'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -10317,7 +9524,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                             }
                           : null,
                       icon: const Icon(Icons.undo),
-                      label: const Text('1つ前の状態に復元'),
+                      label: const Text('1縺､蜑阪・迥ｶ諷九↓蠕ｩ蜈・),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: available ? Colors.teal : Colors.grey,
                         foregroundColor: Colors.white,
@@ -10333,7 +9540,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   onPressed: () async {
                     Navigator.of(context).pop();
                     final prefs = await SharedPreferences.getInstance();
-                    // ✅ 最新フルバックアップを参照
+                    // 笨・譛譁ｰ繝輔Ν繝舌ャ繧ｯ繧｢繝・・繧貞盾辣ｧ
                     final key = prefs.getString('last_full_backup_key');
                     if (key != null) {
                       await _restoreBackup(key);
@@ -10341,7 +9548,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('フルバックアップが見つかりません'),
+                            content: Text('繝輔Ν繝舌ャ繧ｯ繧｢繝・・縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ'),
                             backgroundColor: Colors.red,
                           ),
                         );
@@ -10349,7 +9556,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     }
                   },
                   icon: const Icon(Icons.restore_page),
-                  label: const Text('フルバックアップを復元（最新）'),
+                  label: const Text('繝輔Ν繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・ｼ域怙譁ｰ・・),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purple,
                     foregroundColor: Colors.white,
@@ -10363,87 +9570,61 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
         ],
       ),
     );
   }
 
-  // ✅ 直前の変更が存在するか（スナップショット有無）
-  Future<bool> _hasUndoAvailable() async {
+  // 笨・逶ｴ蜑阪・螟画峩縺悟ｭ伜惠縺吶ｋ縺具ｼ医せ繝翫ャ繝励す繝ｧ繝・ヨ譛臥┌・・  Future<bool> _hasUndoAvailable() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastKey = prefs.getString('last_snapshot_key');
       if (lastKey == null) {
-        debugPrint('⚠️ last_snapshot_key が null');
+        debugPrint('笞・・last_snapshot_key 縺・null');
         return false;
       }
       final data = prefs.getString(lastKey);
       final available = data != null;
       if (!available) {
-        debugPrint('⚠️ スナップショット実体が見つかりません: $lastKey');
+        debugPrint('笞・・繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ螳滉ｽ薙′隕九▽縺九ｊ縺ｾ縺帙ｓ: $lastKey');
       }
       return available;
     } catch (e) {
-      debugPrint('❌ スナップショット確認エラー: $e');
+      debugPrint('笶・繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ遒ｺ隱阪お繝ｩ繝ｼ: $e');
       return false;
     }
   }
 
-  // ✅ 変更前スナップショット保存
-  Future<void> _saveSnapshotBeforeChange(String operationType) async {
+  // 笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ・  Future<void> _saveSnapshotBeforeChange(String operationType) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final snapshotData = await _createSafeBackupData('変更前_$operationType');
+      final snapshotData = await _createSafeBackupData('螟画峩蜑浩$operationType');
       final jsonString = await _safeJsonEncode(snapshotData);
       final encryptedData = await _encryptDataAsync(jsonString);
       final snapshotKey = 'snapshot_before_$timestamp';
-      
-      // ✅ スナップショットデータを保存
       final ok1 = await prefs.setString(snapshotKey, encryptedData);
-      
-      // ✅ 最新スナップショットのキーを保存（復元時に使用）
       final ok2 = await prefs.setString('last_snapshot_key', snapshotKey);
-      
-      // ✅ 固定キーでも保存（復元時の互換性のため）
-      final ok3 = await prefs.setString('operation_snapshot_latest', encryptedData);
-      
-      if (!(ok1 && ok2 && ok3)) {
-        debugPrint('⚠️ スナップショット保存フラグがfalse: $ok1, $ok2, $ok3');
+      if (!(ok1 && ok2)) {
+        debugPrint('笞・・繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥ヵ繝ｩ繧ｰ縺掲alse: $ok1, $ok2');
       }
-      debugPrint('✅ 変更前スナップショット保存完了: $operationType (key: $snapshotKey)');
+      debugPrint('笨・螟画峩蜑阪せ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ伜ｮ御ｺ・ $operationType (key: $snapshotKey)');
     } catch (e) {
-      debugPrint('❌ スナップショット保存エラー: $e');
+      debugPrint('笶・繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ菫晏ｭ倥お繝ｩ繝ｼ: $e');
     }
   }
 
-  // ✅ 1つ前の状態に復元（最新スナップショットから）
-  Future<void> _undoLastChange() async {
+  // 笨・1縺､蜑阪・迥ｶ諷九↓蠕ｩ蜈・ｼ域怙譁ｰ繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ縺九ｉ・・  Future<void> _undoLastChange() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // ✅ 複数のキーから復元を試行
-      String? snapshotKey;
-      final keys = [
-        prefs.getString('last_snapshot_key'),
-        'operation_snapshot_latest',
-      ];
-      
-      for (final key in keys) {
-        if (key != null && prefs.getString(key) != null) {
-          snapshotKey = key;
-          debugPrint('✅ スナップショットキー発見: $key');
-          break;
-        }
-      }
-      
-      if (snapshotKey == null) {
+      final lastSnapshotKey = prefs.getString('last_snapshot_key');
+      if (lastSnapshotKey == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('復元できる履歴がありません'),
+              content: Text('蠕ｩ蜈・〒縺阪ｋ螻･豁ｴ縺後≠繧翫∪縺帙ｓ'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -10451,50 +9632,44 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return;
       }
 
-      await _restoreBackup(snapshotKey);
-      // 復元に使用したスナップショットは削除（1回使い切り）
-      await prefs.remove(snapshotKey);
+      await _restoreBackup(lastSnapshotKey);
+      // 蠕ｩ蜈・↓菴ｿ逕ｨ縺励◆繧ｹ繝翫ャ繝励す繝ｧ繝・ヨ縺ｯ蜑企勁・・蝗樔ｽｿ縺・・繧奇ｼ・      await prefs.remove(lastSnapshotKey);
       await prefs.remove('last_snapshot_key');
-      await prefs.remove('operation_snapshot_latest');
       if (mounted) {
         setState(() {
           _focusedDay = _selectedDay ?? DateTime.now();
-          // ✅ 追加：メモフィールドを再同期
-          if (_selectedDay != null) {
+          // 笨・霑ｽ蜉・壹Γ繝｢繝輔ぅ繝ｼ繝ｫ繝峨ｒ蜀榊酔譛・          if (_selectedDay != null) {
             final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-            // 直近の保存内容を反映
+            // 逶ｴ霑代・菫晏ｭ伜・螳ｹ繧貞渚譏
             SharedPreferences.getInstance().then((p) {
               final memo = p.getString('memo_$dateStr');
               _memoController.text = memo ?? '';
               _memoTextNotifier.value = memo ?? '';
             });
           }
-          // ✅ 追加：アラームタブの完全再構築
-          _alarmTabKey = UniqueKey();
-          // ✅ 追加：カレンダー色の再同期
-          _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
+          // 笨・霑ｽ蜉・壹い繝ｩ繝ｼ繝繧ｿ繝悶・螳悟・蜀肴ｧ狗ｯ・          _alarmTabKey = UniqueKey();
+          // 笨・霑ｽ蜉・壹き繝ｬ繝ｳ繝繝ｼ濶ｲ縺ｮ蜀榊酔譛・          _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
         });
-        // ✅ 追加：カレンダーと入力を再評価
+        // 笨・霑ｽ蜉・壹き繝ｬ繝ｳ繝繝ｼ縺ｨ蜈･蜉帙ｒ蜀崎ｩ穂ｾ｡
         await _updateMedicineInputsForSelectedDate();
         await _loadMemoForSelectedDate();
-        // ✅ 追加：統計の再計算
-        await _calculateAdherenceStats();
-        // ✅ 追加：服用記録の表示を強制更新
+        // 笨・霑ｽ蜉・夂ｵｱ險医・蜀崎ｨ育ｮ・        await _calculateAdherenceStats();
+        // 笨・霑ｽ蜉・壽恪逕ｨ險倬鹸縺ｮ陦ｨ遉ｺ繧貞ｼｷ蛻ｶ譖ｴ譁ｰ
         _updateCalendarMarks();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ 1つ前の状態に復元しました'),
+            content: Text('笨・1縺､蜑阪・迥ｶ諷九↓蠕ｩ蜈・＠縺ｾ縺励◆'),
             backgroundColor: Colors.blue,
             duration: Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
-      debugPrint('❌ 復元エラー: $e');
+      debugPrint('笶・蠕ｩ蜈・お繝ｩ繝ｼ: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('復元に失敗しました: $e'),
+            content: Text('蠕ｩ蜈・↓螟ｱ謨励＠縺ｾ縺励◆: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -10520,34 +9695,34 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // ✅ 手動バックアップ作成機能
+  // 笨・謇句虚繝舌ャ繧ｯ繧｢繝・・菴懈・讖溯・
   Future<void> _createManualBackup() async {
     if (!mounted) return;
     
-    // 保存名入力ダイアログ
+    // 菫晏ｭ伜錐蜈･蜉帙ム繧､繧｢繝ｭ繧ｰ
     final TextEditingController nameController = TextEditingController();
     final now = DateTime.now();
-    nameController.text = '${DateFormat('yyyy-MM-dd_HH-mm').format(now)}_手動保存';
+    nameController.text = '${DateFormat('yyyy-MM-dd_HH-mm').format(now)}_謇句虚菫晏ｭ・;
     
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('バックアップ名を入力'),
+        title: const Text('繝舌ャ繧ｯ繧｢繝・・蜷阪ｒ蜈･蜉・),
         content: TextField(
           controller: nameController,
           decoration: const InputDecoration(
-            hintText: '例: 2024-01-15_14-30_手動保存',
+            hintText: '萓・ 2024-01-15_14-30_謇句虚菫晏ｭ・,
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('キャンセル'),
+            child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(nameController.text),
-            child: const Text('保存'),
+            child: const Text('菫晏ｭ・),
           ),
         ],
       ),
@@ -10558,11 +9733,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ 統合されたバックアップ作成メソッド（1回で完了）
-  Future<void> _performBackup(String backupName) async {
+  // 笨・邨ｱ蜷医＆繧後◆繝舌ャ繧ｯ繧｢繝・・菴懈・繝｡繧ｽ繝・ラ・・蝗槭〒螳御ｺ・ｼ・  Future<void> _performBackup(String backupName) async {
     if (!mounted) return;
     
-    // ローディング表示
+    // 繝ｭ繝ｼ繝・ぅ繝ｳ繧ｰ陦ｨ遉ｺ
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -10573,7 +9747,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
               SizedBox(width: 8),
-              Text('バックアップを作成中...'),
+              Text('繝舌ャ繧ｯ繧｢繝・・繧剃ｽ懈・荳ｭ...'),
             ],
           ),
         duration: Duration(seconds: 1),
@@ -10584,37 +9758,33 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       final prefs = await SharedPreferences.getInstance();
       final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
       
-      // 1. バックアップデータを直接作成（型安全な変換）
-      final backupData = await _createSafeBackupData(backupName);
+      // 1. 繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ繧堤峩謗･菴懈・・亥梛螳牙・縺ｪ螟画鋤・・      final backupData = await _createSafeBackupData(backupName);
       
-      // 2. JSONエンコード（エラーハンドリング付き）
-      final jsonString = await _safeJsonEncode(backupData);
+      // 2. JSON繧ｨ繝ｳ繧ｳ繝ｼ繝会ｼ医お繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ莉倥″・・      final jsonString = await _safeJsonEncode(backupData);
       
-      // 3. 暗号化（非同期）
-      final encryptedData = await _encryptDataAsync(jsonString);
+      // 3. 證怜捷蛹厄ｼ磯撼蜷梧悄・・      final encryptedData = await _encryptDataAsync(jsonString);
       
-      // 4. 保存（1回で完了）
-      await prefs.setString(backupKey, encryptedData);
+      // 4. 菫晏ｭ假ｼ・蝗槭〒螳御ｺ・ｼ・      await prefs.setString(backupKey, encryptedData);
       
-      // 5. 履歴更新
+      // 5. 螻･豁ｴ譖ｴ譁ｰ
       await _updateBackupHistory(backupName, backupKey);
       
       if (!mounted) return;
       
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-          content: Text('✓ バックアップ「$backupName」を作成しました'),
+          content: Text('笨・繝舌ャ繧ｯ繧｢繝・・縲・backupName縲阪ｒ菴懈・縺励∪縺励◆'),
             backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
           ),
         );
     } catch (e) {
-      debugPrint('バックアップ作成エラー: $e');
+      debugPrint('繝舌ャ繧ｯ繧｢繝・・菴懈・繧ｨ繝ｩ繝ｼ: $e');
       if (!mounted) return;
       
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-          content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
+          content: Text('繝舌ャ繧ｯ繧｢繝・・縺ｮ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆: ${e.toString()}'),
             backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -10622,32 +9792,29 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ 型安全なバックアップデータ作成
+  // 笨・蝙句ｮ牙・縺ｪ繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ菴懈・
   Future<Map<String, dynamic>> _createSafeBackupData(String backupName) async {
       return {
         'name': backupName,
         'createdAt': DateTime.now().toIso8601String(),
         'type': 'manual',
-      'version': '1.0.0', // バージョン情報を追加
+      'version': '1.0.0', // 繝舌・繧ｸ繝ｧ繝ｳ諠・ｱ繧定ｿｽ蜉
       
-      // 服用メモ関連（JSON安全）
-        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
+      // 譛咲畑繝｡繝｢髢｢騾｣・・SON螳牙・・・        'medicationMemos': _medicationMemos.map((memo) => memo.toJson()).toList(),
       'addedMedications': _addedMedications.map((med) => {
         'id': med['id'],
         'name': med['name'],
         'type': med['type'],
         'dosage': med['dosage'],
-        'color': (med['color'] as Color).value, // Color → int
+        'color': (med['color'] as Color).value, // Color 竊・int
         'notes': med['notes'],
         'isChecked': med['isChecked'] ?? false,
         'takenTime': med['takenTime']?.toIso8601String(),
       }).toList(),
       
-      // 薬品データ（JSON安全）
-        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
+      // 阮ｬ蜩√ョ繝ｼ繧ｿ・・SON螳牙・・・        'medicines': _medicines.map((medicine) => medicine.toJson()).toList(),
       
-      // 服用データ（MedicationInfo → JSON）
-        'medicationData': _medicationData.map((dateKey, dayData) {
+      // 譛咲畑繝・・繧ｿ・・edicationInfo 竊・JSON・・        'medicationData': _medicationData.map((dateKey, dayData) {
         return MapEntry(
           dateKey,
           dayData.map((medKey, medInfo) {
@@ -10656,8 +9823,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         );
       }),
       
-      // チェック状態関連（プリミティブ型のみ）
-        'weekdayMedicationStatus': _weekdayMedicationStatus,
+      // 繝√ぉ繝・け迥ｶ諷矩未騾｣・医・繝ｪ繝溘ユ繧｣繝門梛縺ｮ縺ｿ・・        'weekdayMedicationStatus': _weekdayMedicationStatus,
       'weekdayMedicationDoseStatus': _weekdayMedicationDoseStatus.map((dateKey, memoStatus) {
         return MapEntry(
           dateKey,
@@ -10673,17 +9839,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }),
         'medicationMemoStatus': _medicationMemoStatus,
       
-      // カレンダー色（Color → int）
-        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
+      // 繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ・・olor 竊・int・・        'dayColors': _dayColors.map((key, value) => MapEntry(key, value.value)),
       
-      // ✅ カレンダーマーク（選択された日付）
-      'selectedDates': _selectedDates.map((date) => date.toIso8601String()).toList(),
-      
-      // ✅ カレンダーメモ
-      'calendarMemos': _calendarMemos,
-      
-      // アラーム関連（必要な全フィールドを保存）
-      'alarmList': _alarmList.map((alarm) => {
+      // 繧｢繝ｩ繝ｼ繝髢｢騾｣・亥ｿ・ｦ√↑蜈ｨ繝輔ぅ繝ｼ繝ｫ繝峨ｒ菫晏ｭ假ｼ・      'alarmList': _alarmList.map((alarm) => {
         'name': alarm['name']?.toString(),
         'time': alarm['time']?.toString(),
         'repeat': alarm['repeat']?.toString(),
@@ -10700,28 +9858,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       }).toList(),
       'alarmSettings': Map<String, dynamic>.from(_alarmSettings),
       
-      // 統計データ
+      // 邨ｱ險医ョ繝ｼ繧ｿ
         'adherenceRates': _adherenceRates,
       };
   }
 
-  // ✅ 安全なJSONエンコード（エラーハンドリング）
-  Future<String> _safeJsonEncode(Map<String, dynamic> data) async {
+  // 笨・螳牙・縺ｪJSON繧ｨ繝ｳ繧ｳ繝ｼ繝会ｼ医お繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ・・  Future<String> _safeJsonEncode(Map<String, dynamic> data) async {
     try {
       return jsonEncode(data);
       } catch (e) {
-        debugPrint('JSONエンコードエラー: $e');
-      debugPrint('問題のあるデータ: ${data.keys}');
+        debugPrint('JSON繧ｨ繝ｳ繧ｳ繝ｼ繝峨お繝ｩ繝ｼ: $e');
+      debugPrint('蝠城｡後・縺ゅｋ繝・・繧ｿ: ${data.keys}');
       
-      // エラーが発生した場合、問題のあるフィールドを特定
-    final safeData = <String, dynamic>{};
+      // 繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺溷ｴ蜷医∝撫鬘後・縺ゅｋ繝輔ぅ繝ｼ繝ｫ繝峨ｒ迚ｹ螳・    final safeData = <String, dynamic>{};
       for (final entry in data.entries) {
       try {
-          jsonEncode({entry.key: entry.value}); // 個別にテスト
-        safeData[entry.key] = entry.value;
+          jsonEncode({entry.key: entry.value}); // 蛟句挨縺ｫ繝・せ繝・        safeData[entry.key] = entry.value;
         } catch (fieldError) {
-          debugPrint('フィールド ${entry.key} でエラー: $fieldError');
-          safeData[entry.key] = null; // 問題のあるフィールドはnullに
+          debugPrint('繝輔ぅ繝ｼ繝ｫ繝・${entry.key} 縺ｧ繧ｨ繝ｩ繝ｼ: $fieldError');
+          safeData[entry.key] = null; // 蝠城｡後・縺ゅｋ繝輔ぅ繝ｼ繝ｫ繝峨・null縺ｫ
         }
       }
       
@@ -10729,10 +9884,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ 非同期暗号化
-  Future<String> _encryptDataAsync(String data) async {
-    // XOR暗号化
-      final key = 'medication_app_backup_key_2024';
+  // 笨・髱槫酔譛滓囓蜿ｷ蛹・  Future<String> _encryptDataAsync(String data) async {
+    // XOR證怜捷蛹・      final key = 'medication_app_backup_key_2024';
       final encrypted = StringBuffer();
       for (int i = 0; i < data.length; i++) {
         encrypted.write(String.fromCharCode(
@@ -10742,10 +9895,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       return encrypted.toString();
   }
 
-  // ✅ 非同期復号化
-  Future<String> _decryptDataAsync(String encryptedData) async {
-    // XOR暗号化の復号化
-    final key = 'medication_app_backup_key_2024';
+  // 笨・髱槫酔譛溷ｾｩ蜿ｷ蛹・  Future<String> _decryptDataAsync(String encryptedData) async {
+    // XOR證怜捷蛹悶・蠕ｩ蜿ｷ蛹・    final key = 'medication_app_backup_key_2024';
     final decrypted = StringBuffer();
     for (int i = 0; i < encryptedData.length; i++) {
       decrypted.write(String.fromCharCode(
@@ -10755,10 +9906,9 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return decrypted.toString();
   }
 
-  // ✅ データ復号化機能
+  // 笨・繝・・繧ｿ蠕ｩ蜿ｷ蛹匁ｩ溯・
   String _decryptData(String encryptedData) {
-    // XOR暗号化の復号化
-    final key = 'medication_app_backup_key_2024';
+    // XOR證怜捷蛹悶・蠕ｩ蜿ｷ蛹・    final key = 'medication_app_backup_key_2024';
     final decrypted = StringBuffer();
     for (int i = 0; i < encryptedData.length; i++) {
       decrypted.write(String.fromCharCode(
@@ -10768,28 +9918,25 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return decrypted.toString();
   }
 
-  // ✅ 非同期データ復元（最適化版）
-  Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
+  // 笨・髱槫酔譛溘ョ繝ｼ繧ｿ蠕ｩ蜈・ｼ域怙驕ｩ蛹也沿・・  Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
     try {
-      // バージョンチェック
+      // 繝舌・繧ｸ繝ｧ繝ｳ繝√ぉ繝・け
       final version = backupData['version'] as String?;
       if (version == null) {
-        debugPrint('警告: バックアップバージョン情報がありません');
+        debugPrint('隴ｦ蜻・ 繝舌ャ繧ｯ繧｢繝・・繝舌・繧ｸ繝ｧ繝ｳ諠・ｱ縺後≠繧翫∪縺帙ｓ');
       }
       
-      // 1. 服用メモの復元
-      final restoredMemos = (backupData['medicationMemos'] as List? ?? [])
+      // 1. 譛咲畑繝｡繝｢縺ｮ蠕ｩ蜈・      final restoredMemos = (backupData['medicationMemos'] as List? ?? [])
           .map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>))
           .toList();
       
-      // 2. 追加薬品の復元（Color変換）
-      final restoredAddedMedications = (backupData['addedMedications'] as List? ?? [])
+      // 2. 霑ｽ蜉阮ｬ蜩√・蠕ｩ蜈・ｼ・olor螟画鋤・・      final restoredAddedMedications = (backupData['addedMedications'] as List? ?? [])
           .map((med) => {
             'id': med['id'],
             'name': med['name'],
             'type': med['type'],
             'dosage': med['dosage'],
-            'color': Color(med['color'] as int), // int → Color
+            'color': Color(med['color'] as int), // int 竊・Color
             'notes': med['notes'],
             'isChecked': med['isChecked'] ?? false,
             'takenTime': med['takenTime'] != null 
@@ -10799,13 +9946,11 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           .cast<Map<String, dynamic>>()
           .toList();
       
-      // 3. 薬品データの復元
-      final restoredMedicines = (backupData['medicines'] as List? ?? [])
+      // 3. 阮ｬ蜩√ョ繝ｼ繧ｿ縺ｮ蠕ｩ蜈・      final restoredMedicines = (backupData['medicines'] as List? ?? [])
           .map((json) => MedicineData.fromJson(json as Map<String, dynamic>))
           .toList();
       
-      // 4. 服用データの復元（JSON → MedicationInfo）
-      final restoredMedicationData = <String, Map<String, MedicationInfo>>{};
+      // 4. 譛咲畑繝・・繧ｿ縺ｮ蠕ｩ蜈・ｼ・SON 竊・MedicationInfo・・      final restoredMedicationData = <String, Map<String, MedicationInfo>>{};
       if (backupData['medicationData'] != null) {
         final medicationDataMap = backupData['medicationData'] as Map<String, dynamic>;
         for (final entry in medicationDataMap.entries) {
@@ -10823,8 +9968,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 5. チェック状態の復元
-      final restoredWeekdayStatus = <String, Map<String, bool>>{};
+      // 5. 繝√ぉ繝・け迥ｶ諷九・蠕ｩ蜈・      final restoredWeekdayStatus = <String, Map<String, bool>>{};
       if (backupData['weekdayMedicationStatus'] != null) {
         final statusMap = backupData['weekdayMedicationStatus'] as Map<String, dynamic>;
         for (final entry in statusMap.entries) {
@@ -10861,8 +10005,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ? Map<String, bool>.from(backupData['medicationMemoStatus'] as Map)
           : <String, bool>{};
       
-      // 6. カレンダー色の復元（int → Color）
-      final restoredDayColors = <String, Color>{};
+      // 6. 繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ縺ｮ蠕ｩ蜈・ｼ・nt 竊・Color・・      final restoredDayColors = <String, Color>{};
       if (backupData['dayColors'] != null) {
         final colorsMap = backupData['dayColors'] as Map<String, dynamic>;
         for (final entry in colorsMap.entries) {
@@ -10870,30 +10013,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // ✅ カレンダーマーク（カレンダーメモ）の復元
-      final restoredSelectedDates = <DateTime>[];
-      if (backupData['selectedDates'] != null) {
-        final datesList = backupData['selectedDates'] as List;
-        for (final dateStr in datesList) {
-          try {
-            restoredSelectedDates.add(DateTime.parse(dateStr as String));
-          } catch (e) {
-            debugPrint('日付解析エラー: $dateStr');
-          }
-        }
-      }
-      
-      // ✅ カレンダーメモの復元
-      final restoredCalendarMemos = <String, String>{};
-      if (backupData['calendarMemos'] != null) {
-        final memosMap = backupData['calendarMemos'] as Map<String, dynamic>;
-        for (final entry in memosMap.entries) {
-          restoredCalendarMemos[entry.key] = entry.value as String;
-        }
-      }
-      
-      // 7. アラームの復元
-      final restoredAlarmList = (backupData['alarmList'] as List? ?? [])
+      // 7. 繧｢繝ｩ繝ｼ繝縺ｮ蠕ｩ蜈・      final restoredAlarmList = (backupData['alarmList'] as List? ?? [])
           .map((alarm) => Map<String, dynamic>.from(alarm as Map))
           .toList();
       
@@ -10901,27 +10021,24 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           ? Map<String, dynamic>.from(backupData['alarmSettings'] as Map)
           : <String, dynamic>{};
       
-      // 8. 統計データの復元
-      final restoredAdherenceRates = backupData['adherenceRates'] != null
+      // 8. 邨ｱ險医ョ繝ｼ繧ｿ縺ｮ蠕ｩ蜈・      final restoredAdherenceRates = backupData['adherenceRates'] != null
           ? Map<String, double>.from(backupData['adherenceRates'] as Map)
           : <String, double>{};
       
-      // 9. アラームをSharedPreferencesに保存
-      final prefs = await SharedPreferences.getInstance();
+      // 9. 繧｢繝ｩ繝ｼ繝繧担haredPreferences縺ｫ菫晏ｭ・      final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('alarm_count', restoredAlarmList.length);
       
       for (int i = 0; i < restoredAlarmList.length; i++) {
         final alarm = restoredAlarmList[i];
-        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
+        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? '繧｢繝ｩ繝ｼ繝');
         await prefs.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
-        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '荳蠎ｦ縺縺・);
         await prefs.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
         await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] as bool? ?? true);
         await prefs.setBool('alarm_${i}_isRepeatEnabled', alarm['isRepeatEnabled'] as bool? ?? false);
         await prefs.setInt('alarm_${i}_volume', alarm['volume'] as int? ?? 80);
         
-        // 曜日データ（型安全に復元）
-        final dynamic selectedDaysRaw = alarm['selectedDays'];
+        // 譖懈律繝・・繧ｿ・亥梛螳牙・縺ｫ蠕ｩ蜈・ｼ・        final dynamic selectedDaysRaw = alarm['selectedDays'];
         final List<bool> selectedDays = selectedDaysRaw is List
             ? List<bool>.from(selectedDaysRaw.map((e) => e == true))
             : <bool>[false, false, false, false, false, false, false];
@@ -10930,8 +10047,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         }
       }
       
-      // 10. 一括setState（1回のみ）
-      if (!mounted) return;
+      // 10. 荳諡ｬsetState・・蝗槭・縺ｿ・・      if (!mounted) return;
       
       setState(() {
         _medicationMemos = restoredMemos;
@@ -10942,23 +10058,18 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         _weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
         _medicationMemoStatus = restoredMemoStatus;
         _dayColors = restoredDayColors;
-        _selectedDates = Set<DateTime>.from(restoredSelectedDates);  // ✅ カレンダーマークの復元
-        _calendarMemos = restoredCalendarMemos;  // ✅ カレンダーメモの復元
         _alarmList = restoredAlarmList;
         _alarmSettings = restoredAlarmSettings;
         _adherenceRates = restoredAdherenceRates;
         
-        // ✅ SimpleAlarmAppを完全に再構築
-        _alarmTabKey = UniqueKey();  // 新しいキーで強制再構築
-      });
+        // 笨・SimpleAlarmApp繧貞ｮ悟・縺ｫ蜀肴ｧ狗ｯ・        _alarmTabKey = UniqueKey();  // 譁ｰ縺励＞繧ｭ繝ｼ縺ｧ蠑ｷ蛻ｶ蜀肴ｧ狗ｯ・      });
       
-      // 11. データ保存（復元後）
-      await _saveAllData();
+      // 11. 繝・・繧ｿ菫晏ｭ假ｼ亥ｾｩ蜈・ｾ鯉ｼ・      await _saveAllData();
       
-      debugPrint('アラーム復元完了（強制再構築）: ${restoredAlarmList.length}件');
-      debugPrint('バックアップ復元完了: ${restoredMemos.length}件のメモ');
+      debugPrint('繧｢繝ｩ繝ｼ繝蠕ｩ蜈・ｮ御ｺ・ｼ亥ｼｷ蛻ｶ蜀肴ｧ狗ｯ会ｼ・ ${restoredAlarmList.length}莉ｶ');
+      debugPrint('繝舌ャ繧ｯ繧｢繝・・蠕ｩ蜈・ｮ御ｺ・ ${restoredMemos.length}莉ｶ縺ｮ繝｡繝｢');
     } catch (e) {
-      debugPrint('データ復元エラー: $e');
+      debugPrint('繝・・繧ｿ蠕ｩ蜈・お繝ｩ繝ｼ: $e');
       rethrow;
     }
   }
@@ -10966,8 +10077,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
 
 
 
-  // ✅ バックアップ履歴の更新（5件制限）
-  Future<void> _updateBackupHistory(String backupName, String backupKey, {String type = 'manual'}) async {
+  // 笨・繝舌ャ繧ｯ繧｢繝・・螻･豁ｴ縺ｮ譖ｴ譁ｰ・・莉ｶ蛻ｶ髯撰ｼ・  Future<void> _updateBackupHistory(String backupName, String backupKey, {String type = 'manual'}) async {
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('backup_history') ?? '[]';
     final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
@@ -10979,9 +10089,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       'type': type,
     });
     
-    // 古い順に自動削除（最大5件まで保持）
-    if (history.length > 5) {
-      // 古いバックアップデータを削除
+    // 蜿､縺・・↓閾ｪ蜍募炎髯､・域怙螟ｧ5莉ｶ縺ｾ縺ｧ菫晄戟・・    if (history.length > 5) {
+      // 蜿､縺・ヰ繝・け繧｢繝・・繝・・繧ｿ繧貞炎髯､
       final oldBackup = history.removeAt(0);
       await prefs.remove(oldBackup['key'] as String);
     }
@@ -10989,42 +10098,40 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     await prefs.setString('backup_history', jsonEncode(history));
   }
 
-  // ✅ バックアップ履歴表示機能（強化版）
-  Future<void> _showBackupHistory() async {
+  // 笨・繝舌ャ繧ｯ繧｢繝・・螻･豁ｴ陦ｨ遉ｺ讖溯・・亥ｼｷ蛹也沿・・  Future<void> _showBackupHistory() async {
     if (!mounted) return;
     
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('backup_history') ?? '[]';
     final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
     
-    // 自動バックアップも含めて全てのバックアップを取得
-    final allBackups = <Map<String, dynamic>>[];
+    // 閾ｪ蜍輔ヰ繝・け繧｢繝・・繧ょ性繧√※蜈ｨ縺ｦ縺ｮ繝舌ャ繧ｯ繧｢繝・・繧貞叙蠕・    final allBackups = <Map<String, dynamic>>[];
     
-    // 手動バックアップ履歴を追加
+    // 謇句虚繝舌ャ繧ｯ繧｢繝・・螻･豁ｴ繧定ｿｽ蜉
     for (final backup in history) {
       allBackups.add({
         ...backup,
         'type': 'manual',
-        'source': '履歴',
+        'source': '螻･豁ｴ',
       });
     }
     
-    // 自動バックアップを追加
+    // 閾ｪ蜍輔ヰ繝・け繧｢繝・・繧定ｿｽ蜉
     final autoBackupKey = prefs.getString('last_auto_backup_key');
     if (autoBackupKey != null) {
       allBackups.add({
-        'name': '自動バックアップ（最新）',
+        'name': '閾ｪ蜍輔ヰ繝・け繧｢繝・・・域怙譁ｰ・・,
         'key': autoBackupKey,
         'createdAt': DateTime.now().toIso8601String(),
         'type': 'auto',
-        'source': '自動',
+        'source': '閾ｪ蜍・,
       });
     }
     
     if (allBackups.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('バックアップがありません'),
+          content: Text('繝舌ャ繧ｯ繧｢繝・・縺後≠繧翫∪縺帙ｓ'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -11038,7 +10145,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           children: [
             Icon(Icons.history, color: Colors.blue),
             SizedBox(width: 8),
-            Text('バックアップ一覧'),
+            Text('繝舌ャ繧ｯ繧｢繝・・荳隕ｧ'),
           ],
         ),
         content: SizedBox(
@@ -11047,7 +10154,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           child: ListView.builder(
             itemCount: allBackups.length,
             itemBuilder: (context, index) {
-              final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
+              final backup = allBackups[allBackups.length - 1 - index]; // 譁ｰ縺励＞鬆・↓陦ｨ遉ｺ
               final createdAt = DateTime.parse(backup['createdAt'] as String);
               final isAuto = backup['type'] == 'auto';
               
@@ -11064,7 +10171,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                     children: [
                       Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
                       Text(
-                        '${backup['source']}バックアップ',
+                        '${backup['source']}繝舌ャ繧ｯ繧｢繝・・',
                         style: TextStyle(
                           fontSize: 12,
                           color: isAuto ? Colors.green : Colors.blue,
@@ -11095,7 +10202,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           children: [
                             Icon(Icons.restore, color: Colors.blue),
                             SizedBox(width: 8),
-                            Text('復元'),
+                            Text('蠕ｩ蜈・),
                           ],
                         ),
                       ),
@@ -11105,7 +10212,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           children: [
                             Icon(Icons.visibility, color: Colors.green),
                             SizedBox(width: 8),
-                            Text('プレビュー'),
+                            Text('繝励Ξ繝薙Η繝ｼ'),
                           ],
                         ),
                       ),
@@ -11115,7 +10222,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                           children: [
                             Icon(Icons.delete, color: Colors.red),
                             SizedBox(width: 8),
-                            Text('削除'),
+                            Text('蜑企勁'),
                           ],
                         ),
                       ),
@@ -11129,14 +10236,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
+            child: const Text('髢峨§繧・),
           ),
         ],
       ),
     );
   }
 
-  // ✅ バックアッププレビュー機能
+  // 笨・繝舌ャ繧ｯ繧｢繝・・繝励Ξ繝薙Η繝ｼ讖溯・
   Future<void> _previewBackup(String backupKey) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -11146,7 +10253,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('バックアップデータが見つかりません'),
+              content: Text('繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ'),
               backgroundColor: Colors.red,
             ),
           );
@@ -11161,38 +10268,38 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('バックアッププレビュー'),
+            title: const Text('繝舌ャ繧ｯ繧｢繝・・繝励Ξ繝薙Η繝ｼ'),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('名前: ${backupData['name'] as String}'),
-                  Text('作成日時: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(backupData['createdAt']))}'),
+                  Text('蜷榊燕: ${backupData['name'] as String}'),
+                  Text('菴懈・譌･譎・ ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(backupData['createdAt']))}'),
                   const SizedBox(height: 8),
-                  const Text('📊 バックアップ内容:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('・服用メモ数: ${(backupData['medicationMemos'] as List).length}件'),
-                  Text('・追加薬品数: ${(backupData['addedMedications'] as List).length}件'),
-                  Text('・薬品データ数: ${(backupData['medicines'] as List).length}件'),
-                  Text('・アラーム数: ${(backupData['alarmList'] as List).length}件'),
-                  Text('・カレンダー色設定: ${(backupData['dayColors'] as Map).length}日分'),
-                  Text('・チェック状態: ${(backupData['weekdayMedicationStatus'] as Map).length}日分'),
-                  Text('・服用率データ: ${(backupData['adherenceRates'] as Map).length}件'),
+                  const Text('投 繝舌ャ繧ｯ繧｢繝・・蜀・ｮｹ:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('繝ｻ譛咲畑繝｡繝｢謨ｰ: ${(backupData['medicationMemos'] as List).length}莉ｶ'),
+                  Text('繝ｻ霑ｽ蜉阮ｬ蜩∵焚: ${(backupData['addedMedications'] as List).length}莉ｶ'),
+                  Text('繝ｻ阮ｬ蜩√ョ繝ｼ繧ｿ謨ｰ: ${(backupData['medicines'] as List).length}莉ｶ'),
+                  Text('繝ｻ繧｢繝ｩ繝ｼ繝謨ｰ: ${(backupData['alarmList'] as List).length}莉ｶ'),
+                  Text('繝ｻ繧ｫ繝ｬ繝ｳ繝繝ｼ濶ｲ險ｭ螳・ ${(backupData['dayColors'] as Map).length}譌･蛻・),
+                  Text('繝ｻ繝√ぉ繝・け迥ｶ諷・ ${(backupData['weekdayMedicationStatus'] as Map).length}譌･蛻・),
+                  Text('繝ｻ譛咲畑邇・ョ繝ｼ繧ｿ: ${(backupData['adherenceRates'] as Map).length}莉ｶ'),
                   const SizedBox(height: 16),
-                  const Text('このバックアップを復元しますか？'),
+                  const Text('縺薙・繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・＠縺ｾ縺吶°・・),
                 ],
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('キャンセル'),
+                child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
               ),
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).pop();
                   _restoreBackup(backupKey);
                 },
-                child: const Text('復元する'),
+                child: const Text('蠕ｩ蜈・☆繧・),
               ),
             ],
           ),
@@ -11202,7 +10309,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('プレビューの表示に失敗しました: $e'),
+            content: Text('繝励Ξ繝薙Η繝ｼ縺ｮ陦ｨ遉ｺ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -11210,9 +10317,8 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ バックアップ復元機能（最適化版）
-  Future<void> _restoreBackup(String backupKey) async {
-    // ローディング表示
+  // 笨・繝舌ャ繧ｯ繧｢繝・・蠕ｩ蜈・ｩ溯・・域怙驕ｩ蛹也沿・・  Future<void> _restoreBackup(String backupKey) async {
+    // 繝ｭ繝ｼ繝・ぅ繝ｳ繧ｰ陦ｨ遉ｺ
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -11224,7 +10330,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               SizedBox(width: 8),
-              Text('バックアップを復元中...'),
+              Text('繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・ｸｭ...'),
             ],
           ),
           duration: Duration(seconds: 2),
@@ -11233,14 +10339,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
     
     try {
-      // 非同期でバックアップデータを読み込み
+      // 髱槫酔譛溘〒繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ
       final backupData = await _loadBackupDataAsync(backupKey);
       
       if (backupData == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('バックアップデータが見つかりません'),
+              content: Text('繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ'),
               backgroundColor: Colors.red,
             ),
           );
@@ -11248,13 +10354,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
         return;
       }
       
-      // ✅ 新しい最適化された復元処理を使用
+      // 笨・譁ｰ縺励＞譛驕ｩ蛹悶＆繧後◆蠕ｩ蜈・・逅・ｒ菴ｿ逕ｨ
       await _restoreDataAsync(backupData);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('バックアップを復元しました'),
+            content: Text('繝舌ャ繧ｯ繧｢繝・・繧貞ｾｩ蜈・＠縺ｾ縺励◆'),
             backgroundColor: Colors.green,
           ),
         );
@@ -11263,7 +10369,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('バックアップの復元に失敗しました: $e'),
+            content: Text('繝舌ャ繧ｯ繧｢繝・・縺ｮ蠕ｩ蜈・↓螟ｱ謨励＠縺ｾ縺励◆: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -11271,29 +10377,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
 
-  // ✅ 非同期でバックアップデータを読み込み
+  // 笨・髱槫酔譛溘〒繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ
   Future<Map<String, dynamic>?> _loadBackupDataAsync(String backupKey) async {
     final prefs = await SharedPreferences.getInstance();
     final encryptedData = prefs.getString(backupKey);
     
     if (encryptedData == null) return null;
     
-    // 非同期で復号化
-    final decryptedData = await _decryptDataAsync(encryptedData);
+    // 髱槫酔譛溘〒蠕ｩ蜿ｷ蛹・    final decryptedData = await _decryptDataAsync(encryptedData);
     return jsonDecode(decryptedData);
   }
 
 
 
-  // ✅ バックアップ削除機能
+  // 笨・繝舌ャ繧ｯ繧｢繝・・蜑企勁讖溯・
   Future<void> _deleteBackup(String backupKey, int index) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // バックアップデータを削除
+      // 繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ繧貞炎髯､
       await prefs.remove(backupKey);
       
-      // 履歴から削除
+      // 螻･豁ｴ縺九ｉ蜑企勁
       final historyJson = prefs.getString('backup_history') ?? '[]';
       final history = List<Map<String, dynamic>>.from(jsonDecode(historyJson) as List);
       history.removeAt(history.length - 1 - index);
@@ -11302,7 +10407,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('バックアップを削除しました'),
+            content: Text('繝舌ャ繧ｯ繧｢繝・・繧貞炎髯､縺励∪縺励◆'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -11311,7 +10416,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('バックアップの削除に失敗しました: $e'),
+            content: Text('繝舌ャ繧ｯ繧｢繝・・縺ｮ蜑企勁縺ｫ螟ｱ謨励＠縺ｾ縺励◆: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -11328,10 +10433,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return DefaultTabController(
       length: 4,
       child: Scaffold(
-        resizeToAvoidBottomInset: false, // キーボード表示時のオーバーフローを防止
+        resizeToAvoidBottomInset: false, // 繧ｭ繝ｼ繝懊・繝芽｡ｨ遉ｺ譎ゅ・繧ｪ繝ｼ繝舌・繝輔Ο繝ｼ繧帝亟豁｢
         appBar: AppBar(
           title: const Text(
-            'サプリ＆おくすりスケジュール管理帳',
+            '繧ｵ繝励Μ・・♀縺上☆繧翫せ繧ｱ繧ｸ繝･繝ｼ繝ｫ邂｡逅・ｸｳ',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -11343,7 +10448,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
           centerTitle: true,
           titleSpacing: 0,
           actions: [
-            // 購入状態設定メニュー
+            // 雉ｼ蜈･迥ｶ諷玖ｨｭ螳壹Γ繝九Η繝ｼ
               PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
@@ -11357,8 +10462,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   case 'backup':
                     _showBackupDialog();
                       break;
-                  // 開発用: 手動で購入状態/トライアル状態を切り替えるメニュー（本番では無効）
-                  // case 'set_purchased':
+                  // 髢狗匱逕ｨ: 謇句虚縺ｧ雉ｼ蜈･迥ｶ諷・繝医Λ繧､繧｢繝ｫ迥ｶ諷九ｒ蛻・ｊ譖ｿ縺医ｋ繝｡繝九Η繝ｼ・域悽逡ｪ縺ｧ縺ｯ辟｡蜉ｹ・・                  // case 'set_purchased':
                   //   _setPurchasedStatus();
                   //     break;
                   // case 'set_trial':
@@ -11373,7 +10477,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       children: [
                       const Icon(Icons.info, color: Colors.blue),
                         const SizedBox(width: 8),
-                      const Text('購入状態'),
+                      const Text('雉ｼ蜈･迥ｶ諷・),
                       ],
                     ),
                   ),
@@ -11383,29 +10487,28 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                       children: [
                       const Icon(Icons.payment, color: Colors.green),
                         const SizedBox(width: 8),
-                      const Text('課金情報'),
+                      const Text('隱ｲ驥第ュ蝣ｱ'),
                       ],
                     ),
                   ),
-                  // ✅ 修正：バックアップ機能を追加
+                  // 笨・菫ｮ豁｣・壹ヰ繝・け繧｢繝・・讖溯・繧定ｿｽ蜉
                   PopupMenuItem(
                     value: 'backup',
                     child: Row(
                       children: [
                         const Icon(Icons.backup, color: Colors.orange),
                         const SizedBox(width: 8),
-                        const Text('バックアップ'),
+                        const Text('繝舌ャ繧ｯ繧｢繝・・'),
                       ],
                     ),
                   ),
-                  // 開発用: 手動切替メニュー（本番ではコメントアウト）
-                  // PopupMenuItem(
+                  // 髢狗匱逕ｨ: 謇句虚蛻・崛繝｡繝九Η繝ｼ・域悽逡ｪ縺ｧ縺ｯ繧ｳ繝｡繝ｳ繝医い繧ｦ繝茨ｼ・                  // PopupMenuItem(
                   // value: 'set_purchased',
                   //   child: Row(
                   //     children: [
                   //     const Icon(Icons.check_circle, color: Colors.green),
                   //       const SizedBox(width: 8),
-                  //     const Text('購入状態にする（開発用）'),
+                  //     const Text('雉ｼ蜈･迥ｶ諷九↓縺吶ｋ・磯幕逋ｺ逕ｨ・・),
                   //     ],
                   //   ),
                   // ),
@@ -11415,7 +10518,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   //     children: [
                   //     const Icon(Icons.timer, color: Colors.blue),
                   //       const SizedBox(width: 8),
-                  //     const Text('トライアル状態にする（開発用）'),
+                  //     const Text('繝医Λ繧､繧｢繝ｫ迥ｶ諷九↓縺吶ｋ・磯幕逋ｺ逕ｨ・・),
                   //     ],
                   //   ),
                   // ),
@@ -11427,17 +10530,17 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: const [
-              Tab(icon: Icon(Icons.calendar_month), text: 'カレンダー'),
-              Tab(icon: Icon(Icons.medication), text: '服用メモ'),
-              Tab(icon: Icon(Icons.alarm), text: 'アラーム'),
-              Tab(icon: Icon(Icons.analytics), text: '統計'),
+              Tab(icon: Icon(Icons.calendar_month), text: '繧ｫ繝ｬ繝ｳ繝繝ｼ'),
+              Tab(icon: Icon(Icons.medication), text: '譛咲畑繝｡繝｢'),
+              Tab(icon: Icon(Icons.alarm), text: '繧｢繝ｩ繝ｼ繝'),
+              Tab(icon: Icon(Icons.analytics), text: '邨ｱ險・),
             ],
           ),
         ),
         body: _isInitialized
           ? Card(
               margin: EdgeInsets.symmetric(
-                horizontal: MediaQuery.of(context).size.width * 0.02, // 画面幅の2%
+                horizontal: MediaQuery.of(context).size.width * 0.02, // 逕ｻ髱｢蟷・・2%
                 vertical: 8,
               ),
               elevation: 4,
@@ -11449,14 +10552,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    // カレンダータブ
-                    _buildCalendarTab(),
-                    // 薬品タブ
-                    _buildMedicineTab(),
-                    // 服用アラームタブ
-                    _buildAlarmTab(),
-                    // 統計タブ
-                    _buildStatsTab(),
+                    // 繧ｫ繝ｬ繝ｳ繝繝ｼ繧ｿ繝・                    _buildCalendarTab(),
+                    // 阮ｬ蜩√ち繝・                    _buildMedicineTab(),
+                    // 譛咲畑繧｢繝ｩ繝ｼ繝繧ｿ繝・                    _buildAlarmTab(),
+                    // 邨ｱ險医ち繝・                    _buildStatsTab(),
                   ],
                 ),
               ),
@@ -11468,13 +10567,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
                   Text(
-                    'アプリを初期化中...',
+                    '繧｢繝励Μ繧貞・譛溷喧荳ｭ...',
                     style: TextStyle(fontSize: 16),
                   ),
                 ],
               ),
         ),
-        // 服用メモタブでのみFloatingActionButtonを表示
+        // 譛咲畑繝｡繝｢繧ｿ繝悶〒縺ｮ縺ｿFloatingActionButton繧定｡ｨ遉ｺ
         floatingActionButton: _tabController.index == 1 
           ? FloatingActionButton(
               onPressed: _addMemo,
@@ -11486,25 +10585,23 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // スクロール上端に到達した時の処理（画面遷移なし）
-  void _onScrollToTop() {
-    debugPrint('服用記録リスト上端に到達');
-    // 画面遷移を削除 - ユーザーが手動でスクロールできるようにする
+  // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ荳顔ｫｯ縺ｫ蛻ｰ驕斐＠縺滓凾縺ｮ蜃ｦ逅・ｼ育判髱｢驕ｷ遘ｻ縺ｪ縺暦ｼ・  void _onScrollToTop() {
+    debugPrint('譛咲畑險倬鹸繝ｪ繧ｹ繝井ｸ顔ｫｯ縺ｫ蛻ｰ驕・);
+    // 逕ｻ髱｢驕ｷ遘ｻ繧貞炎髯､ - 繝ｦ繝ｼ繧ｶ繝ｼ縺梧焔蜍輔〒繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺ｧ縺阪ｋ繧医≧縺ｫ縺吶ｋ
   }
 
-  // スクロール下端に到達した時の処理（画面遷移なし）
-  void _onScrollToBottom() {
-    debugPrint('服用記録リスト下端に到達');
-    // 画面遷移を削除 - ユーザーが手動で上にスクロールできるようにする
+  // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ荳狗ｫｯ縺ｫ蛻ｰ驕斐＠縺滓凾縺ｮ蜃ｦ逅・ｼ育判髱｢驕ｷ遘ｻ縺ｪ縺暦ｼ・  void _onScrollToBottom() {
+    debugPrint('譛咲畑險倬鹸繝ｪ繧ｹ繝井ｸ狗ｫｯ縺ｫ蛻ｰ驕・);
+    // 逕ｻ髱｢驕ｷ遘ｻ繧貞炎髯､ - 繝ｦ繝ｼ繧ｶ繝ｼ縺梧焔蜍輔〒荳翫↓繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺ｧ縺阪ｋ繧医≧縺ｫ縺吶ｋ
   }
 
 
 
 
 
-  // 上端でのナビゲーションヒント表示
+  // 荳顔ｫｯ縺ｧ縺ｮ繝翫ン繧ｲ繝ｼ繧ｷ繝ｧ繝ｳ繝偵Φ繝郁｡ｨ遉ｺ
   void _showTopNavigationHint() {
-    // 軽いハプティックフィードバックで上端到達を通知
+    // 霆ｽ縺・ワ繝励ユ繧｣繝・け繝輔ぅ繝ｼ繝峨ヰ繝・け縺ｧ荳顔ｫｯ蛻ｰ驕斐ｒ騾夂衍
     HapticFeedback.selectionClick();
   }
 
@@ -11526,7 +10623,7 @@ class _MemoDialogState extends State<_MemoDialog> {
   final _nameController = TextEditingController();
   final _dosageController = TextEditingController();
   final _notesController = TextEditingController();
-  String _selectedType = '薬品';
+  String _selectedType = '阮ｬ蜩・;
   Color _selectedColor = Colors.blue;
   bool _isDosageFocused = false;
   bool _isNotesFocused = false;
@@ -11534,16 +10631,14 @@ class _MemoDialogState extends State<_MemoDialog> {
   List<int> _selectedWeekdays = [];
   final ScrollController _scrollController = ScrollController();
   final FocusNode _memoFocusNode = FocusNode();
-  int _dosageFrequency = 1; // 服用回数（1〜6回）
-  
-  // 空タイトル時の自動連番生成（ダイアログ内専用）
-  String _generateDefaultTitle(List<String> existingTitles) {
+  int _dosageFrequency = 1; // 譛咲畑蝗樊焚・・縲・蝗橸ｼ・  
+  // 遨ｺ繧ｿ繧､繝医Ν譎ゅ・閾ｪ蜍暮｣逡ｪ逕滓・・医ム繧､繧｢繝ｭ繧ｰ蜀・ｰら畑・・  String _generateDefaultTitle(List<String> existingTitles) {
     const int maxCount = 999;
     int count = 1;
-    while (count <= maxCount && existingTitles.contains('メモ$count')) {
+    while (count <= maxCount && existingTitles.contains('繝｡繝｢$count')) {
       count++;
     }
-    return 'メモ$count';
+    return '繝｡繝｢$count';
   }
   
   @override
@@ -11558,8 +10653,7 @@ class _MemoDialogState extends State<_MemoDialog> {
       _selectedWeekdays = List.from(widget.initialMemo!.selectedWeekdays);
       _dosageFrequency = widget.initialMemo!.dosageFrequency ?? 1;
       
-      // メモ編集モードの場合、自動的にメモフィールドにフォーカス（スクロールは削除）
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 繝｡繝｢邱ｨ髮・Δ繝ｼ繝峨・蝣ｴ蜷医∬・蜍慕噪縺ｫ繝｡繝｢繝輔ぅ繝ｼ繝ｫ繝峨↓繝輔か繝ｼ繧ｫ繧ｹ・医せ繧ｯ繝ｭ繝ｼ繝ｫ縺ｯ蜑企勁・・      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (widget.initialMemo != null) {
           _memoFocusNode.requestFocus();
         }
@@ -11575,76 +10669,62 @@ class _MemoDialogState extends State<_MemoDialog> {
   }
   @override
   Widget build(BuildContext context) {
-    // メモ編集と新規追加を統一した画面 - 上部のスペースを最大限活用
+    // 繝｡繝｢邱ｨ髮・→譁ｰ隕剰ｿｽ蜉繧堤ｵｱ荳縺励◆逕ｻ髱｢ - 荳企Κ縺ｮ繧ｹ繝壹・繧ｹ繧呈怙螟ｧ髯先ｴｻ逕ｨ
     return AnimatedContainer(
       duration: const Duration(milliseconds: 50),
       curve: Curves.easeOut,
       child: Dialog(
         insetPadding: EdgeInsets.symmetric(
-          horizontal: MediaQuery.of(context).size.width * 0.02, // 左右の余白を大幅削減
-          vertical: MediaQuery.of(context).size.height * 0.02, // 上下の余白を大幅削減
-        ),
+          horizontal: MediaQuery.of(context).size.width * 0.02, // 蟾ｦ蜿ｳ縺ｮ菴咏區繧貞､ｧ蟷・炎貂・          vertical: MediaQuery.of(context).size.height * 0.02, // 荳贋ｸ九・菴咏區繧貞､ｧ蟷・炎貂・        ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12), // 角丸を削減
-        ),
+          borderRadius: BorderRadius.circular(12), // 隗剃ｸｸ繧貞炎貂・        ),
         child: Stack(
           children: [
             Container(
           constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.95, // 画面の95%に拡大
-                maxWidth: MediaQuery.of(context).size.width * 0.95,   // 画面の95%に拡大
-                minWidth: 280,   // 最小幅を280に設定
-              ),
-              width: MediaQuery.of(context).size.width * 0.95, // 明示的な幅を設定
-          child: SingleChildScrollView(
+                maxHeight: MediaQuery.of(context).size.height * 0.95, // 逕ｻ髱｢縺ｮ95%縺ｫ諡｡螟ｧ
+                maxWidth: MediaQuery.of(context).size.width * 0.95,   // 逕ｻ髱｢縺ｮ95%縺ｫ諡｡螟ｧ
+                minWidth: 280,   // 譛蟆丞ｹ・ｒ280縺ｫ險ｭ螳・              ),
+              width: MediaQuery.of(context).size.width * 0.95, // 譏守､ｺ逧・↑蟷・ｒ險ｭ螳・          child: SingleChildScrollView(
             controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(), // 常にスクロール可能
+            physics: const AlwaysScrollableScrollPhysics(), // 蟶ｸ縺ｫ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蜿ｯ閭ｽ
             padding: EdgeInsets.symmetric(
-              horizontal: MediaQuery.of(context).size.width < 400 ? 4 : 8, // 小さい画面では余白を大幅削減
-              vertical: MediaQuery.of(context).size.height < 600 ? 2 : 4, // 小さい画面では余白を大幅削減
-            ),
+              horizontal: MediaQuery.of(context).size.width < 400 ? 4 : 8, // 蟆上＆縺・判髱｢縺ｧ縺ｯ菴咏區繧貞､ｧ蟷・炎貂・              vertical: MediaQuery.of(context).size.height < 600 ? 2 : 4, // 蟆上＆縺・判髱｢縺ｧ縺ｯ菴咏區繧貞､ｧ蟷・炎貂・            ),
             child: Column(
-              mainAxisSize: MainAxisSize.max, // 最大サイズで配置
+              mainAxisSize: MainAxisSize.max, // 譛螟ｧ繧ｵ繧､繧ｺ縺ｧ驟咲ｽｮ
               children: [
-                // ヘッダー（入力時は非表示） - コンパクト化
+                // 繝倥ャ繝繝ｼ・亥・蜉帶凾縺ｯ髱櫁｡ｨ遉ｺ・・- 繧ｳ繝ｳ繝代け繝亥喧
                 if (!_isNameFocused && !_isDosageFocused && !_isNotesFocused) ...[
                 Container(
                   padding: EdgeInsets.all(
-                    MediaQuery.of(context).size.height < 600 ? 4 : 6, // パディングを大幅削減
-                  ),
+                    MediaQuery.of(context).size.height < 600 ? 4 : 6, // 繝代ョ繧｣繝ｳ繧ｰ繧貞､ｧ蟷・炎貂・                  ),
                   decoration: BoxDecoration(
-                      color: _selectedType == 'サプリメント' ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                      color: _selectedType == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12), // 角丸を削減
-                      topRight: Radius.circular(12),
+                      topLeft: Radius.circular(12), // 隗剃ｸｸ繧貞炎貂・                      topRight: Radius.circular(12),
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                          _selectedType == 'サプリメント' ? Icons.eco : Icons.medication,
-                          color: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
-                        size: 20, // アイコンサイズを削減
-                      ),
-                      const SizedBox(width: 8), // 間隔を削減
-                      Flexible(
+                          _selectedType == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Icons.eco : Icons.medication,
+                          color: _selectedType == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Colors.green : Colors.blue,
+                        size: 20, // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                      ),
+                      const SizedBox(width: 8), // 髢馴囈繧貞炎貂・                      Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                                widget.initialMemo != null ? 'メモ編集' : 'メモ追加',
+                                widget.initialMemo != null ? '繝｡繝｢邱ｨ髮・ : '繝｡繝｢霑ｽ蜉',
                               style: const TextStyle(
-                                fontSize: 16, // フォントサイズを削減
-                                fontWeight: FontWeight.bold,
+                                fontSize: 16, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const SizedBox(height: 2), // 間隔を削減
-                            Text(
-                                widget.initialMemo != null ? 'メモを編集します' : '新しいメモを追加します',
+                            const SizedBox(height: 2), // 髢馴囈繧貞炎貂・                            Text(
+                                widget.initialMemo != null ? '繝｡繝｢繧堤ｷｨ髮・＠縺ｾ縺・ : '譁ｰ縺励＞繝｡繝｢繧定ｿｽ蜉縺励∪縺・,
                               style: TextStyle(
-                                fontSize: 12, // フォントサイズを削減
-                                color: Colors.grey[600],
+                                fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                color: Colors.grey[600],
                               ),
                             ),
                           ],
@@ -11654,21 +10734,17 @@ class _MemoDialogState extends State<_MemoDialog> {
                 ),
               ),
               ],
-              // コンテンツ - パディングを大幅削減
-              Padding(
-                padding: EdgeInsets.all(MediaQuery.of(context).size.height < 600 ? 8 : 12), // パディングを大幅削減
-                child: Column(
+              // 繧ｳ繝ｳ繝・Φ繝・- 繝代ョ繧｣繝ｳ繧ｰ繧貞､ｧ蟷・炎貂・              Padding(
+                padding: EdgeInsets.all(MediaQuery.of(context).size.height < 600 ? 8 : 12), // 繝代ョ繧｣繝ｳ繧ｰ繧貞､ｧ蟷・炎貂・                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 名前（一番上に配置、常に表示） - コンパクト化
+                    // 蜷榊燕・井ｸ逡ｪ荳翫↓驟咲ｽｮ縲∝ｸｸ縺ｫ陦ｨ遉ｺ・・- 繧ｳ繝ｳ繝代け繝亥喧
                       TextField(
                         controller: _nameController,
                         decoration: const InputDecoration(
-                          labelText: '名前',
+                          labelText: '蜷榊燕',
                           border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.label, size: 20), // アイコンサイズを削減
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
-                        ),
+                          prefixIcon: Icon(Icons.label, size: 20), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                        ),
                       onTap: () {
                         setState(() {
                           _isNameFocused = true;
@@ -11687,18 +10763,14 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                    // 曜日選択を常に表示 - 間隔を削減
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を大幅削減
-                    // 服用スケジュール（曜日選択） - コンパクト化
+                    // 譖懈律驕ｸ謚槭ｒ蟶ｸ縺ｫ陦ｨ遉ｺ - 髢馴囈繧貞炎貂・                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 髢馴囈繧貞､ｧ蟷・炎貂・                    // 譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ・域屆譌･驕ｸ謚橸ｼ・- 繧ｳ繝ｳ繝代け繝亥喧
                     Text(
-                      '服用スケジュール',
+                      '譛咲畑繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ',
                       style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14, // フォントサイズを削減
-                        fontWeight: FontWeight.bold,
+                        fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 2 : 4), // 間隔を大幅削減
-                    // 毎日オプション - コンパクト化
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 2 : 4), // 髢馴囈繧貞､ｧ蟷・炎貂・                    // 豈取律繧ｪ繝励す繝ｧ繝ｳ - 繧ｳ繝ｳ繝代け繝亥喧
                     GestureDetector(
                       onTap: () {
                         setState(() {
@@ -11711,52 +10783,41 @@ class _MemoDialogState extends State<_MemoDialog> {
                       },
                       child: Container(
                         width: double.infinity,
-                        height: 44, // 高さを削減
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), // パディングを削減
-                        decoration: BoxDecoration(
+                        height: 44, // 鬮倥＆繧貞炎貂・                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                        decoration: BoxDecoration(
                           color: _selectedWeekdays.length == 7 ? _selectedColor : Colors.grey.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8), // 角丸を削減
-                          border: Border.all(
+                          borderRadius: BorderRadius.circular(8), // 隗剃ｸｸ繧貞炎貂・                          border: Border.all(
                             color: _selectedWeekdays.length == 7 ? _selectedColor : Colors.grey.withOpacity(0.3),
-                            width: 1.5, // ボーダー幅を削減
-                          ),
+                            width: 1.5, // 繝懊・繝繝ｼ蟷・ｒ蜑頑ｸ・                          ),
                         ),
                         child: Row(
                           children: [
                             Icon(
                               Icons.calendar_today,
                               color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[600],
-                              size: 18, // アイコンサイズを削減
-                            ),
-                            const SizedBox(width: 8), // 間隔を削減
-                            Expanded(
+                              size: 18, // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                            ),
+                            const SizedBox(width: 8), // 髢馴囈繧貞炎貂・                            Expanded(
                               child: Text(
-                              '毎日',
+                              '豈取律',
                               style: TextStyle(
-                                fontSize: 14, // フォントサイズを削減
-                                fontWeight: FontWeight.bold,
+                                fontSize: 14, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                fontWeight: FontWeight.bold,
                                 color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[700],
                               ),
                             ),
                             ),
-                            const SizedBox(width: 4), // 間隔を削減
-                            if (_selectedWeekdays.length == 7)
+                            const SizedBox(width: 4), // 髢馴囈繧貞炎貂・                            if (_selectedWeekdays.length == 7)
                               const Icon(
                                 Icons.check,
                                 color: Colors.white,
-                                size: 16, // アイコンサイズを削減
-                              ),
+                                size: 16, // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                              ),
                           ],
                         ),
                       ),
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
-                    // 曜日選択 - コンパクト化
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 髢馴囈繧貞炎貂・                    // 譖懈律驕ｸ謚・- 繧ｳ繝ｳ繝代け繝亥喧
                     Wrap(
-                      spacing: 6, // 間隔を削減
-                      runSpacing: 6,
+                      spacing: 6, // 髢馴囈繧貞炎貂・                      runSpacing: 6,
                       children: [
-                        '日', '月', '火', '水', '木', '金', '土'
+                        '譌･', '譛・, '轣ｫ', '豌ｴ', '譛ｨ', '驥・, '蝨・
                       ].asMap().entries.map((entry) {
                         final index = entry.key;
                         final day = entry.value;
@@ -11772,15 +10833,13 @@ class _MemoDialogState extends State<_MemoDialog> {
                             });
                           },
                           child: Container(
-                            width: 36, // サイズを削減
-                            height: 36,
+                            width: 36, // 繧ｵ繧､繧ｺ繧貞炎貂・                            height: 36,
                             decoration: BoxDecoration(
                               color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(18), // 角丸を調整
+                              borderRadius: BorderRadius.circular(18), // 隗剃ｸｸ繧定ｪｿ謨ｴ
                               border: Border.all(
                                 color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.3),
-                                width: 1.5, // ボーダー幅を削減
-                              ),
+                                width: 1.5, // 繝懊・繝繝ｼ蟷・ｒ蜑頑ｸ・                              ),
                             ),
                             child: Center(
                               child: Text(
@@ -11788,29 +10847,25 @@ class _MemoDialogState extends State<_MemoDialog> {
                                 style: TextStyle(
                                   color: isSelected ? Colors.white : Colors.grey[700],
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 12, // フォントサイズを削減
-                                ),
+                                  fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                ),
                               ),
                             ),
                           ),
                         );
                       }).toList(),
                     ),
-                    // 用量とメモ選択時は他の要素を非表示 - コンパクト化
+                    // 逕ｨ驥上→繝｡繝｢驕ｸ謚樊凾縺ｯ莉悶・隕∫ｴ繧帝撼陦ｨ遉ｺ - 繧ｳ繝ｳ繝代け繝亥喧
                     if (!_isDosageFocused && !_isNotesFocused) ...[
-                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
-                      // 種類選択 - コンパクト化
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 髢馴囈繧貞炎貂・                      // 遞ｮ鬘樣∈謚・- 繧ｳ繝ｳ繝代け繝亥喧
                       DropdownButtonFormField<String>(
                         value: _selectedType,
                         decoration: const InputDecoration(
-                          labelText: '種類',
+                          labelText: '遞ｮ鬘・,
                           border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category, size: 20), // アイコンサイズを削減
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
-                        ),
+                          prefixIcon: Icon(Icons.category, size: 20), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                        ),
                         items: const [
-                          DropdownMenuItem(value: '薬品', child: Text('💊 薬品')),
-                          DropdownMenuItem(value: 'サプリメント', child: Text('🌿 サプリメント')),
+                          DropdownMenuItem(value: '阮ｬ蜩・, child: Text('抽 阮ｬ蜩・)),
+                          DropdownMenuItem(value: '繧ｵ繝励Μ繝｡繝ｳ繝・, child: Text('諺 繧ｵ繝励Μ繝｡繝ｳ繝・)),
                         ],
                         onChanged: (value) {
                           setState(() {
@@ -11818,25 +10873,19 @@ class _MemoDialogState extends State<_MemoDialog> {
                           });
                         },
                       ),
-                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
-                    ],
-                    // 服用回数 - コンパクト化
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
-                    const Text(
-                      '服用回数',
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 髢馴囈繧貞炎貂・                    ],
+                    // 譛咲畑蝗樊焚 - 繧ｳ繝ｳ繝代け繝亥喧
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 髢馴囈繧貞炎貂・                    const Text(
+                      '譛咲畑蝗樊焚',
                       style: TextStyle(
-                        fontSize: 14, // フォントサイズを削減
-                        fontWeight: FontWeight.bold,
+                        fontSize: 14, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 4), // 間隔を削減
-                    Container(
+                    const SizedBox(height: 4), // 髢馴囈繧貞炎貂・                    Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 8), // パディングを削減
-                      decoration: BoxDecoration(
+                      padding: const EdgeInsets.symmetric(horizontal: 8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                      decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                        borderRadius: BorderRadius.circular(6), // 角丸を削減
-                      ),
+                        borderRadius: BorderRadius.circular(6), // 隗剃ｸｸ繧貞炎貂・                      ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           value: _dosageFrequency,
@@ -11844,8 +10893,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                           items: List.generate(6, (index) => index + 1).map((frequency) {
                             return DropdownMenuItem<int>(
                               value: frequency,
-                              child: Text('$frequency回', style: const TextStyle(fontSize: 14)), // フォントサイズを削減
-                            );
+                              child: Text('$frequency蝗・, style: const TextStyle(fontSize: 14)), // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                            );
                           }).toList(),
                           onChanged: (value) {
                             if (value != null) {
@@ -11858,38 +10906,31 @@ class _MemoDialogState extends State<_MemoDialog> {
                       ),
                     ),
                     if (_dosageFrequency >= 6) ...[
-                      const SizedBox(height: 6), // 間隔を削減
-                        Container(
-                          padding: const EdgeInsets.all(8), // パディングを削減
-                          decoration: BoxDecoration(
+                      const SizedBox(height: 6), // 髢馴囈繧貞炎貂・                        Container(
+                          padding: const EdgeInsets.all(8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                          decoration: BoxDecoration(
                             color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6), // 角丸を削減
-                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                            borderRadius: BorderRadius.circular(6), // 隗剃ｸｸ繧貞炎貂・                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning, color: Colors.orange, size: 16), // アイコンサイズを削減
-                              const SizedBox(width: 6), // 間隔を削減
-                              const Flexible(
+                              const Icon(Icons.warning, color: Colors.orange, size: 16), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                              const SizedBox(width: 6), // 髢馴囈繧貞炎貂・                              const Flexible(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      '服用回数が多いため、',
+                                      '譛咲畑蝗樊焚縺悟､壹＞縺溘ａ縲・,
                                       style: TextStyle(
                                         color: Colors.orange,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 12, // フォントサイズを削減
-                                      ),
+                                        fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                      ),
                                     ),
                                     Text(
-                                      '医師の指示に従ってください',
+                                      '蛹ｻ蟶ｫ縺ｮ謖・､ｺ縺ｫ蠕薙▲縺ｦ縺上□縺輔＞',
                                       style: TextStyle(
                                         color: Colors.orange,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 12, // フォントサイズを削減
-                                      ),
+                                        fontSize: 12, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                                      ),
                                     ),
                                   ],
                                 ),
@@ -11898,17 +10939,14 @@ class _MemoDialogState extends State<_MemoDialog> {
                           ),
                         ),
                     ],
-                    // 用量 - コンパクト化
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
-                    TextField(
+                    // 逕ｨ驥・- 繧ｳ繝ｳ繝代け繝亥喧
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 髢馴囈繧貞炎貂・                    TextField(
                       key: const ValueKey('dosage_field'),
                       controller: _dosageController,
                       decoration: const InputDecoration(
-                        labelText: '用量',
+                        labelText: '逕ｨ驥・,
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.straighten, size: 20), // アイコンサイズを削減
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
-                      ),
+                        prefixIcon: Icon(Icons.straighten, size: 20), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                      ),
                       onTap: () {
                         setState(() {
                           _isDosageFocused = true;
@@ -11929,19 +10967,15 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を削減
-                    // メモ - コンパクト化
+                    SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 髢馴囈繧貞炎貂・                    // 繝｡繝｢ - 繧ｳ繝ｳ繝代け繝亥喧
                     TextField(
                       key: const ValueKey('notes_field'),
                       controller: _notesController,
                       decoration: const InputDecoration(
-                        labelText: 'メモ',
+                        labelText: '繝｡繝｢',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.note, size: 20), // アイコンサイズを削減
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
-                      ),
-                      maxLines: MediaQuery.of(context).size.height < 600 ? 2 : 3, // 小さい画面では行数を削減
-                      onTap: () {
+                        prefixIcon: Icon(Icons.note, size: 20), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                      ),
+                      maxLines: MediaQuery.of(context).size.height < 600 ? 2 : 3, // 蟆上＆縺・判髱｢縺ｧ縺ｯ陦梧焚繧貞炎貂・                      onTap: () {
                         setState(() {
                           _isNotesFocused = true;
                           _isNameFocused = false;
@@ -11961,10 +10995,9 @@ class _MemoDialogState extends State<_MemoDialog> {
                         });
                       },
                     ),
-                      // メモ入力時の決定・完了ボタン - コンパクト化
+                      // 繝｡繝｢蜈･蜉帶凾縺ｮ豎ｺ螳壹・螳御ｺ・・繧ｿ繝ｳ - 繧ｳ繝ｳ繝代け繝亥喧
                       if (_isNotesFocused) ...[
-                        const SizedBox(height: 8), // 間隔を削減
-                        Row(
+                        const SizedBox(height: 8), // 髢馴囈繧貞炎貂・                        Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             Expanded(
@@ -11974,50 +11007,39 @@ class _MemoDialogState extends State<_MemoDialog> {
                                   _isNotesFocused = false;
                                 });
                               },
-                              icon: const Icon(Icons.check, size: 16), // アイコンサイズを削減
-                              label: const Text('決定', style: TextStyle(fontSize: 12)), // フォントサイズを削減
-                              style: ElevatedButton.styleFrom(
+                              icon: const Icon(Icons.check, size: 16), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                              label: const Text('豎ｺ螳・, style: TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                              style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // パディングを削減
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                            ),
                             ),
                             ),
-                            ),
-                            const SizedBox(width: 8), // 間隔を削減
-                            Expanded(
+                            const SizedBox(width: 8), // 髢馴囈繧貞炎貂・                            Expanded(
                               child: ElevatedButton.icon(
                               onPressed: () {
                                 setState(() {
                                   _isNotesFocused = false;
                                 });
                               },
-                              icon: const Icon(Icons.done, size: 16), // アイコンサイズを削減
-                              label: const Text('完了', style: TextStyle(fontSize: 12)), // フォントサイズを削減
-                              style: ElevatedButton.styleFrom(
+                              icon: const Icon(Icons.done, size: 16), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                              label: const Text('螳御ｺ・, style: TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                              style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // パディングを削減
-                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                                ),
                               ),
                             ),
                           ],
                         ),
                       ],
-                      // 色選択も用量とメモ選択時は非表示 - コンパクト化
+                      // 濶ｲ驕ｸ謚槭ｂ逕ｨ驥上→繝｡繝｢驕ｸ謚樊凾縺ｯ髱櫁｡ｨ遉ｺ - 繧ｳ繝ｳ繝代け繝亥喧
                     if (!_isDosageFocused && !_isNotesFocused) ...[
-                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 間隔を削減
-                        // 色選択 - コンパクト化
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12), // 髢馴囈繧貞炎貂・                        // 濶ｲ驕ｸ謚・- 繧ｳ繝ｳ繝代け繝亥喧
                       const Text(
-                        '色',
+                        '濶ｲ',
                         style: TextStyle(
-                          fontSize: 14, // フォントサイズを削減
-                          fontWeight: FontWeight.bold,
+                          fontSize: 14, // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8), // 間隔を削減
-                      Wrap(
-                        spacing: 8, // 間隔を削減
-                        runSpacing: 8,
+                      const SizedBox(height: 8), // 髢馴囈繧貞炎貂・                      Wrap(
+                        spacing: 8, // 髢馴囈繧貞炎貂・                        runSpacing: 8,
                         children: [
                           Colors.blue,
                           Colors.red,
@@ -12034,27 +11056,22 @@ class _MemoDialogState extends State<_MemoDialog> {
                             });
                           },
                           child: Container(
-                            width: 40, // サイズを削減
-                            height: 40,
+                            width: 40, // 繧ｵ繧､繧ｺ繧貞炎貂・                            height: 40,
                             decoration: BoxDecoration(
                               color: color,
                               shape: BoxShape.circle,
                               border: _selectedColor == color
-                                  ? Border.all(color: Colors.black, width: 2) // ボーダー幅を削減
-                                  : Border.all(color: Colors.grey.withOpacity(0.3)),
+                                  ? Border.all(color: Colors.black, width: 2) // 繝懊・繝繝ｼ蟷・ｒ蜑頑ｸ・                                  : Border.all(color: Colors.grey.withOpacity(0.3)),
                               boxShadow: _selectedColor == color
                                   ? [
                                       BoxShadow(
                                         color: color.withOpacity(0.3),
-                                        blurRadius: 6, // ブラーを削減
-                                        spreadRadius: 1, // スプレッドを削減
-                                      ),
+                                        blurRadius: 6, // 繝悶Λ繝ｼ繧貞炎貂・                                        spreadRadius: 1, // 繧ｹ繝励Ξ繝・ラ繧貞炎貂・                                      ),
                                     ]
                                   : null,
                             ),
                             child: _selectedColor == color
-                                ? const Icon(Icons.check, color: Colors.white, size: 20) // アイコンサイズを削減
-                                : null,
+                                ? const Icon(Icons.check, color: Colors.white, size: 20) // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                                : null,
                           ),
                         )).toList(),
                       ),
@@ -12062,7 +11079,7 @@ class _MemoDialogState extends State<_MemoDialog> {
                   ],
                 ),
               ),
-            // フッター（入力時は非表示） - コンパクト化
+            // 繝輔ャ繧ｿ繝ｼ・亥・蜉帶凾縺ｯ髱櫁｡ｨ遉ｺ・・- 繧ｳ繝ｳ繝代け繝亥喧
             if (!_isNameFocused && !_isDosageFocused && !_isNotesFocused) ...[
               Positioned(
                 bottom: 0,
@@ -12070,16 +11087,14 @@ class _MemoDialogState extends State<_MemoDialog> {
                 right: 0,
                 child: Container(
                   padding: EdgeInsets.only(
-                    left: MediaQuery.of(context).size.height < 600 ? 4 : 8, // パディングを削減
-                    right: MediaQuery.of(context).size.height < 600 ? 4 : 8,
+                    left: MediaQuery.of(context).size.height < 600 ? 4 : 8, // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                    right: MediaQuery.of(context).size.height < 600 ? 4 : 8,
                     top: MediaQuery.of(context).size.height < 600 ? 4 : 8,
                     bottom: MediaQuery.of(context).size.height < 600 ? 4 : 8,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.grey.withOpacity(0.1),
                     borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(12), // 角丸を削減
-                      bottomRight: Radius.circular(12),
+                      bottomLeft: Radius.circular(12), // 隗剃ｸｸ繧貞炎貂・                      bottomRight: Radius.circular(12),
                     ),
                   ),
                   child: Row(
@@ -12088,11 +11103,9 @@ class _MemoDialogState extends State<_MemoDialog> {
                       Flexible(
                         child: TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('キャンセル', style: TextStyle(fontSize: 12)), // フォントサイズを削減
+                        child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ', style: TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                      ),
                       ),
-                      ),
-                      const SizedBox(width: 8), // 間隔を削減
-                      Flexible(
+                      const SizedBox(width: 8), // 髢馴囈繧貞炎貂・                      Flexible(
                         child: ElevatedButton(
                         onPressed: () {
                           try {
@@ -12119,16 +11132,14 @@ class _MemoDialogState extends State<_MemoDialog> {
                             widget.onMemoAdded(memo);
                             Navigator.pop(context);
                             } catch (e) {
-                                    // エラーハンドリング
+                                    // 繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ
                           }
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
+                          backgroundColor: _selectedType == '繧ｵ繝励Μ繝｡繝ｳ繝・ ? Colors.green : Colors.blue,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // パディングを削減
-                        ),
-                        child: Text(widget.initialMemo != null ? '更新' : '追加', style: const TextStyle(fontSize: 12)), // フォントサイズを削減
-                        ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                        ),
+                        child: Text(widget.initialMemo != null ? '譖ｴ譁ｰ' : '霑ｽ蜉', style: const TextStyle(fontSize: 12)), // 繝輔か繝ｳ繝医し繧､繧ｺ繧貞炎貂・                        ),
                       ),
                     ],
                   ),
@@ -12139,19 +11150,17 @@ class _MemoDialogState extends State<_MemoDialog> {
         ),
       ),
             ),
-            // 右上端に×ボタンを配置 - コンパクト化
+            // 蜿ｳ荳顔ｫｯ縺ｫﾃ励・繧ｿ繝ｳ繧帝・鄂ｮ - 繧ｳ繝ｳ繝代け繝亥喧
             Positioned(
-              top: 4, // 位置を調整
+              top: 4, // 菴咲ｽｮ繧定ｪｿ謨ｴ
               right: 4,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.grey, size: 20), // アイコンサイズを削減
-                onPressed: () => Navigator.pop(context),
-                tooltip: '閉じる',
+                icon: const Icon(Icons.close, color: Colors.grey, size: 20), // 繧｢繧､繧ｳ繝ｳ繧ｵ繧､繧ｺ繧貞炎貂・                onPressed: () => Navigator.pop(context),
+                tooltip: '髢峨§繧・,
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.white.withOpacity(0.9),
                   shape: const CircleBorder(),
-                  padding: const EdgeInsets.all(4), // パディングを削減
-                ),
+                  padding: const EdgeInsets.all(4), // 繝代ョ繧｣繝ｳ繧ｰ繧貞炎貂・                ),
               ),
             ),
           ],
@@ -12160,7 +11169,7 @@ class _MemoDialogState extends State<_MemoDialog> {
     );
   }
 
-  // 色選択ダイアログ
+  // 濶ｲ驕ｸ謚槭ム繧､繧｢繝ｭ繧ｰ
   void _showColorPicker() {
     final colors = [
       Colors.red,
@@ -12178,7 +11187,7 @@ class _MemoDialogState extends State<_MemoDialog> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('色を選択'),
+        title: const Text('濶ｲ繧帝∈謚・),
         content: Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -12203,14 +11212,14 @@ class _MemoDialogState extends State<_MemoDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
+            child: const Text('繧ｭ繝｣繝ｳ繧ｻ繝ｫ'),
           ),
         ],
       ),
     );
   }
 
-  // 曜日チップウィジェット
+  // 譖懈律繝√ャ繝励え繧｣繧ｸ繧ｧ繝・ヨ
   Widget _buildWeekdayChip(String label, int weekday) {
     final isSelected = weekday == -1 
         ? _selectedWeekdays.length == 7 
@@ -12220,15 +11229,13 @@ class _MemoDialogState extends State<_MemoDialog> {
       onTap: () {
         setState(() {
           if (weekday == -1) {
-            // 毎日を選択
-            if (_selectedWeekdays.length == 7) {
+            // 豈取律繧帝∈謚・            if (_selectedWeekdays.length == 7) {
               _selectedWeekdays.clear();
             } else {
               _selectedWeekdays = [0, 1, 2, 3, 4, 5, 6];
             }
           } else {
-            // 個別の曜日を選択
-            if (_selectedWeekdays.contains(weekday)) {
+            // 蛟句挨縺ｮ譖懈律繧帝∈謚・            if (_selectedWeekdays.contains(weekday)) {
               _selectedWeekdays.remove(weekday);
             } else {
               _selectedWeekdays.add(weekday);
@@ -12237,8 +11244,7 @@ class _MemoDialogState extends State<_MemoDialog> {
         });
       },
       child: Container(
-        height: 32, // 明示的な高さを設定
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        height: 32, // 譏守､ｺ逧・↑鬮倥＆繧定ｨｭ螳・        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.2),
           borderRadius: BorderRadius.circular(12),
@@ -12259,7 +11265,7 @@ class _MemoDialogState extends State<_MemoDialog> {
     );
   }
 
-  // 警告ダイアログを表示するメソッド
+  // 隴ｦ蜻翫ム繧､繧｢繝ｭ繧ｰ繧定｡ｨ遉ｺ縺吶ｋ繝｡繧ｽ繝・ラ
   void _showWarningDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -12271,7 +11277,7 @@ class _MemoDialogState extends State<_MemoDialog> {
           children: [
             const Icon(Icons.warning, color: Colors.orange),
             const SizedBox(width: 12),
-            const Text('注意'),
+            const Text('豕ｨ諢・),
           ],
         ),
         content: const Column(
@@ -12279,7 +11285,7 @@ class _MemoDialogState extends State<_MemoDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '服用回数が多いため、',
+              '譛咲畑蝗樊焚縺悟､壹＞縺溘ａ縲・,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -12287,7 +11293,7 @@ class _MemoDialogState extends State<_MemoDialog> {
               ),
             ),
             Text(
-              '医師の指示に従ってください',
+              '蛹ｻ蟶ｫ縺ｮ謖・､ｺ縺ｫ蠕薙▲縺ｦ縺上□縺輔＞',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -12299,14 +11305,13 @@ class _MemoDialogState extends State<_MemoDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('了解'),
+            child: const Text('莠・ｧ｣'),
           ),
         ],
       ),
     );
     
-    // 3秒後に自動で閉じる
-    Future.delayed(const Duration(seconds: 3), () {
+    // 3遘貞ｾ後↓閾ｪ蜍輔〒髢峨§繧・    Future.delayed(const Duration(seconds: 3), () {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
@@ -12315,59 +11320,51 @@ class _MemoDialogState extends State<_MemoDialog> {
 
 }
 
-// ✅ 重複したmain関数を削除（既存のmain関数を使用）
-
-// ✅ Hive初期化を確実に実行（runZonedGuardedを使わない）
-Future<void> _initializeHiveSync() async {
+// 笨・驥崎､・＠縺殞ain髢｢謨ｰ繧貞炎髯､・域里蟄倥・main髢｢謨ｰ繧剃ｽｿ逕ｨ・・
+// 笨・Hive蛻晄悄蛹悶ｒ遒ｺ螳溘↓螳溯｡鯉ｼ・unZonedGuarded繧剃ｽｿ繧上↑縺・ｼ・Future<void> _initializeHiveSync() async {
   try {
-    debugPrint('📦 Hive初期化開始...');
+    debugPrint('逃 Hive蛻晄悄蛹夜幕蟋・..');
     
-    // Hive初期化
-    await Hive.initFlutter();
-    debugPrint('✅ Hive初期化完了');
+    // Hive蛻晄悄蛹・    await Hive.initFlutter();
+    debugPrint('笨・Hive蛻晄悄蛹門ｮ御ｺ・);
     
-    // アダプター登録
+    // 繧｢繝繝励ち繝ｼ逋ｻ骭ｲ
     if (!Hive.isAdapterRegistered(2)) {
       Hive.registerAdapter(MedicationMemoAdapter());
-      debugPrint('✅ MedicationMemoAdapter登録完了');
+      debugPrint('笨・MedicationMemoAdapter逋ｻ骭ｲ螳御ｺ・);
     }
     
-    // ボックスを開く（確実に完了を待つ）
-    await Hive.openBox<MedicationMemo>('medication_memos');
-    debugPrint('✅ medication_memosボックスを開きました');
+    // 繝懊ャ繧ｯ繧ｹ繧帝幕縺擾ｼ育｢ｺ螳溘↓螳御ｺ・ｒ蠕・▽・・    await Hive.openBox<MedicationMemo>('medication_memos');
+    debugPrint('笨・medication_memos繝懊ャ繧ｯ繧ｹ繧帝幕縺阪∪縺励◆');
     
-    // ✅ ボックスが開かれているか確認
-    if (Hive.isBoxOpen('medication_memos')) {
+    // 笨・繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・ｋ縺狗｢ｺ隱・    if (Hive.isBoxOpen('medication_memos')) {
       final box = Hive.box<MedicationMemo>('medication_memos');
-      debugPrint('✅ ボックス確認完了: ${box.length}件のデータ');
+      debugPrint('笨・繝懊ャ繧ｯ繧ｹ遒ｺ隱榊ｮ御ｺ・ ${box.length}莉ｶ縺ｮ繝・・繧ｿ');
     } else {
-      throw Exception('medication_memosボックスが開かれていません');
+      throw Exception('medication_memos繝懊ャ繧ｯ繧ｹ縺碁幕縺九ｌ縺ｦ縺・∪縺帙ｓ');
     }
     
   } catch (e, stackTrace) {
-    debugPrint('❌ Hive初期化エラー: $e');
-    debugPrint('スタックトレース: $stackTrace');
-    rethrow; // エラーを再スローして問題を明確化
-  }
+    debugPrint('笶・Hive蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
+    rethrow; // 繧ｨ繝ｩ繝ｼ繧貞・繧ｹ繝ｭ繝ｼ縺励※蝠城｡後ｒ譏守｢ｺ蛹・  }
 }
 
-// ✅ SharedPreferences初期化
-Future<void> _initializeSharedPreferencesSync() async {
+// 笨・SharedPreferences蛻晄悄蛹・Future<void> _initializeSharedPreferencesSync() async {
   try {
-    debugPrint('💾 SharedPreferences初期化開始...');
+    debugPrint('沈 SharedPreferences蛻晄悄蛹夜幕蟋・..');
     await SharedPreferences.getInstance();
-    debugPrint('✅ SharedPreferences初期化完了');
+    debugPrint('笨・SharedPreferences蛻晄悄蛹門ｮ御ｺ・);
   } catch (e, stackTrace) {
-    debugPrint('❌ SharedPreferences初期化エラー: $e');
-    debugPrint('スタックトレース: $stackTrace');
+    debugPrint('笶・SharedPreferences蛻晄悄蛹悶お繝ｩ繝ｼ: $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
     rethrow;
   }
 }
 
-// ✅ Firebase初期化（失敗しても続行可能）
-Future<void> _initializeFirebaseSync() async {
+// 笨・Firebase蛻晄悄蛹厄ｼ亥､ｱ謨励＠縺ｦ繧らｶ夊｡悟庄閭ｽ・・Future<void> _initializeFirebaseSync() async {
   try {
-    debugPrint('🔥 Firebase初期化開始...');
+    debugPrint('櫨 Firebase蛻晄悄蛹夜幕蟋・..');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
@@ -12382,36 +11379,33 @@ Future<void> _initializeFirebaseSync() async {
       return true;
     };
     
-    debugPrint('✅ Firebase初期化完了');
+    debugPrint('笨・Firebase蛻晄悄蛹門ｮ御ｺ・);
   } catch (e, stackTrace) {
-    debugPrint('⚠️ Firebase初期化失敗（アプリは続行）: $e');
-    debugPrint('スタックトレース: $stackTrace');
-    // Firebaseエラーは致命的ではないので続行
-  }
+    debugPrint('笞・・Firebase蛻晄悄蛹門､ｱ謨暦ｼ医い繝励Μ縺ｯ邯夊｡鯉ｼ・ $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
+    // Firebase繧ｨ繝ｩ繝ｼ縺ｯ閾ｴ蜻ｽ逧・〒縺ｯ縺ｪ縺・・縺ｧ邯夊｡・  }
 }
 
-// ✅ タイムゾーン初期化
-Future<void> _initializeTimezoneSync() async {
+// 笨・繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹・Future<void> _initializeTimezoneSync() async {
   try {
-    debugPrint('🌍 タイムゾーン初期化開始...');
+    debugPrint('訣 繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹夜幕蟋・..');
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Tokyo'));
-    debugPrint('✅ タイムゾーン初期化完了');
+    debugPrint('笨・繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹門ｮ御ｺ・);
   } catch (e, stackTrace) {
-    debugPrint('⚠️ タイムゾーン初期化失敗（アプリは続行）: $e');
-    debugPrint('スタックトレース: $stackTrace');
+    debugPrint('笞・・繧ｿ繧､繝繧ｾ繝ｼ繝ｳ蛻晄悄蛹門､ｱ謨暦ｼ医い繝励Μ縺ｯ邯夊｡鯉ｼ・ $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
   }
 }
 
-// ✅ 通知初期化
-Future<void> _initializeNotificationsSync() async {
+// 笨・騾夂衍蛻晄悄蛹・Future<void> _initializeNotificationsSync() async {
   try {
-    debugPrint('🔔 通知初期化開始...');
+    debugPrint('粕 騾夂衍蛻晄悄蛹夜幕蟋・..');
     await NotificationService.initialize();
-    debugPrint('✅ 通知初期化完了');
+    debugPrint('笨・騾夂衍蛻晄悄蛹門ｮ御ｺ・);
   } catch (e, stackTrace) {
-    debugPrint('⚠️ 通知初期化失敗（アプリは続行）: $e');
-    debugPrint('スタックトレース: $stackTrace');
+    debugPrint('笞・・騾夂衍蛻晄悄蛹門､ｱ謨暦ｼ医い繝励Μ縺ｯ邯夊｡鯉ｼ・ $e');
+    debugPrint('繧ｹ繧ｿ繝・け繝医Ξ繝ｼ繧ｹ: $stackTrace');
   }
 }
 

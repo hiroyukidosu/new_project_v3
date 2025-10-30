@@ -118,15 +118,15 @@ class DataPersistence {
                 'name': medData['name'] ?? '',
                 'type': medData['type'] ?? '薬品',
                 'dosage': medData['dosage'] ?? '',
-                'color': Color(medData['color'] ?? Colors.blue.value),
+                'color': Color(medData['color'] as int? ?? Colors.blue.value),
                 'taken': medData['taken'] ?? false,
                 'takenTime': medData['takenTime'] != null 
-                    ? DateTime.parse(medData['takenTime']) 
+                    ? DateTime.parse(medData['takenTime'] as String) 
                     : null,
                 'notes': medData['notes'] ?? '',
                 'isChecked': medData['isChecked'] ?? false,
                 'createdAt': medData['createdAt'] != null 
-                    ? DateTime.parse(medData['createdAt']) 
+                    ? DateTime.parse(medData['createdAt'] as String) 
                     : DateTime.now(),
               });
             }
@@ -161,7 +161,7 @@ class DataPersistence {
         try {
           final jsonArray = prefs.getString(key);
           if (jsonArray != null && jsonArray.isNotEmpty) {
-            final List<dynamic> medicationsList = jsonDecode(jsonArray);
+            final List<dynamic> medicationsList = jsonDecode(jsonArray) as List<dynamic>;
             final addedMedications = <Map<String, dynamic>>[];
             
             for (final medData in medicationsList) {
@@ -171,15 +171,15 @@ class DataPersistence {
                 'name': med['name'] ?? '',
                 'type': med['type'] ?? '薬品',
                 'dosage': med['dosage'] ?? '',
-                'color': Color(med['color'] ?? Colors.blue.value),
+                'color': Color(med['color'] as int? ?? Colors.blue.value),
                 'taken': med['taken'] ?? false,
                 'takenTime': med['takenTime'] != null 
-                    ? DateTime.parse(med['takenTime']) 
+                    ? DateTime.parse(med['takenTime'] as String) 
                     : null,
                 'notes': med['notes'] ?? '',
                 'isChecked': med['isChecked'] ?? false,
                 'createdAt': med['createdAt'] != null 
-                    ? DateTime.parse(med['createdAt']) 
+                    ? DateTime.parse(med['createdAt'] as String) 
                     : DateTime.now(),
               });
             }
@@ -302,7 +302,7 @@ class DataPersistence {
       
       if (alarmJson != null && alarmJson.isNotEmpty) {
         try {
-          final List<dynamic> alarmJsonList = jsonDecode(alarmJson);
+          final List<dynamic> alarmJsonList = jsonDecode(alarmJson) as List<dynamic>;
           alarmList = alarmJsonList.map((alarm) {
             final alarmMap = alarm as Map<String, dynamic>;
             return {
@@ -314,7 +314,7 @@ class DataPersistence {
               'volume': alarmMap['volume'] ?? 80,
               'message': alarmMap['message'] ?? '薬を服用する時間です',
               'isRepeatEnabled': alarmMap['isRepeatEnabled'] ?? false,
-              'selectedDays': List<bool>.from(alarmMap['selectedDays'] ?? [false, false, false, false, false, false, false]),
+              'selectedDays': List<bool>.from(alarmMap['selectedDays'] as List<dynamic>? ?? [false, false, false, false, false, false, false]),
             };
           }).toList();
           
@@ -338,7 +338,7 @@ class DataPersistence {
         try {
           final settingsJson = prefs.getString(key);
           if (settingsJson != null && settingsJson.isNotEmpty) {
-            alarmSettings = Map<String, dynamic>.from(jsonDecode(settingsJson));
+            alarmSettings = Map<String, dynamic>.from(jsonDecode(settingsJson) as Map<dynamic, dynamic>);
             debugPrint('✅ アラーム設定読み込み成功: $key');
             break;
           }
@@ -356,8 +356,8 @@ class DataPersistence {
       debugPrint('❌ アラームデータ読み込みエラー: $e');
       debugPrint('スタックトレース: $stackTrace');
       return {
-        'alarmList': [],
-        'alarmSettings': {},
+        'alarmList': <Map<String, dynamic>>[],
+        'alarmSettings': <String, dynamic>{},
       };
     }
   }

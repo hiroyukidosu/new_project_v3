@@ -1,7 +1,21 @@
-// Flutter core imports
 import 'package:flutter/material.dart';
 
-// ✅ 修正：統一された定数管理
+enum NotificationType {
+  medication,
+  reminder,
+  alert,
+}
+
+enum SoundType {
+  defaultSound('デフォルト', 'default'),
+  gentle('優しい音', 'gentle'),
+  urgent('緊急音', 'urgent');
+  
+  const SoundType(this.displayName, this.soundFile);
+  final String displayName;
+  final String soundFile;
+}
+
 class AppConstants {
   // アニメーション時間
   static const Duration animationDuration = Duration(milliseconds: 300);
@@ -29,7 +43,7 @@ class AppConstants {
   static const double calendarScrollVelocityThreshold = 300.0;
 }
 
-// ✅ 修正：統一されたUI定数（マジックナンバー削減）
+// 修正：統一されたUI定数でマジックナンバー削減！
 class AppDimensions {
   // 高さ
   static const double listMaxHeight = 250.0;

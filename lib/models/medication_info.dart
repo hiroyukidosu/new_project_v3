@@ -1,13 +1,11 @@
-// Flutter core imports
-import 'package:hive/hive.dart';
-
-// 服用情報のデータモデル
+/// 薬物情報のデータモデル
 class MedicationInfo {
   final bool checked;
   final String medicine;
   final DateTime? actualTime;
   final String notes;
   final String sideEffects;
+  
   MedicationInfo({
     required this.checked,
     required this.medicine,
@@ -15,6 +13,7 @@ class MedicationInfo {
     this.notes = '',
     this.sideEffects = '',
   });
+  
   Map<String, dynamic> toJson() => {
         'checked': checked,
         'medicine': medicine,
@@ -22,6 +21,7 @@ class MedicationInfo {
         'notes': notes,
         'sideEffects': sideEffects,
       };
+      
   factory MedicationInfo.fromJson(Map<String, dynamic> json) => MedicationInfo(
         checked: json['checked'] ?? false,
         medicine: json['medicine'] ?? '',
@@ -29,30 +29,4 @@ class MedicationInfo {
         notes: json['notes'] ?? '',
         sideEffects: json['sideEffects'] ?? '',
       );
-}
-
-class MedicationInfoAdapter extends TypeAdapter<MedicationInfo> {
-  @override
-  final int typeId = 0;
-  @override
-  MedicationInfo read(BinaryReader reader) {
-    return MedicationInfo(
-      checked: reader.readBool(),
-      medicine: reader.readString(),
-      actualTime: reader.readBool() ? DateTime.parse(reader.readString()) : null,
-      notes: reader.readString(),
-      sideEffects: reader.readString(),
-    );
-  }
-  @override
-  void write(BinaryWriter writer, MedicationInfo obj) {
-    writer.writeBool(obj.checked);
-    writer.writeString(obj.medicine);
-    writer.writeBool(obj.actualTime != null);
-    if (obj.actualTime != null) {
-      writer.writeString(obj.actualTime!.toIso8601String());
-    }
-    writer.writeString(obj.notes);
-    writer.writeString(obj.sideEffects);
-  }
 }

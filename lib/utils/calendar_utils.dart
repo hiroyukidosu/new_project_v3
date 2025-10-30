@@ -109,24 +109,24 @@ class CalendarUtils {
       defaultBuilder: (context, day, focusedDay) {
         return buildCalendarDay(
           day,
-          hasMark: hasMark(day),
-          eventCount: getEventCount(day),
+          hasMark: hasMark(day) as bool,
+          eventCount: getEventCount(day) as int,
         );
       },
       selectedBuilder: (context, day, focusedDay) {
         return buildCalendarDay(
           day,
           isSelected: true,
-          hasMark: hasMark(day),
-          eventCount: getEventCount(day),
+          hasMark: hasMark(day) as bool,
+          eventCount: getEventCount(day) as int,
         );
       },
       todayBuilder: (context, day, focusedDay) {
         return buildCalendarDay(
           day,
           isToday: true,
-          hasMark: hasMark(day),
-          eventCount: getEventCount(day),
+          hasMark: hasMark(day) as bool,
+          eventCount: getEventCount(day) as int,
         );
       },
     );

@@ -10,16 +10,15 @@ void main() {
         name: 'テスト薬',
         dosage: '1錠',
         type: '薬',
-        selectedDays: [1, 2, 3],
+        selectedWeekdays: [1, 2, 3],
         createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
       );
       
       expect(memo.id, equals('test_id'));
       expect(memo.name, equals('テスト薬'));
       expect(memo.dosage, equals('1錠'));
       expect(memo.type, equals('薬'));
-      expect(memo.selectedDays, equals([1, 2, 3]));
+      expect(memo.selectedWeekdays, equals([1, 2, 3]));
     });
     
     test('MedicationMemoのJSON変換が正常に動作する', () {
@@ -28,9 +27,8 @@ void main() {
         name: 'テスト薬',
         dosage: '1錠',
         type: '薬',
-        selectedDays: [1, 2, 3],
+        selectedWeekdays: [1, 2, 3],
         createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
       );
       
       final json = memo.toJson();
@@ -40,30 +38,33 @@ void main() {
       expect(restoredMemo.name, equals(memo.name));
       expect(restoredMemo.dosage, equals(memo.dosage));
       expect(restoredMemo.type, equals(memo.type));
-      expect(restoredMemo.selectedDays, equals(memo.selectedDays));
+      expect(restoredMemo.selectedWeekdays, equals(memo.selectedWeekdays));
     });
     
-    test('MedicationMemoのcopyWithが正常に動作する', () {
-      final originalMemo = MedicationMemo(
+    test('MedicationMemoの比較が正常に動作する', () {
+      final memo1 = MedicationMemo(
         id: 'test_id',
         name: 'テスト薬',
         dosage: '1錠',
         type: '薬',
-        selectedDays: [1, 2, 3],
+        selectedWeekdays: [1, 2, 3],
         createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
       );
       
-      final updatedMemo = originalMemo.copyWith(
-        name: '更新された薬',
-        dosage: '2錠',
+      final memo2 = MedicationMemo(
+        id: 'test_id',
+        name: 'テスト薬',
+        dosage: '1錠',
+        type: '薬',
+        selectedWeekdays: [1, 2, 3],
+        createdAt: DateTime.now(),
       );
       
-      expect(updatedMemo.id, equals(originalMemo.id));
-      expect(updatedMemo.name, equals('更新された薬'));
-      expect(updatedMemo.dosage, equals('2錠'));
-      expect(updatedMemo.type, equals(originalMemo.type));
-      expect(updatedMemo.selectedDays, equals(originalMemo.selectedDays));
+      expect(memo1.id, equals(memo2.id));
+      expect(memo1.name, equals(memo2.name));
+      expect(memo1.dosage, equals(memo2.dosage));
+      expect(memo1.type, equals(memo2.type));
+      expect(memo1.selectedWeekdays, equals(memo2.selectedWeekdays));
     });
   });
 }

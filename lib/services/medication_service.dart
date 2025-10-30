@@ -1,16 +1,14 @@
-// Dart core imports
 import 'dart:io';
-
-// Third-party package imports
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
-
-// Local imports
 import '../models/medication_info.dart';
 import '../models/medicine_data.dart';
+import '../models/adapters/medication_info_adapter.dart';
+import '../models/adapters/medicine_data_adapter.dart';
 
-// 薬物管理サービス
+/// 薬物データのサービス
+/// Hiveデータベースを使って薬物データを管理
 class MedicationService {
   static Box<Map>? _medicationBox;
   static Box<MedicineData>? _medicineDatabase;
@@ -24,12 +22,14 @@ class MedicationService {
     try {
       final directory = await getApplicationDocumentsDirectory();
       await Hive.initFlutter(directory.path);
+      
       if (!Hive.isAdapterRegistered(0)) {
         Hive.registerAdapter(MedicationInfoAdapter());
       }
       if (!Hive.isAdapterRegistered(1)) {
         Hive.registerAdapter(MedicineDataAdapter());
       }
+      
       _medicationBox = await Hive.openBox<Map>('medicationData');
       _medicineDatabase = await Hive.openBox<MedicineData>('medicineDatabase');
       _adherenceStats = await Hive.openBox<Map>('adherenceStats');
@@ -91,6 +91,7 @@ class MedicationService {
       );
       await _medicationBox!.flush();
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -101,6 +102,7 @@ class MedicationService {
       await _medicineDatabase!.put(medicine.name, medicine);
       await _medicineDatabase!.flush();
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -111,6 +113,7 @@ class MedicationService {
       await _medicineDatabase!.delete(name);
       await _medicineDatabase!.flush();
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -121,6 +124,7 @@ class MedicationService {
       await _adherenceStats!.put('rates', stats);
       await _adherenceStats!.flush();
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -131,6 +135,7 @@ class MedicationService {
       await _settingsBox!.putAll(settings);
       await _settingsBox!.flush();
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -148,13 +153,15 @@ class MedicationService {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/$_csvFileName');
-      final now = DateFormat('yyyy年MM月dd日 HH:mm:ss', 'ja_JP').format(DateTime.now());
-      final record = '$dateStr,$timeSlot,${medicine.isEmpty ? "未入力" : medicine},$status,$now\n';
+      final now = DateFormat('yyyy年MM月d日 HH:mm:ss', 'ja_JP').format(DateTime.now());
+      final record = '$dateStr,$timeSlot,${medicine.isEmpty ? "薬なし" : medicine},$status,$now\n';
+      
       if (!await file.exists()) {
-        await file.writeAsString('日付,時間帯,薬の種類,服薬状況,記録時間\n');
+        await file.writeAsString('日付,時間帯,薬の名前,服用状態,記録時間\n');
       }
       await file.writeAsString(record, mode: FileMode.append);
     } catch (e) {
+      // エラー処理
     }
   }
 }

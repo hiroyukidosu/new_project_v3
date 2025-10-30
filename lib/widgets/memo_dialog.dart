@@ -1,31 +1,20 @@
-// Dart core imports
-import 'dart:async';
-
-// Flutter core imports
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
-// Local imports
 import '../models/medication_memo.dart';
-import '../utils/constants.dart';
 
-class MemoDialog extends StatefulWidget {
+class _MemoDialog extends StatefulWidget {
   final Function(MedicationMemo) onMemoAdded;
   final MedicationMemo? initialMemo;
   final List<MedicationMemo> existingMemos;
-  
-  const MemoDialog({
-    super.key,
+  const _MemoDialog({
     required this.onMemoAdded,
     this.initialMemo,
     required this.existingMemos,
   });
-  
   @override
-  State<MemoDialog> createState() => _MemoDialogState();
+  State<_MemoDialog> createState() => _MemoDialogState();
 }
 
-class _MemoDialogState extends State<MemoDialog> {
+class _MemoDialogState extends State<_MemoDialog> {
   final _nameController = TextEditingController();
   final _dosageController = TextEditingController();
   final _notesController = TextEditingController();
@@ -63,16 +52,15 @@ class _MemoDialogState extends State<MemoDialog> {
       
       // メモ編集モードの場合、自動的にメモフィールドにフォーカス（スクロールは削除）
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _memoFocusNode.requestFocus();
+        if (widget.initialMemo != null) {
+          _memoFocusNode.requestFocus();
+        }
       });
     }
   }
   
   @override
   void dispose() {
-    _nameController.dispose();
-    _dosageController.dispose();
-    _notesController.dispose();
     _scrollController.dispose();
     _memoFocusNode.dispose();
     super.dispose();
@@ -80,408 +68,460 @@ class _MemoDialogState extends State<MemoDialog> {
   
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.dialogBorderRadius),
-      ),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * AppDimensions.dialogMaxHeight,
-          minHeight: MediaQuery.of(context).size.height * AppDimensions.dialogMinHeight,
+    // メモ編集と新規追加を統一した画面 - 上部のスペースを最大限活用
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 50),
+      curve: Curves.easeOut,
+      child: Dialog(
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: MediaQuery.of(context).size.width * 0.02, // 左右の余白を大幅削減
+          vertical: MediaQuery.of(context).size.height * 0.02, // 上下の余白を大幅削減
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12), // 角丸を削減
+        ),
+        child: Stack(
           children: [
-            // ヘッダー
             Container(
-              padding: AppDimensions.dialogPadding,
-              decoration: BoxDecoration(
-                color: _selectedColor.withOpacity(0.1),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(AppDimensions.dialogBorderRadius),
-                  topRight: Radius.circular(AppDimensions.dialogBorderRadius),
-                ),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.95, // 画面の95%に拡大
+                maxWidth: MediaQuery.of(context).size.width * 0.95,   // 画面の95%に拡大
+                minWidth: 280,   // 最小幅を280に設定
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    widget.initialMemo != null ? Icons.edit : Icons.add,
-                    color: _selectedColor,
-                    size: AppDimensions.largeIcon,
-                  ),
-                  const SizedBox(width: AppDimensions.mediumSpacing),
-                  Expanded(
-                    child: Text(
-                      widget.initialMemo != null ? 'メモを編集' : '新しいメモを追加',
-                      style: TextStyle(
-                        fontSize: AppDimensions.titleText,
-                        fontWeight: FontWeight.bold,
-                        color: _selectedColor,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            // コンテンツ
-            Expanded(
+              width: MediaQuery.of(context).size.width * 0.95, // 明示的な幅を設定
               child: SingleChildScrollView(
                 controller: _scrollController,
-                padding: AppDimensions.dialogPadding,
+                physics: const AlwaysScrollableScrollPhysics(), // 常にスクロール可能
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.of(context).size.width < 400 ? 4 : 8, // 小さい画面では余白を大幅削減
+                  vertical: MediaQuery.of(context).size.height < 600 ? 2 : 4, // 小さい画面では余白を大幅削減
+                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.max, // 最大サイズで配置
                   children: [
-                    // 名前フィールド
-                    _buildNameField(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // タイプ選択
-                    _buildTypeSelector(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // 用量フィールド
-                    _buildDosageField(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // 服用頻度
-                    _buildDosageFrequency(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // 曜日選択
-                    _buildWeekdaySelector(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // 色選択
-                    _buildColorSelector(),
-                    const SizedBox(height: AppDimensions.largeSpacing),
-                    
-                    // メモフィールド
-                    _buildNotesField(),
+                    // ヘッダー（入力時は非表示） - コンパクト化
+                    if (!_isNameFocused && !_isDosageFocused && !_isNotesFocused) ...[
+                      Container(
+                        padding: EdgeInsets.all(
+                          MediaQuery.of(context).size.height < 600 ? 4 : 6, // パディングを大幅削減
+                        ),
+                        decoration: BoxDecoration(
+                          color: _selectedType == 'サプリメント' ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(12), // 角丸を削減
+                            topRight: Radius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _selectedType == 'サプリメント' ? Icons.eco : Icons.medication,
+                              color: _selectedType == 'サプリメント' ? Colors.green : Colors.blue,
+                              size: 20, // アイコンサイズを削減
+                            ),
+                            const SizedBox(width: 8), // 間隔を削減
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    widget.initialMemo != null ? 'メモ編集' : 'メモ追加',
+                                    style: const TextStyle(
+                                      fontSize: 16, // フォントサイズを削減
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2), // 間隔を削減
+                                  Text(
+                                    widget.initialMemo != null ? 'メモを編集します' : '新しいメモを追加します',
+                                    style: TextStyle(
+                                      fontSize: 12, // フォントサイズを削減
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    // コンテンツ - パディングを大幅削減
+                    Padding(
+                      padding: EdgeInsets.all(MediaQuery.of(context).size.height < 600 ? 8 : 12), // パディングを大幅削減
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 名前（一番上に配置、常に表示） - コンパクト化
+                          TextField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: '名前',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.label, size: 20), // アイコンサイズを削減
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _isNameFocused = true;
+                                _isDosageFocused = false;
+                                _isNotesFocused = false;
+                              });
+                            },
+                            onChanged: (value) {
+                              setState(() {
+                                _isNameFocused = value.isNotEmpty;
+                              });
+                            },
+                            onSubmitted: (value) {
+                              setState(() {
+                                _isNameFocused = false;
+                              });
+                            },
+                          ),
+                          // 曜日選択を常に表示 - 間隔を削減
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を大幅削減
+                          // 服用スケジュール（曜日選択） - コンパクト化
+                          Text(
+                            '服用スケジュール',
+                            style: TextStyle(
+                              fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14, // フォントサイズを削減
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 2 : 4), // 間隔を大幅削減
+                          // 毎日オプション - コンパクト化
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (_selectedWeekdays.length == 7) {
+                                  _selectedWeekdays.clear();
+                                } else {
+                                  _selectedWeekdays = [0, 1, 2, 3, 4, 5, 6];
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: MediaQuery.of(context).size.height < 600 ? 8 : 12,
+                                vertical: MediaQuery.of(context).size.height < 600 ? 4 : 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _selectedWeekdays.length == 7 ? Colors.blue : Colors.grey[200],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _selectedWeekdays.length == 7 ? Colors.blue : Colors.grey[400]!,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: MediaQuery.of(context).size.height < 600 ? 14 : 16,
+                                    color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '毎日',
+                                    style: TextStyle(
+                                      fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: _selectedWeekdays.length == 7 ? Colors.white : Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6),
+                          // 曜日選択ボタン - コンパクト化
+                          Wrap(
+                            spacing: MediaQuery.of(context).size.height < 600 ? 2 : 4,
+                            runSpacing: MediaQuery.of(context).size.height < 600 ? 2 : 4,
+                            children: List.generate(7, (index) {
+                              final weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+                              final isSelected = _selectedWeekdays.contains(index);
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      _selectedWeekdays.remove(index);
+                                    } else {
+                                      _selectedWeekdays.add(index);
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  width: MediaQuery.of(context).size.height < 600 ? 28 : 32,
+                                  height: MediaQuery.of(context).size.height < 600 ? 28 : 32,
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? Colors.blue : Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isSelected ? Colors.blue : Colors.grey[400]!,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      weekdays[index],
+                                      style: TextStyle(
+                                        fontSize: MediaQuery.of(context).size.height < 600 ? 10 : 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected ? Colors.white : Colors.grey[600],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8),
+                          // 服用回数選択 - コンパクト化
+                          Text(
+                            '服用回数',
+                            style: TextStyle(
+                              fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 2 : 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Slider(
+                                  value: _dosageFrequency.toDouble(),
+                                  min: 1,
+                                  max: 6,
+                                  divisions: 5,
+                                  label: '$_dosageFrequency回',
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _dosageFrequency = value.round();
+                                    });
+                                  },
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: MediaQuery.of(context).size.height < 600 ? 6 : 8,
+                                  vertical: MediaQuery.of(context).size.height < 600 ? 2 : 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '$_dosageFrequency回',
+                                  style: TextStyle(
+                                    fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8),
+                          // タイプ選択 - コンパクト化
+                          Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedType = '薬品';
+                                      _selectedColor = Colors.blue;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: MediaQuery.of(context).size.height < 600 ? 8 : 12,
+                                      vertical: MediaQuery.of(context).size.height < 600 ? 6 : 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _selectedType == '薬品' ? Colors.blue : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: _selectedType == '薬品' ? Colors.blue : Colors.grey[400]!,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.medication,
+                                          size: MediaQuery.of(context).size.height < 600 ? 14 : 16,
+                                          color: _selectedType == '薬品' ? Colors.white : Colors.grey[600],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '薬品',
+                                          style: TextStyle(
+                                            fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: _selectedType == '薬品' ? Colors.white : Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedType = 'サプリメント';
+                                      _selectedColor = Colors.green;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: MediaQuery.of(context).size.height < 600 ? 8 : 12,
+                                      vertical: MediaQuery.of(context).size.height < 600 ? 6 : 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _selectedType == 'サプリメント' ? Colors.green : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: _selectedType == 'サプリメント' ? Colors.green : Colors.grey[400]!,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.eco,
+                                          size: MediaQuery.of(context).size.height < 600 ? 14 : 16,
+                                          color: _selectedType == 'サプリメント' ? Colors.white : Colors.grey[600],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'サプリメント',
+                                          style: TextStyle(
+                                            fontSize: MediaQuery.of(context).size.height < 600 ? 12 : 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: _selectedType == 'サプリメント' ? Colors.white : Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8),
+                          // 用量フィールド - コンパクト化
+                          TextField(
+                            controller: _dosageController,
+                            decoration: const InputDecoration(
+                              labelText: '用量',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.straighten, size: 20),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _isDosageFocused = true;
+                                _isNameFocused = false;
+                                _isNotesFocused = false;
+                              });
+                            },
+                            onChanged: (value) {
+                              setState(() {
+                                _isDosageFocused = value.isNotEmpty;
+                              });
+                            },
+                            onSubmitted: (value) {
+                              setState(() {
+                                _isDosageFocused = false;
+                              });
+                            },
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 6 : 8),
+                          // メモフィールド - コンパクト化
+                          TextField(
+                            controller: _notesController,
+                            focusNode: _memoFocusNode,
+                            decoration: const InputDecoration(
+                              labelText: 'メモ',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.note, size: 20),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            maxLines: 3,
+                            onTap: () {
+                              setState(() {
+                                _isNotesFocused = true;
+                                _isNameFocused = false;
+                                _isDosageFocused = false;
+                              });
+                            },
+                            onChanged: (value) {
+                              setState(() {
+                                _isNotesFocused = value.isNotEmpty;
+                              });
+                            },
+                            onSubmitted: (value) {
+                              setState(() {
+                                _isNotesFocused = false;
+                              });
+                            },
+                          ),
+                          SizedBox(height: MediaQuery.of(context).size.height < 600 ? 8 : 12),
+                          // ボタンエリア - コンパクト化
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: MediaQuery.of(context).size.height < 600 ? 8 : 12,
+                                    ),
+                                  ),
+                                  child: const Text('キャンセル'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _saveMemo,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _selectedColor,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: MediaQuery.of(context).size.height < 600 ? 8 : 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    widget.initialMemo != null ? '更新' : '追加',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            // ボタンエリア
-            Container(
-              padding: AppDimensions.dialogPadding,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(AppDimensions.dialogBorderRadius),
-                  bottomRight: Radius.circular(AppDimensions.dialogBorderRadius),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('キャンセル'),
-                    ),
-                  ),
-                  const SizedBox(width: AppDimensions.mediumSpacing),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _saveMemo,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _selectedColor,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: Text(widget.initialMemo != null ? '更新' : '追加'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
     );
   }
-  
-  Widget _buildNameField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '名前',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        TextField(
-          controller: _nameController,
-          focusNode: _memoFocusNode,
-          decoration: const InputDecoration(
-            hintText: '薬やサプリメントの名前を入力',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) {
-            setState(() {
-              _isNameFocused = value.isNotEmpty;
-            });
-          },
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildTypeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'タイプ',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        Row(
-          children: [
-            Expanded(
-              child: RadioListTile<String>(
-                title: const Text('薬品'),
-                value: '薬品',
-                groupValue: _selectedType,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedType = value!;
-                  });
-                },
-              ),
-            ),
-            Expanded(
-              child: RadioListTile<String>(
-                title: const Text('サプリメント'),
-                value: 'サプリメント',
-                groupValue: _selectedType,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedType = value!;
-                  });
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildDosageField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '用量',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        TextField(
-          controller: _dosageController,
-          decoration: const InputDecoration(
-            hintText: '例: 1錠、500mg',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) {
-            setState(() {
-              _isDosageFocused = value.isNotEmpty;
-            });
-          },
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildDosageFrequency() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '服用回数',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        Row(
-          children: List.generate(6, (index) {
-            final frequency = index + 1;
-            return Expanded(
-              child: RadioListTile<int>(
-                title: Text('${frequency}回'),
-                value: frequency,
-                groupValue: _dosageFrequency,
-                onChanged: (value) {
-                  setState(() {
-                    _dosageFrequency = value!;
-                  });
-                },
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildWeekdaySelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '服用曜日',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        Wrap(
-          spacing: AppDimensions.smallSpacing,
-          runSpacing: AppDimensions.smallSpacing,
-          children: List.generate(7, (index) {
-            final weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-            final isSelected = _selectedWeekdays.contains(index);
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isSelected) {
-                    _selectedWeekdays.remove(index);
-                  } else {
-                    _selectedWeekdays.add(index);
-                  }
-                });
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(AppDimensions.buttonBorderRadius),
-                  border: Border.all(
-                    color: isSelected ? _selectedColor : Colors.grey.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    weekdays[index],
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: AppDimensions.mediumText,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildColorSelector() {
-    final colors = [
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.red,
-      Colors.teal,
-      Colors.indigo,
-      Colors.pink,
-    ];
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '色',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        Wrap(
-          spacing: AppDimensions.smallSpacing,
-          children: colors.map((color) {
-            final isSelected = _selectedColor == color;
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedColor = color;
-                });
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? Colors.black : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? const Icon(
-                        Icons.check,
-                        color: Colors.white,
-                        size: 20,
-                      )
-                    : null,
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildNotesField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'メモ',
-          style: TextStyle(
-            fontSize: AppDimensions.mediumText,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.smallSpacing),
-        TextField(
-          controller: _notesController,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: '追加のメモがあれば入力してください',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (value) {
-            setState(() {
-              _isNotesFocused = value.isNotEmpty;
-            });
-          },
-        ),
-      ],
-    );
-  }
-  
+
   void _saveMemo() {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -490,7 +530,7 @@ class _MemoDialogState extends State<MemoDialog> {
       );
       return;
     }
-    
+
     final memo = MedicationMemo(
       id: widget.initialMemo?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -498,11 +538,12 @@ class _MemoDialogState extends State<MemoDialog> {
       dosage: _dosageController.text.trim(),
       notes: _notesController.text.trim(),
       createdAt: widget.initialMemo?.createdAt ?? DateTime.now(),
+      lastTaken: widget.initialMemo?.lastTaken,
       color: _selectedColor,
       selectedWeekdays: _selectedWeekdays,
       dosageFrequency: _dosageFrequency,
     );
-    
+
     widget.onMemoAdded(memo);
     Navigator.of(context).pop();
   }

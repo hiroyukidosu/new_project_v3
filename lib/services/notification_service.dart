@@ -1,21 +1,15 @@
-// Dart core imports
 import 'dart:io';
-
-// Flutter core imports
 import 'package:flutter/material.dart';
-
-// Third-party package imports
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/intl.dart';
-
-// Local imports
 import '../models/medication_info.dart';
-import '../utils/constants.dart';
+import '../models/notification_types.dart';
 
-// 通知管理サービス
+/// 通知サービス
+/// アプリ通知の設定・管理を行う
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static bool _isInitialized = false;
@@ -23,7 +17,7 @@ class NotificationService {
   static Future<bool> initialize() async {
     if (_isInitialized) return true;
     try {
-      tz.initializeTimeZones();
+      tzdata.initializeTimeZones();
       tz.setLocalLocation(tz.getLocation('Asia/Tokyo'));
      
       if (Platform.isAndroid) {
@@ -36,6 +30,7 @@ class NotificationService {
           await Permission.scheduleExactAlarm.request();
         }
       }
+      
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
@@ -43,16 +38,19 @@ class NotificationService {
         requestSoundPermission: true,
       );
       const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+      
       final initialized = await _plugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (response) {
+          // 通知タップ時の処理
         },
       );
+      
       if ((initialized ?? false) && Platform.isAndroid) {
         final channels = [
           const AndroidNotificationChannel(
             'medication_sound',
-            '服用アラーム',
+            '薬物アラーム',
             description: '服薬時間の通知',
             importance: Importance.max,
             playSound: true,
@@ -64,6 +62,7 @@ class NotificationService {
           await androidPlugin?.createNotificationChannel(channel);
         }
       }
+      
       _isInitialized = initialized ?? false;
       return _isInitialized;
     } catch (e) {
@@ -78,12 +77,12 @@ class NotificationService {
   ) async {
     if (!_isInitialized) return;
     try {
-      // 既存の通知をすべてキャンセル
+      // 既存の通知を全てキャンセル
       await _plugin.cancelAll();
       int notificationId = 1;
       final now = DateTime.now();
       
-      // medicationDataの各エントリに対して通知をスケジュール
+      // medicationDataの全てのエントリーに対して通知をスケジュール
       for (final entry in medicationData.entries) {
         final dateStr = entry.key;
         final date = DateFormat('yyyy-MM-dd').parse(dateStr);
@@ -97,14 +96,14 @@ class NotificationService {
               time.hour, time.minute
             );
             
-            // 過去の日時はスケジュールしない
+            // 未来の日付・時刻のみスケジュール
             if (scheduledDate.isAfter(DateTime.now())) {
               final medicines = entry.value[timeSlot]?.medicine ?? '';
               final displayMedicines = medicines.isNotEmpty ? medicines : '薬';
           
               const androidDetails = AndroidNotificationDetails(
                 'medication_sound',
-                '服用アラーム',
+                '薬物アラーム',
                 channelDescription: '服薬時間の通知',
                 importance: Importance.max,
                 priority: Priority.high,
@@ -134,11 +133,11 @@ class NotificationService {
                 iOS: iosDetails,
               );
           
-              // zonedScheduleを使用して正確なスケジュール
+              // ZonedScheduleを使用して正確な時刻にスケジュール
               await _plugin.zonedSchedule(
                 notificationId++,
-                '服用アラーム',
-                '$displayMedicines を服用しましょう',
+                '薬物アラーム',
+                '$displayMedicines を飲む時間です',
                 tz.TZDateTime.from(scheduledDate, tz.local),
                 notificationDetails,
                 androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -150,6 +149,7 @@ class NotificationService {
         }
       }
     } catch (e) {
+      // エラー処理
     }
   }
 }

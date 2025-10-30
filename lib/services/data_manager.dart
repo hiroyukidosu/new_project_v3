@@ -1,14 +1,9 @@
-// Dart core imports
 import 'dart:convert';
-
-// Flutter core imports
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// Local imports
 import '../utils/logger.dart';
 
-// ✅ 修正：統一されたデータ管理システム
+/// データマネージャー
+/// 複数のデータをまとめて管理する
 class DataManager {
   static final Map<String, bool> _dirtyFlags = <String, bool>{};
   static bool _isSaving = false;
@@ -20,16 +15,16 @@ class DataManager {
     Logger.info('DataManager初期化完了');
   }
   
-  // データが変更されたことをマーク
+  // データを変更済みとしてマーク
   static void markDirty(String key) {
     _dirtyFlags[key] = true;
     Logger.debug('データ変更マーク: $key');
   }
   
-  // 統一されたデータ保存（重複排除）
+  // 全てのデータを保存する
   static Future<void> save() async {
     if (_isSaving) {
-      Logger.warning('データ保存中です。スキップします。');
+      Logger.warning('データ保存中です。重複保存をスキップします。');
       return;
     }
     
@@ -48,23 +43,23 @@ class DataManager {
         _prefs!.setString('app_data_backup', jsonEncode(data)),
       ]);
       
-      Logger.info('統一データ保存完了');
+      Logger.info('全データ保存完了');
     } catch (e) {
-      Logger.error('統一データ保存エラー', e);
+      Logger.error('全データ保存エラー', e);
     } finally {
       _isSaving = false;
     }
   }
   
-  // 変更されたデータのみ保存（差分保存）
+  // 変更されたデータのみ保存する
   static Future<void> saveOnlyDirty() async {
     if (_isSaving) {
-      Logger.warning('データ保存中です。スキップします。');
+      Logger.warning('データ保存中です。重複保存をスキップします。');
       return;
     }
     
     if (_dirtyFlags.isEmpty) {
-      Logger.debug('変更されたデータがありません。スキップします。');
+      Logger.debug('変更されたデータがありません。保存をスキップします。');
       return;
     }
     
@@ -87,12 +82,12 @@ class DataManager {
       
       if (tasks.isNotEmpty) {
         await Future.wait(tasks);
-        Logger.info('差分保存完了: ${tasks.length}件');
+        Logger.info('変更データ保存完了: ${tasks.length}件');
       }
       
       _dirtyFlags.clear();
     } catch (e) {
-      Logger.error('差分保存エラー', e);
+      Logger.error('変更データ保存エラー', e);
     } finally {
       _isSaving = false;
     }
@@ -100,34 +95,38 @@ class DataManager {
   
   // データのシリアライズ
   static Map<String, dynamic> _serializeMedications() {
-    // 服用薬データのシリアライズ
+    // 薬物データのシリアライズ
     return {};
   }
-  
+
   static Map<String, dynamic> _serializeMemos() {
     // メモデータのシリアライズ
     return {};
   }
-  
+
   static Map<String, dynamic> _serializeSettings() {
     // 設定データのシリアライズ
     return {};
   }
   
-  // 個別保存メソッド
+  // 個別データ保存メソッド
   static Future<void> _saveMemos() async {
-    // メモ保存の実装
+    // メモ保存処理
+    Logger.debug('メモデータ保存');
   }
-  
+
   static Future<void> _saveMedications() async {
-    // 薬物保存の実装
+    // 薬物データ保存処理
+    Logger.debug('薬物データ保存');
   }
-  
+
   static Future<void> _saveAlarms() async {
-    // アラーム保存の実装
+    // アラームデータ保存処理
+    Logger.debug('アラームデータ保存');
   }
-  
+
   static Future<void> _saveSettings() async {
-    // 設定保存の実装
+    // 設定データ保存処理
+    Logger.debug('設定データ保存');
   }
 }

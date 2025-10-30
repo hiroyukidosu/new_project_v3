@@ -1,19 +1,22 @@
-// Third-party package imports
 import 'package:shared_preferences/shared_preferences.dart';
 
-// トライアル期間管理サービス
+/// トライアル期間管理サービス
+/// 7日間のトライアル期間の管理を行う
 class TrialService {
   static const String _trialStartTimeKey = 'trial_start_time';
   static const String _purchaseLinkKey = 'purchase_link';
   static const String _purchaseStatusKey = 'purchase_status'; // 購入状態を保存
-  static const int _trialDurationMinutes = 7 * 24 * 60; // トライアル期間: 7日
+  static const int _trialDurationMinutes = 7 * 24 * 60; // トライアル期間: 7日間
+  static const Set<String> _restrictedFeatureKeys = {
+    // 期限切れ時に制限対象となる機能キー（現在は制限なし）
+  };
   
-  // 購入状態の列挙型
+  // 購入状態の定数
   static const String trialStatus = 'trial'; // トライアル中
   static const String expiredStatus = 'expired'; // 期限切れ
   static const String purchasedStatus = 'purchased'; // 購入済み
   
-  // トライアル開始時刻を記録
+  // トライアル開始時刻を初期化
   static Future<void> initializeTrial() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -22,6 +25,7 @@ class TrialService {
         await prefs.setInt(_trialStartTimeKey, now);
       }
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -35,24 +39,23 @@ class TrialService {
         return purchasedStatus; // 購入済み
       }
       
-      // トライアル期間をチェック
+      // トライアル期間を確認
       final startTime = prefs.getInt(_trialStartTimeKey);
       if (startTime == null) {
         await initializeTrial();
-        return trialStatus; // トライアル開始
+        return trialStatus;
       }
       
-      final start = DateTime.fromMillisecondsSinceEpoch(startTime);
-      final now = DateTime.now();
-      final difference = now.difference(start);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsedMinutes = (now - startTime) ~/ (1000 * 60);
       
-      if (difference.inMinutes >= _trialDurationMinutes) {
+      if (elapsedMinutes >= _trialDurationMinutes) {
         return expiredStatus; // 期限切れ
       }
       
       return trialStatus; // トライアル中
     } catch (e) {
-      return trialStatus;
+      return trialStatus; // エラー時はトライアル中とする
     }
   }
   
@@ -62,30 +65,31 @@ class TrialService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_purchaseStatusKey, status);
     } catch (e) {
+      // エラー処理
     }
   }
   
-  // トライアル期間が終了しているかチェック（後方互換性のため残す）
+  // トライアル期限切れかを確認
   static Future<bool> isTrialExpired() async {
     final status = await getPurchaseStatus();
     return status == expiredStatus;
   }
   
-  // 残り時間を取得（分単位）
-  static Future<int> getRemainingMinutes() async {
+  // 購入済みかを確認
+  static Future<bool> isPurchased() async {
+    final status = await getPurchaseStatus();
+    return status == purchasedStatus;
+  }
+
+  // 機能が使用可能か（トライアル期限切れ時は特定機能のみ制限）
+  static Future<bool> isFeatureAllowed(String featureKey) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final startTime = prefs.getInt(_trialStartTimeKey);
-      if (startTime == null) return _trialDurationMinutes;
-      
-      final start = DateTime.fromMillisecondsSinceEpoch(startTime);
-      final now = DateTime.now();
-      final elapsed = now.difference(start).inMinutes;
-      final remaining = _trialDurationMinutes - elapsed;
-      
-      return remaining > 0 ? remaining : 0;
-    } catch (e) {
-      return 0;
+      if (await isPurchased()) return true;
+      final expired = await isTrialExpired();
+      if (!expired) return true;
+      return !_restrictedFeatureKeys.contains(featureKey);
+    } catch (_) {
+      return true; // エラー時はブロックしない
     }
   }
   
@@ -95,6 +99,7 @@ class TrialService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_purchaseLinkKey, link);
     } catch (e) {
+      // エラー処理
     }
   }
   
@@ -108,55 +113,24 @@ class TrialService {
     }
   }
   
-  // トライアル期間をリセット（開発・テスト用）
-  static Future<void> resetTrial() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_trialStartTimeKey);
-    } catch (e) {
-    }
-  }
-  
-  // トライアル・購入状態の詳細情報を取得
-  static Future<Map<String, dynamic>> getTrialStatus() async {
+  // 残りトライアル時間を取得（分）
+  static Future<int> getRemainingTrialMinutes() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final startTime = prefs.getInt(_trialStartTimeKey);
       
       if (startTime == null) {
         await initializeTrial();
-        return {
-          'isExpired': false,
-          'remainingMinutes': _trialDurationMinutes,
-          'startTime': DateTime.now(),
-          'status': 'trial_active'
-        };
+        return _trialDurationMinutes;
       }
       
-      final start = DateTime.fromMillisecondsSinceEpoch(startTime);
-      final now = DateTime.now();
-      final elapsed = now.difference(start).inMinutes;
-      final remaining = _trialDurationMinutes - elapsed;
-      final isExpired = remaining <= 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsedMinutes = (now - startTime) ~/ (1000 * 60);
+      final remaining = _trialDurationMinutes - elapsedMinutes;
       
-      return {
-        'isExpired': isExpired,
-        'remainingMinutes': remaining > 0 ? remaining : 0,
-        'startTime': start,
-        'status': isExpired ? 'expired' : 'trial_active'
-      };
+      return remaining > 0 ? remaining : 0;
     } catch (e) {
-      return {
-        'isExpired': false,
-        'remainingMinutes': 0,
-        'startTime': DateTime.now(),
-        'status': 'error'
-      };
+      return _trialDurationMinutes;
     }
-  }
-  
-  // トライアル状態をコンソールに出力（デバッグ用）
-  static Future<void> printTrialStatus() async {
-    await getTrialStatus();
   }
 }

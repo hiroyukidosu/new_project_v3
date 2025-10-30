@@ -13,6 +13,7 @@ import '../services/trial_service.dart';
 import '../services/medication_service.dart';
 import '../services/notification_service.dart';
 import '../screens/medication_home_page.dart';
+import 'trial_widgets.dart';
 
 class TutorialWrapper extends StatefulWidget {
   const TutorialWrapper({super.key});
@@ -170,7 +171,7 @@ class _TutorialPageState extends State<TutorialPage> {
                         const SizedBox(height: 32),
                         // タイトル
                         Text(
-                          page['title'],
+                          page['title'] as String,
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
@@ -181,7 +182,7 @@ class _TutorialPageState extends State<TutorialPage> {
                         const SizedBox(height: 16),
                         // 説明文
                         Text(
-                          page['description'],
+                          page['description'] as String,
                           style: const TextStyle(
                             fontSize: 18,
                             height: 1.5,
