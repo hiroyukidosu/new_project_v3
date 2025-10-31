@@ -6,7 +6,9 @@ class TrialService {
   static const String _trialStartTimeKey = 'trial_start_time';
   static const String _purchaseLinkKey = 'purchase_link';
   static const String _purchaseStatusKey = 'purchase_status'; // 購入状態を保存
-  static const int _trialDurationMinutes = 7 * 24 * 60; // トライアル期間: 7日間
+  /// トライアル期間: 7日間（分単位）
+  /// 7日 × 24時間 × 60分 = 10,080分
+  static const int _trialDurationMinutes = 7 * 24 * 60;
   static const Set<String> _restrictedFeatureKeys = {
     // 期限切れ時に制限対象となる機能キー（現在は制限なし）
   };
@@ -23,6 +25,24 @@ class TrialService {
       if (!prefs.containsKey(_trialStartTimeKey)) {
         final now = DateTime.now().millisecondsSinceEpoch;
         await prefs.setInt(_trialStartTimeKey, now);
+      }
+    } catch (e) {
+      // エラー処理
+    }
+  }
+
+  /// トライアル期間をリセット（新しい開始時刻を設定）
+  /// トライアル期間切れの状態から再開したい場合に使用
+  static Future<void> resetTrial() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setInt(_trialStartTimeKey, now);
+      
+      // 購入状態が期限切れの場合は、トライアル中に戻す
+      final currentStatus = prefs.getString(_purchaseStatusKey);
+      if (currentStatus == expiredStatus) {
+        await prefs.remove(_purchaseStatusKey);
       }
     } catch (e) {
       // エラー処理
