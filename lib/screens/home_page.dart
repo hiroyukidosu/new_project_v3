@@ -7200,7 +7200,6 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 child: const Text(
                   '⏱ バックアップ間隔\n\n'
                   '・毎日深夜2:00（自動）- フルバックアップ\n'
-                  '・操作後5分以内（自動）- 差分バックアップ\n'
                   '・手動保存（任意）- 任意タイミングで保存',
                   style: TextStyle(fontSize: 14),
                 ),
