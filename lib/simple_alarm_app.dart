@@ -251,19 +251,14 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       }
       
       // 状態を更新
-        if (!mounted || _disposed) return;
-        if (!context.mounted) return;
-      
-      try {
-        // 最終的なmountedチェック
-        if (!mounted || _disposed) return;
-        
-        setState(() {
-          _isAlarmPlaying = false;
-        });
-      } catch (e) {
-        debugPrint('_stopAlarm setState エラー: $e');
-        return;
+      if (mounted && !_disposed) {
+        try {
+          setState(() {
+            _isAlarmPlaying = false;
+          });
+        } catch (e) {
+          debugPrint('_stopAlarm setState エラー: $e');
+        }
       }
       
       debugPrint('服用時間のアラームが停止されました');
@@ -271,19 +266,14 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
       debugPrint('服用時間のアラーム停止エラー: $e');
       
       // エラー時の安全な状態更新
-        if (!mounted || _disposed) return;
-        if (!context.mounted) return;
-      
-      try {
-        // 最終的なmountedチェック
-        if (!mounted || _disposed) return;
-        
-        setState(() {
-          _isAlarmPlaying = false;
-        });
-      } catch (setStateError) {
-        debugPrint('_stopAlarm catch内 setState エラー: $setStateError');
-        return;
+      if (mounted && !_disposed) {
+        try {
+          setState(() {
+            _isAlarmPlaying = false;
+          });
+        } catch (setStateError) {
+          debugPrint('_stopAlarm catch内 setState エラー: $setStateError');
+        }
       }
     }
   }
@@ -359,16 +349,33 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('通知がタップされました: ${response.payload}');
+    debugPrint('通知がタップされました: ${response.payload}, actionId: ${response.actionId}');
     
-    if (response.actionId == 'stop') {
-      _stopAlarm();
-    } else if (response.actionId == 'snooze') {
-      _snoozeAlarm();
-    } else {
-      // 通知自体をタップした場合も停止
-      _stopAlarm();
-    }
+    // UIスレッドで確実に実行されるようにする
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.microtask(() async {
+        try {
+          if (response.actionId == 'stop') {
+            await _stopAlarm();
+          } else if (response.actionId == 'snooze') {
+            await _snoozeAlarm();
+          } else {
+            // 通知自体をタップした場合も停止
+            await _stopAlarm();
+          }
+        } catch (e) {
+          debugPrint('通知タップ処理エラー: $e');
+          // エラー時でもアラームを停止しようとする
+          if (mounted && !_disposed) {
+            try {
+              await _stopAlarm();
+            } catch (stopError) {
+              debugPrint('_stopAlarm呼び出しエラー: $stopError');
+            }
+          }
+        }
+      });
+    });
   }
 
   void _startAlarmCheck() {
@@ -1212,15 +1219,22 @@ class _SimpleAlarmAppState extends State<SimpleAlarmApp> {
     );
   }
 
-  void _snoozeAlarm() async {
-    _stopAlarm();
+  Future<void> _snoozeAlarm() async {
+    await _stopAlarm();
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('スヌーズ機能は無効化されました'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    // contextが利用可能な場合のみSnackBarを表示
+    if (mounted && !_disposed) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('スヌーズ機能は無効化されました'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } catch (e) {
+        debugPrint('_snoozeAlarm SnackBar表示エラー: $e');
+      }
+    }
   }
 
   Widget _buildAlarmTypeChip(String type) {
