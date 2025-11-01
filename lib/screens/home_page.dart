@@ -42,13 +42,82 @@ import 'helpers/home_page_alarm_helper.dart';
 import 'helpers/home_page_backup_helper.dart';
 import 'helpers/home_page_stats_helper.dart';
 import 'helpers/home_page_utils_helper.dart';
+// TODO: これらのファイルは将来の移行用です。現在はprivateクラスへの参照によりエラーが発生するため、コメントアウトします。
+// import 'helpers/home_page_data_operations.dart';
+// import 'helpers/home_page_dialogs.dart';
+// import 'helpers/home_page_event_handlers.dart';
+// import 'helpers/home_page_ui_builders.dart';
+import 'helpers/calculations/medication_stats_calculator.dart';
+import 'helpers/calculations/adherence_calculator.dart';
+import 'helpers/ui_builders/calendar_ui_builder.dart';
+import 'helpers/ui_builders/medication_ui_builder.dart';
+import 'helpers/state_management/home_page_state_manager.dart';
 
 class MedicationHomePage extends StatefulWidget {
   const MedicationHomePage({super.key});
   @override
   State<MedicationHomePage> createState() => _MedicationHomePageState();
 }
-class _MedicationHomePageState extends State<MedicationHomePage> with TickerProviderStateMixin, PurchaseMixin {
+class _MedicationHomePageState extends State<MedicationHomePage> 
+    with TickerProviderStateMixin, PurchaseMixin,
+         CalendarUIBuilderMixin, MedicationUIBuilderMixin {
+  
+  // CalendarUIBuilderMixinで必要なプロパティ
+  @override
+  List<MedicationMemo> get medicationMemos => _medicationMemos;
+  
+  @override
+  Map<String, Map<String, MedicationInfo>> get medicationData => _medicationData;
+  
+  @override
+  Map<String, Color> get dayColors => _dayColors;
+  
+  @override
+  Map<String, int> Function(DateTime) get calculateDayMedicationStats => _calculateDayMedicationStats;
+  
+  @override
+  int Function(String, String) get getMedicationMemoCheckedCountForDate => _getMedicationMemoCheckedCountForDate;
+  
+  // MedicationUIBuilderMixinで必要なプロパティ
+  @override
+  Map<String, bool> get medicationMemoStatus => _medicationMemoStatus;
+  
+  @override
+  Map<String, Map<String, Map<int, bool>>> get weekdayMedicationDoseStatus => _weekdayMedicationDoseStatus;
+  
+  @override
+  DateTime? get selectedDay => _selectedDay;
+  
+  @override
+  void Function(String, int, bool) get onDoseStatusChanged => _onDoseStatusChanged;
+  
+  /// 服用回数のステータスを変更
+  void _onDoseStatusChanged(String memoId, int doseIndex, bool isChecked) async {
+    if (_selectedDay == null) return;
+    
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+    
+    // 変更前スナップショット
+    await _saveSnapshotBeforeChange('服用回数変更_${memoId}_${doseIndex + 1}回目_$dateStr');
+    
+    setState(() {
+      _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
+      _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
+      _weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+      _weekdayMedicationStatusChanged = true;
+    });
+    
+    await _saveMedicationDoseStatus();
+  }
+  
+  @override
+  void Function(MedicationMemo) get onEditMemo => _editMemo;
+  
+  @override
+  void Function(String) get onDeleteMemo => _deleteMemo;
+  
+  @override
+  void Function(MedicationMemo) get onMarkAsTaken => _markAsTaken;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   final Set<DateTime> _selectedDates = <DateTime>{};
@@ -903,43 +972,22 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   DateTime _normalizeDate(DateTime date) => DateTime.utc(date.year, date.month, date.day);
   Future<void> _calculateAdherenceStats() async {
     try {
-      final now = DateTime.now();
       final stats = <String, double>{};
       for (final period in [7, 30, 90]) {
-        int totalDoses = 0;
-        int takenDoses = 0;
-        for (int i = 0; i < period; i++) {
-          final date = now.subtract(Duration(days: i));
-          final dateStr = DateFormat('yyyy-MM-dd').format(date);
-          final dayData = _medicationData[dateStr];
-        
-        // 動的薬リストの統計
-          if (dayData != null) {
-            for (final timeSlot in dayData.values) {
-              if (timeSlot.medicine.isNotEmpty) {
-                totalDoses++;
-                if (timeSlot.checked) takenDoses++;
-              }
-            }
-          }
-        
-        // 曜日設定された薬の統計（服用メモのチェック状態を反映）
-        final weekday = date.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
-        final weekdayMemos = _medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
-        
-        for (final memo in weekdayMemos) {
-          totalDoses++;
-          // 服用メモのチェック状態を確認
-          if (_medicationMemoStatus[memo.id] == true) {
-            takenDoses++;
-          }
-        }
-        }
-        stats['$period日間'] = totalDoses > 0 ? (takenDoses / totalDoses * 100) : 0;
+        final rate = AdherenceCalculator.calculateCustomAdherence(
+          days: period,
+          medicationData: _medicationData,
+          medicationMemos: _medicationMemos,
+          weekdayMedicationStatus: _weekdayMedicationStatus,
+          medicationMemoStatus: _medicationMemoStatus,
+          getMedicationMemoCheckedCountForDate: _getMedicationMemoCheckedCountForDate,
+        );
+        stats['$period日間'] = rate;
       }
       setState(() => _adherenceRates = stats);
       await MedicationService.saveAdherenceStats(stats);
     } catch (e) {
+      // エラー処理は既存の通り
     }
   }
   // ✅ 修正：デバウンス保存の実装
@@ -1063,7 +1111,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // 服用メモの状態読み込み
+  // 服用メモの状態読み込み（後方互換性のため残す）
   Future<void> _loadMedicationMemoStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1092,7 +1140,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // 曜日設定薬の状態読み込み
+  // 曜日設定薬の状態読み込み（後方互換性のため残す）
   Future<void> _loadWeekdayMedicationStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1110,7 +1158,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     }
   }
   
-  // メモの読み込み
+  // メモの読み込み（後方互換性のため残す）
   Future<void> _loadMemo() async {
     try {
       if (_selectedDay != null) {
@@ -1172,8 +1220,14 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
   }
   
   
-  // カレンダースタイルを動的に生成（日付の色に基づく）
+  // カレンダースタイル（新しいヘルパーを使用）
   CalendarStyle _buildCalendarStyle() {
+    return buildCalendarStyle();
+  }
+  
+  // 既存のカレンダースタイル実装（使用されていない場合は削除可能）
+  @Deprecated('Use buildCalendarStyle() from CalendarUIBuilderMixin instead')
+  CalendarStyle _buildCalendarStyleLegacy() {
     return CalendarStyle(
       outsideDaysVisible: false,
       cellMargin: const EdgeInsets.all(2),
@@ -1271,7 +1325,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     return null;
   }
   
-  // 色選択ダイアログ
+  // 色選択ダイアログ（元の実装を保持）
   void _showColorPickerDialog(String dateKey) {
     final colors = [
       Colors.red,
@@ -1762,138 +1816,19 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
 
-  // ✅ ③④ カレンダーの日付セル（曜日マーク・チェックマーク表示）
+  // ✅ ③④ カレンダーの日付セル（新しいヘルパーを使用）
   Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false}) {
-    final dateStr = DateFormat('yyyy-MM-dd').format(day);
-    final weekday = day.weekday % 7;
-    
-    // ③服用メモで設定された曜日かチェック
-    final hasScheduledMemo = _medicationMemos.any((memo) => 
-      memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)
-    );
-    
-    // ④服用記録が100%かチェック
-    final stats = _calculateDayMedicationStats(day);
-    final total = stats['total'] ?? 0;
-    final taken = stats['taken'] ?? 0;
-    final isComplete = total > 0 && taken == total;
-    
-    // カスタム色取得
-    final customColor = _dayColors[dateStr];
-    
-    return Container(
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: customColor ?? 
-          (isSelected 
-            ? const Color(0xFFff6b6b)
-            : isToday 
-              ? const Color(0xFF4ecdc4)
-              : Colors.white.withOpacity(0.1)),
-        borderRadius: BorderRadius.circular(8),
-        border: hasScheduledMemo 
-          ? Border.all(color: Colors.amber, width: 2)
-          : null,
-        boxShadow: isSelected || isToday
-          ? [
-              BoxShadow(
-                color: (customColor ?? (isSelected ? const Color(0xFFff6b6b) : const Color(0xFF4ecdc4))).withOpacity(0.3),
-                spreadRadius: 1,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ]
-          : null,
-      ),
-      child: Stack(
-        children: [
-          // 日付
-          Center(
-            child: Text(
-              '${day.day}',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          
-          // ③曜日マーク（左上）
-          if (hasScheduledMemo)
-            Positioned(
-              top: 2,
-              left: 2,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.amber,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.amber.withOpacity(0.5),
-                      blurRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          
-          // ④完了チェックマーク（右下）
-          if (isComplete)
-            Positioned(
-              bottom: 2,
-              right: 2,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.green.withOpacity(0.5),
-                      blurRadius: 2,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 10,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
+    return buildCalendarDay(day, isSelected: isSelected, isToday: isToday);
   }
 
-  // 日別の服用統計を計算
+  // 日別の服用統計を計算（新しいヘルパーを使用）
   Map<String, int> _calculateDayMedicationStats(DateTime day) {
-    final dateStr = DateFormat('yyyy-MM-dd').format(day);
-    final weekday = day.weekday % 7;
-    
-    int totalMedications = 0;
-    int takenMedications = 0;
-    
-    // 動的薬リストの統計
-    if (_medicationData.containsKey(dateStr)) {
-      final dayData = _medicationData[dateStr]!;
-      totalMedications += dayData.length;
-      takenMedications += dayData.values.where((info) => info.checked).length;
-    }
-    
-    // 服用メモの統計
-    for (final memo in _medicationMemos) {
-      if (memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday)) {
-        totalMedications += memo.dosageFrequency;
-        final checkedCount = _getMedicationMemoCheckedCountForDate(memo.id, dateStr);
-        takenMedications += checkedCount;
-      }
-    }
-    
-    return {'total': totalMedications, 'taken': takenMedications};
+    return MedicationStatsCalculator.calculateDayMedicationStats(
+      day: day,
+      medicationData: _medicationData,
+      medicationMemos: _medicationMemos,
+      getMedicationMemoCheckedCountForDate: _getMedicationMemoCheckedCountForDate,
+    );
   }
 
   // 指定日のメモの服用済み回数を取得
@@ -2302,6 +2237,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     } else if (index < addedCount + memoCount) {
       // 服用メモ
       final memoIndex = index - addedCount;
+      // メモ選択機能をサポートするため、既存の実装を使用
       return _buildMedicationMemoCheckbox(_getMedicationsForSelectedDay()[memoIndex]);
     } else {
       // データなしメッセージ
@@ -3286,7 +3222,7 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
     );
   }
   
-  // ✅ カスタム遵守率ダイアログ表示
+  // ✅ カスタム遵守率ダイアログ表示（元の実装を保持）
   void _showCustomAdherenceDialog() {
     showDialog(
       context: context,
@@ -3414,11 +3350,13 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
       _customDaysFocusNode.unfocus();
       FocusScope.of(context).unfocus();
       
-      final rate = HomePageStatsHelper.calculateCustomAdherence(
+      final rate = AdherenceCalculator.calculateCustomAdherence(
         days: days,
         medicationData: _medicationData,
         medicationMemos: _medicationMemos,
         weekdayMedicationStatus: _weekdayMedicationStatus,
+        medicationMemoStatus: _medicationMemoStatus,
+        getMedicationMemoCheckedCountForDate: _getMedicationMemoCheckedCountForDate,
       );
       
       if (rate == 0.0) {
