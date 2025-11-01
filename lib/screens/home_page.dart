@@ -52,6 +52,33 @@ import 'helpers/calculations/adherence_calculator.dart';
 import 'helpers/ui_builders/calendar_ui_builder.dart';
 import 'helpers/ui_builders/medication_ui_builder.dart';
 import 'helpers/state_management/home_page_state_manager.dart';
+// 新しい分割構造のインポート
+import 'home/persistence/medication_data_persistence.dart';
+import 'home/persistence/alarm_data_persistence.dart';
+import 'home/handlers/calendar_event_handler.dart';
+import 'home/handlers/medication_event_handler.dart';
+import 'home/handlers/memo_event_handler.dart';
+import 'home/business/calendar_marker_manager.dart';
+import 'home/business/medication_calculator.dart';
+import 'home/business/pagination_manager.dart';
+import 'home/state/home_page_state_notifiers.dart';
+import 'home/widgets/calendar_view.dart';
+import 'home/widgets/medication_record_list.dart';
+import 'home/widgets/medication_stats_card.dart';
+import 'home/widgets/memo_field.dart';
+import 'home/widgets/medication_item_widgets.dart';
+import 'home/widgets/expanded_medication_memo_checkbox.dart';
+import 'home/widgets/day_memo_field_widget.dart';
+import 'home/widgets/day_medication_records_widget.dart';
+import 'home/widgets/day_color_picker_dialog.dart';
+import 'home/widgets/dialogs/custom_adherence_dialog.dart';
+import 'home/widgets/dialogs/warning_dialog.dart';
+import 'home/widgets/dialogs/backup_dialog.dart';
+import 'home/widgets/dialogs/backup_history_dialog.dart';
+import 'home/widgets/dialogs/backup_preview_dialog.dart';
+import 'home/handlers/backup_handler.dart';
+import 'home/persistence/snapshot_persistence.dart';
+import 'home/persistence/data_sync_manager.dart';
 
 class MedicationHomePage extends StatefulWidget {
   const MedicationHomePage({super.key});
@@ -138,6 +165,19 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   
   // ✅ 修正：変更フラグ変数を追加
   bool _medicationMemoStatusChanged = false;
+  
+  // 新しく作成したクラスのインスタンス
+  late MedicationDataPersistence _medicationDataPersistence;
+  late AlarmDataPersistence _alarmDataPersistence;
+  late CalendarEventHandler _calendarEventHandler;
+  late MedicationEventHandler _medicationEventHandler;
+  late MemoEventHandler _memoEventHandler;
+  CalendarMarkerManager? _calendarMarkerManager;
+  HomePageStateNotifiers? _stateNotifiers;
+  late PaginationManager _paginationManager;
+  late SnapshotPersistence _snapshotPersistence;
+  late DataSyncManager _dataSyncManager;
+  late BackupHandler _backupHandler;
 
   bool _weekdayMedicationStatusChanged = false;
   bool _addedMedicationsChanged = false;
@@ -231,6 +271,81 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   @override
   void initState() {
     super.initState();
+    
+    // 新しく作成したクラスのインスタンスを初期化
+    _medicationDataPersistence = MedicationDataPersistence();
+    _alarmDataPersistence = AlarmDataPersistence();
+    _stateNotifiers = HomePageStateNotifiers();
+    _paginationManager = PaginationManager();
+    _snapshotPersistence = SnapshotPersistence();
+    _dataSyncManager = DataSyncManager(
+      medicationPersistence: _medicationDataPersistence,
+      alarmPersistence: _alarmDataPersistence,
+    );
+    
+    // イベントハンドラーの初期化（依存関係を注入）
+    _calendarEventHandler = CalendarEventHandler(
+      persistence: _medicationDataPersistence,
+      onStateUpdate: (day) => setState(() => _selectedDay = day),
+      onDayColorUpdate: (key, color) => setState(() => _dayColors[key] = color),
+    );
+    
+    _medicationEventHandler = MedicationEventHandler(
+      persistence: _medicationDataPersistence,
+      onStatusUpdate: (memoId, isChecked) => setState(() => _medicationMemoStatus[memoId] = isChecked),
+      onDoseStatusUpdate: (memoId, doseIndex, isChecked) {
+        if (_selectedDay != null) {
+          final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+          setState(() {
+            _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
+            _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
+            _weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+          });
+        }
+      },
+    );
+
+    _memoEventHandler = MemoEventHandler(
+      persistence: _medicationDataPersistence,
+      paginationManager: _paginationManager,
+      onMemoAdded: (memo) {
+        setState(() {
+          _medicationMemos.add(memo);
+          _paginationManager.setAllMemos(_medicationMemos);
+        });
+      },
+      onMemoUpdated: (memo) {
+        setState(() {
+          final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
+          if (index != -1) {
+            _medicationMemos[index] = memo;
+          }
+          _paginationManager.setAllMemos(_medicationMemos);
+        });
+      },
+      onMemoDeleted: (memoId) {
+        setState(() {
+          _medicationMemos.removeWhere((memo) => memo.id == memoId);
+          _paginationManager.setAllMemos(_medicationMemos);
+          _medicationMemoStatus.remove(memoId);
+          _weekdayMedicationStatus.remove(memoId);
+          for (final dateStr in _weekdayMedicationDoseStatus.keys) {
+            _weekdayMedicationDoseStatus[dateStr]?.remove(memoId);
+          }
+        });
+      },
+      onShowSnackBar: _showSnackBar,
+      onSaveSnapshotBeforeChange: (operationType) async {
+        await _snapshotPersistence.saveSnapshotBeforeChange(
+          operationType,
+          () => _createSafeBackupData('変更前_$operationType'),
+        );
+      },
+      saveMedicationMemo: (memo) async {
+        await _saveMedicationMemoWithBackup(memo);
+      },
+    );
+    
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       setState(() {});
@@ -263,9 +378,7 @@ class _MedicationHomePageState extends State<MedicationHomePage>
         debugPrint('✅ 服用メモ読み込み完了: ${_medicationMemos.length}件');
         
         // 3. ページネーション初期化
-        _currentPage = 0;
-        _displayedMemos.clear();
-        _loadMoreMemos();
+        _paginationManager.setAllMemos(_medicationMemos);
         debugPrint('✅ ページネーション初期化完了');
         
         // 4. 基本設定
@@ -862,14 +975,23 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     await HomePageDataHelper.saveAppSettings();
   }
   
-  // 服用回数別状態の保存
+  // 服用回数別状態の保存（新しいpersistenceクラスを使用）
   Future<void> _saveMedicationDoseStatus() async {
-    await HomePageDataHelper.saveMedicationDoseStatus(_weekdayMedicationDoseStatus);
+    try {
+      await _medicationDataPersistence.saveMedicationDoseStatus(_weekdayMedicationDoseStatus);
+    } catch (e) {
+      debugPrint('❌ 服用回数別ステータス保存エラー: $e');
+    }
   }
   
-  // 服用回数別状態の読み込み
+  // 服用回数別状態の読み込み（新しいpersistenceクラスを使用）
   Future<void> _loadMedicationDoseStatus() async {
-    _weekdayMedicationDoseStatus = await HomePageDataHelper.loadMedicationDoseStatus();
+    try {
+      _weekdayMedicationDoseStatus = await _medicationDataPersistence.loadMedicationDoseStatus();
+    } catch (e) {
+      debugPrint('❌ 服用回数別ステータス読み込みエラー: $e');
+      _weekdayMedicationDoseStatus = {};
+    }
   }
   
   // アプリ設定の読み込み
@@ -1065,33 +1187,19 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   // 服用メモの状態保存
   Future<void> _saveMedicationMemoStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final memoStatusJson = <String, dynamic>{};
-      
-      for (final entry in _medicationMemoStatus.entries) {
-        memoStatusJson[entry.key] = entry.value;
-      }
-      
-      // ✅ 修正：統一されたキーとバックアップ保存
-      final data = jsonEncode(memoStatusJson);
-      await prefs.setString(_medicationMemoStatusKey, data);
-      await prefs.setString(_medicationMemoStatusKey + _backupSuffix, data);
+      // 新しいpersistenceクラスを使用
+      await _medicationDataPersistence.saveMedicationMemoStatus(_medicationMemoStatus);
     } catch (e) {
+      debugPrint('❌ メモステータス保存エラー: $e');
     }
   }
   
-  // 曜日設定薬の状態保存
+  // 曜日設定薬の状態保存（新しいpersistenceクラスを使用）
   Future<void> _saveWeekdayMedicationStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final weekdayStatusJson = <String, dynamic>{};
-      
-      for (final dateEntry in _weekdayMedicationStatus.entries) {
-        weekdayStatusJson[dateEntry.key] = dateEntry.value;
-      }
-      
-      await prefs.setString('weekday_medication_status', jsonEncode(weekdayStatusJson));
+      await _medicationDataPersistence.saveWeekdayMedicationStatus(_weekdayMedicationStatus);
     } catch (e) {
+      debugPrint('❌ 曜日別ステータス保存エラー: $e');
     }
   }
   
@@ -1111,20 +1219,11 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     }
   }
   
-  // 服用メモの状態読み込み（後方互換性のため残す）
+  // 服用メモの状態読み込み（新しいpersistenceクラスを使用）
   Future<void> _loadMedicationMemoStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final memoStatusJson = prefs.getString('medication_memo_status');
-      
-      if (memoStatusJson != null) {
-        final Map<String, dynamic> memoStatusData = jsonDecode(memoStatusJson);
-        _medicationMemoStatus.clear();
-        
-        for (final entry in memoStatusData.entries) {
-          _medicationMemoStatus[entry.key] = entry.value as bool;
-        }
-      }
+      // 新しいpersistenceクラスを使用
+      _medicationMemoStatus = await _medicationDataPersistence.loadMedicationMemoStatus();
       
       // 服用メモの初期状態を未チェックに設定
       for (final memo in _medicationMemos) {
@@ -1143,18 +1242,10 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   // 曜日設定薬の状態読み込み（後方互換性のため残す）
   Future<void> _loadWeekdayMedicationStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final weekdayStatusJson = prefs.getString('weekday_medication_status');
-      
-      if (weekdayStatusJson != null) {
-        final Map<String, dynamic> weekdayStatusData = jsonDecode(weekdayStatusJson);
-        _weekdayMedicationStatus.clear();
-        
-        for (final dateEntry in weekdayStatusData.entries) {
-          _weekdayMedicationStatus[dateEntry.key] = Map<String, bool>.from(dateEntry.value);
-        }
-      }
+      // 新しいpersistenceクラスを使用
+      _weekdayMedicationStatus = await _medicationDataPersistence.loadWeekdayMedicationStatus();
     } catch (e) {
+      debugPrint('❌ 曜日別ステータス読み込みエラー: $e');
     }
   }
   
@@ -1441,40 +1532,24 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   }
 
 
-  // ✅ 改善版：服用メモ読み込み機能（多重バックアップ付き）
+  // ✅ 改善版：服用メモ読み込み機能（新しいpersistenceクラスを使用）
   Future<void> _loadMedicationMemos() async {
     try {
       debugPrint('📖 服用メモ読み込み開始...');
       
-      // ✅ 1. Hiveボックスから読み込み
-      if (Hive.isBoxOpen('medication_memos')) {
-        final box = Hive.box<MedicationMemo>('medication_memos');
-        final memos = box.values.toList();
-        debugPrint('✅ Hiveから服用メモ読み込み成功: ${memos.length}件');
-        
-        setState(() {
-          _medicationMemos = memos;
-        });
-        
-        // ✅ バックアップとしてSharedPreferencesにも保存
-        await _backupMemosToSharedPreferences();
-        return;
-      }
-      
-      // ✅ 2. Hiveが開いていない場合、SharedPreferencesから読み込み
-      debugPrint('⚠️ Hiveボックスが開いていません。SharedPreferencesから読み込み...');
-      final memos = await _loadMemosFromSharedPreferences();
+      // 新しいpersistenceクラスを使用
+      final memos = await _medicationDataPersistence.loadMedicationMemos();
       
       setState(() {
         _medicationMemos = memos;
       });
       
-      debugPrint('✅ SharedPreferencesから服用メモ読み込み完了: ${memos.length}件');
+      debugPrint('✅ 服用メモ読み込み完了: ${memos.length}件');
     } catch (e, stackTrace) {
       debugPrint('❌ 服用メモ読み込みエラー: $e');
       debugPrint('スタックトレース: $stackTrace');
       
-      // ✅ 3. エラー時は空のリストで初期化
+      // ✅ エラー時は空のリストで初期化
       setState(() {
         _medicationMemos = [];
       });
@@ -1541,67 +1616,33 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     }
   }
   
-  // ✅ 改善版：服用メモ保存機能（多重バックアップ付き）
+  // ✅ 改善版：服用メモ保存機能（新しいpersistenceクラスを使用）
   Future<void> _saveMedicationMemoWithBackup(MedicationMemo memo) async {
     try {
       debugPrint('💾 服用メモ保存開始: ${memo.name}');
       
-      // ✅ 1. Hiveボックスに保存
-      if (Hive.isBoxOpen('medication_memos')) {
-        final box = Hive.box<MedicationMemo>('medication_memos');
-        await box.put(memo.id, memo);
-        debugPrint('✅ Hiveに服用メモ保存完了');
-      } else {
-        debugPrint('⚠️ Hiveボックスが開いていません');
-      }
-      
-      // ✅ 2. SharedPreferencesにもバックアップ保存
-      await _backupMemosToSharedPreferences();
+      // 新しいpersistenceクラスを使用
+      await _medicationDataPersistence.saveMedicationMemo(memo);
       
       debugPrint('✅ 服用メモ保存完了: ${memo.name}');
     } catch (e, stackTrace) {
       debugPrint('❌ 服用メモ保存エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
-      
-      // ✅ エラー時もSharedPreferencesに保存を試行
-      try {
-        await _backupMemosToSharedPreferences();
-        debugPrint('✅ フォールバック保存成功');
-      } catch (backupError) {
-        debugPrint('❌ フォールバック保存も失敗: $backupError');
-      }
     }
   }
   
-  // ✅ 改善版：服用メモ削除機能（多重バックアップ付き）
+  // ✅ 改善版：服用メモ削除機能（新しいpersistenceクラスを使用）
   Future<void> _deleteMedicationMemoWithBackup(String memoId) async {
     try {
       debugPrint('🗑️ 服用メモ削除開始: $memoId');
       
-      // ✅ 1. Hiveボックスから削除
-      if (Hive.isBoxOpen('medication_memos')) {
-        final box = Hive.box<MedicationMemo>('medication_memos');
-        await box.delete(memoId);
-        debugPrint('✅ Hiveから服用メモ削除完了');
-      } else {
-        debugPrint('⚠️ Hiveボックスが開いていません');
-      }
-      
-      // ✅ 2. SharedPreferencesにもバックアップ保存
-      await _backupMemosToSharedPreferences();
+      // 新しいpersistenceクラスを使用
+      await _medicationDataPersistence.deleteMedicationMemo(memoId);
       
       debugPrint('✅ 服用メモ削除完了: $memoId');
     } catch (e, stackTrace) {
       debugPrint('❌ 服用メモ削除エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
-      
-      // ✅ エラー時もSharedPreferencesに保存を試行
-      try {
-        await _backupMemosToSharedPreferences();
-        debugPrint('✅ フォールバック保存成功');
-      } catch (backupError) {
-        debugPrint('❌ フォールバック保存も失敗: $backupError');
-      }
     }
   }
   
@@ -1843,166 +1884,112 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     if (_selectedDay == null) return;
     
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-    final colors = [
-      {'color': const Color(0xFFff6b6b), 'name': '赤'},
-      {'color': const Color(0xFF4ecdc4), 'name': '青緑'},
-      {'color': const Color(0xFF45b7d1), 'name': '青'},
-      {'color': const Color(0xFFf9ca24), 'name': '黄色'},
-      {'color': const Color(0xFFf0932b), 'name': 'オレンジ'},
-      {'color': const Color(0xFFeb4d4b), 'name': 'ピンク'},
-      {'color': const Color(0xFF6c5ce7), 'name': '紫'},
-      {'color': const Color(0xFFa29bfe), 'name': '薄紫'},
-      {'color': const Color(0xFF00d2d3), 'name': 'ターコイズ'},
-      {'color': const Color(0xFF1e3799), 'name': '濃紺'},
-      {'color': const Color(0xFFe55039), 'name': 'トマト'},
-      {'color': const Color(0xFF2ecc71), 'name': 'エメラルド'},
-    ];
     
-    // 色選択ダイアログを表示
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text(
-            'カレンダーの色を選択',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300, // 高さを制限
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const BouncingScrollPhysics(), // スクロール可能
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 13.7,
-                childAspectRatio: 1,
-              ),
-              itemCount: colors.length + 1, // +1 for "色をリセット"
-              itemBuilder: (context, index) {
-                if (index == colors.length) {
-                  // 色をリセットボタン（デフォルト色に戻す）
-                  return GestureDetector(
-                    onTap: () async {
-                      // ✅ 追加：変更前スナップショット
-                      await _saveSnapshotBeforeChange('カレンダー色リセット_$dateStr');
-                      setState(() {
-                        // デフォルト色（何も指定していない最初の色）に戻す
-                        _dayColors.remove(dateStr);
-                        _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
-                      });
-                      await _saveDayColors(); // データ保存
-                      Navigator.of(context).pop();
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey, width: 2),
-                      ),
-                      child: const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.clear, color: Colors.grey, size: 32),
-                          SizedBox(height: 4),
-                          Text(
-                            'リセット',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                
-                final colorData = colors[index];
-                final color = colorData['color'] as Color;
-                final name = colorData['name'] as String;
-                final isSelected = _dayColors[dateStr] == color;
-                
-                return GestureDetector(
-                  onTap: () async {
-                    // ✅ 追加：変更前スナップショット
-                    await _saveSnapshotBeforeChange('カレンダー色変更_${dateStr}_$name');
-                    setState(() {
-                      _dayColors[dateStr] = color;
-                      _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
-                    });
-                    await _saveDayColors(); // データ保存
-                    Navigator.of(context).pop();
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
-                        width: 3,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withOpacity(0.5),
-                          spreadRadius: 1,
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (isSelected)
-                          const Icon(
-                            Icons.check_circle,
-                            color: Colors.white,
-                            size: 32,
-                          )
-                        else
-                          const SizedBox(height: 32),
-                        const SizedBox(height: 4),
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                offset: Offset(1, 1),
-                                blurRadius: 2,
-                                color: Colors.black45,
-                              ),
-                            ],
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('キャンセル'),
-            ),
-          ],
-        );
+    DayColorPickerDialog.show(
+      context,
+      dateKey: dateStr,
+      onColorSelected: (key, color) async {
+        await _saveSnapshotBeforeChange('日付色変更_$key');
+        setState(() {
+          _dayColors[key] = color;
+          _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
+        });
+        await _saveDayColors();
+        _showSnackBar('色を設定しました');
+      },
+      onColorRemoved: (key) async {
+        await _saveSnapshotBeforeChange('日付色リセット_$key');
+        setState(() {
+          _dayColors.remove(key);
+          _dayColorsNotifier.value = Map<String, Color>.from(_dayColors);
+        });
+        await _saveDayColors();
+        _showSnackBar('色を削除しました');
       },
     );
   }
 
   Widget _buildMedicationRecords() {
+    final dateStr = _selectedDay != null
+        ? DateFormat('yyyy-MM-dd').format(_selectedDay!)
+        : '';
+    final weekday = _selectedDay?.weekday % 7 ?? 0;
+    final dayMemos = _medicationMemos.where((memo) {
+      return memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday);
+    }).toList();
+
+    return DayMedicationRecordsWidget(
+      selectedDay: _selectedDay,
+      medicationMemos: dayMemos,
+      addedMedications: _addedMedications,
+      weekdayMedicationDoseStatus: _weekdayMedicationDoseStatus,
+      isMemoSelected: _isMemoSelected,
+      selectedMemo: _selectedMemo,
+      onMemoTap: (memo) {
+        setState(() {
+          _isMemoSelected = true;
+          _selectedMemo = memo;
+        });
+      },
+      onBackTap: () {
+        setState(() {
+          _isMemoSelected = false;
+          _selectedMemo = null;
+        });
+      },
+      onDoseStatusChanged: (memoId, doseIndex, isChecked) async {
+        if (_selectedDay != null) {
+          await _saveSnapshotBeforeChange(
+            '服用回数チェック_${_medicationMemos.firstWhere((m) => m.id == memoId).name}_${doseIndex + 1}回目_$dateStr',
+          );
+          setState(() {
+            _weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
+            _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
+            _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
+            _weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+            
+            final updatedCheckedCount = _getMedicationMemoCheckedCountForSelectedDay(memoId);
+            final memoTotalCount = _medicationMemos.firstWhere((m) => m.id == memoId).dosageFrequency;
+            _weekdayMedicationStatus[dateStr]![memoId] = updatedCheckedCount == memoTotalCount;
+            _medicationMemoStatus[memoId] = updatedCheckedCount == memoTotalCount;
+          });
+          await _saveAllData();
+          await _calculateAdherenceStats();
+        }
+      },
+      onEditMemo: _editMemo,
+      onDeleteMemo: _deleteMemo,
+      onShowMemoDetailDialog: (name, notes) => _showMemoDetailDialog(context, name, notes),
+      onShowWarningDialog: () => _showWarningDialog(context),
+      getMedicationMemoDoseStatus: (memoId, index) {
+        return _getMedicationMemoCheckedCountForSelectedDay(memoId, index);
+      },
+      getMedicationMemoCheckedCount: (memoId) {
+        return _getMedicationMemoCheckedCountForSelectedDay(memoId);
+      },
+      onAddedMedicationCheckToggle: (medication) async {
+        if (_selectedDay != null) {
+          await _saveSnapshotBeforeChange(
+            '服用チェック_${medication['name']}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}',
+          );
+        }
+        setState(() => medication['isChecked'] = !(medication['isChecked'] ?? false));
+        _saveCurrentData();
+        _updateCalendarMarks();
+      },
+      onAddedMedicationDelete: (medication) async {
+        if (_selectedDay != null) {
+          await _saveSnapshotBeforeChange(
+            '服用記録削除_${medication['name']}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}',
+          );
+        }
+        setState(() => _addedMedications.remove(medication));
+        _saveCurrentData();
+      },
+    );
+    
+    /* 旧実装（約220行）- DayMedicationRecordsWidgetに移行
+    return Container(
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
@@ -2232,82 +2219,48 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     final memoCount = _getMedicationsForSelectedDay().length;
     
     if (index < addedCount) {
-      // 追加された薬
-      return _buildAddedMedicationRecord(_addedMedications[index]);
+      // 追加された薬（新しいウィジェットを使用）
+      final medication = _addedMedications[index];
+      return AddedMedicationCard(
+        medication: medication,
+        onCheckToggle: () async {
+          if (_selectedDay != null) {
+            await _saveSnapshotBeforeChange('服用チェック_${medication['name']}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+          }
+          setState(() => medication['isChecked'] = !(medication['isChecked'] ?? false));
+          _saveCurrentData();
+          _updateCalendarMarks();
+        },
+        onDelete: () async {
+          if (_selectedDay != null) {
+            await _saveSnapshotBeforeChange('服用記録削除_${medication['name']}_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
+          }
+          setState(() => _addedMedications.remove(medication));
+          _saveCurrentData();
+        },
+      );
     } else if (index < addedCount + memoCount) {
       // 服用メモ
       final memoIndex = index - addedCount;
       // メモ選択機能をサポートするため、既存の実装を使用
       return _buildMedicationMemoCheckbox(_getMedicationsForSelectedDay()[memoIndex]);
     } else {
-      // データなしメッセージ
-      return _buildNoMedicationMessage();
+      // データなしメッセージ（新しいウィジェットを使用）
+      return NoMedicationMessage(
+        onAddMemo: () {
+          _tabController.animateTo(1);
+        },
+      );
     }
   }
 
-  // 服用メモが未追加の場合のメッセージ表示
+  // 服用メモが未追加の場合のメッセージ表示（廃止：NoMedicationMessageウィジェットを使用）
+  @Deprecated('Use NoMedicationMessage widget instead')
   Widget _buildNoMedicationMessage() {
-    return Container(
-      height: 450, // 高さを450pxに設定
-      margin: const EdgeInsets.symmetric(vertical: 20),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.blue.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.info_outline,
-            color: Colors.blue,
-            size: 48,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '服用メモから服用スケジュール\n(毎日、曜日)を選択してください',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.white 
-                  : Colors.black87,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '服用メモタブで薬品やサプリメントを追加してから、\nカレンダーページで服用スケジュールを管理できます。',
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.white 
-                  : Colors.black87,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              // 服用メモタブに切り替え
-              _tabController.animateTo(1);
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('服用メモを追加'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return NoMedicationMessage(
+      onAddMemo: () {
+        _tabController.animateTo(1);
+      },
     );
   }
 
@@ -2318,273 +2271,37 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
     final totalCount = memo.dosageFrequency;
     
-    return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected 
-                ? Colors.blue 
-                : checkedCount == totalCount 
-                    ? Colors.green 
-                    : Colors.grey.withOpacity(0.3),
-            width: isSelected ? 2 : checkedCount == totalCount ? 1.5 : 1,
-          ),
-          color: isSelected 
-              ? Colors.blue.withOpacity(0.1)
-              : checkedCount == totalCount 
-                  ? Colors.green.withOpacity(0.05) 
-                  : Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 上部：アイコン、薬名、服用回数情報
-              Row(
-                children: [
-                  // 大きなアイコン
-                  CircleAvatar(
-                    backgroundColor: memo.color,
-                    radius: 20,
-                    child: Icon(
-                      memo.type == 'サプリメント' ? Icons.eco : Icons.medication,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 薬名と種類
-                        Text(
-                          memo.name,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: checkedCount == totalCount ? Colors.green : Colors.black87,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: checkedCount == totalCount ? Colors.green.withOpacity(0.2) : memo.color.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            memo.type,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: checkedCount == totalCount ? Colors.green : memo.color,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              // 服用回数に応じたチェックボックス
-              const SizedBox(height: 12),
-              Row(
-                children: List.generate(totalCount, (index) {
-                  final isChecked = _getMedicationMemoDoseStatusForSelectedDay(memo.id, index);
-                  return Expanded(
-                    child: Semantics(
-                      label: '${memo.name}の服用記録 ${index + 1}回目',
-                      hint: 'タップして服用状態を切り替え',
-                    child: GestureDetector(
-                      onTap: () async {
-                        if (_selectedDay != null) {
-                          // ✅ 追加：変更前スナップショット
-                          await _saveSnapshotBeforeChange('服用回数チェック_${memo.name}_${index + 1}回目_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
-                          final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-                          setState(() {
-                            // 日付別の服用メモ状態を更新
-                            _weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
-                            _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
-                            _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memo.id, () => {});
-                            _weekdayMedicationDoseStatus[dateStr]![memo.id]![index] = !isChecked;
-                            
-                            // 全体の服用状況を更新（全回数完了時に服用済み）
-                            final checkedCount = _getMedicationMemoCheckedCountForSelectedDay(memo.id);
-                            final totalCount = memo.dosageFrequency;
-                            _weekdayMedicationStatus[dateStr]![memo.id] = checkedCount == totalCount;
-                            _medicationMemoStatus[memo.id] = checkedCount == totalCount;
-                          });
-                          // データ保存
-                          await _saveAllData();
-                          // 統計を再計算
-                          await _calculateAdherenceStats();
-                        }
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isChecked ? Colors.green : Colors.grey.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isChecked ? Colors.green : Colors.grey.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
-                              color: isChecked ? Colors.white : Colors.grey,
-                              size: 20,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${index + 1}回目',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isChecked ? Colors.white : Colors.grey[600],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-              // 服用回数情報
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.repeat, size: 16, color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Text(
-                      '服用回数: ${memo.dosageFrequency}回 (${checkedCount}/${totalCount})',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: checkedCount == totalCount ? Colors.green : Colors.blue[700],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (memo.dosageFrequency >= 6) ...[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          _showWarningDialog(context);
-                        },
-                        child: const Icon(Icons.warning, size: 16, color: Colors.orange),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              // 用量情報
-              if (memo.dosage.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.straighten, size: 16, color: Colors.grey),
-                      const SizedBox(width: 8),
-                      Text(
-                        '用量: ${memo.dosage}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: checkedCount == totalCount ? Colors.green : Colors.grey[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              // メモ情報（タップ可能）
-              if (memo.notes.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () {
-                    _showMemoDetailDialog(context, memo.name, memo.notes);
-                  },
-                  child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.note, size: 16, color: Colors.blue),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'メモ',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        memo.notes,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          height: 1.4,
-                        ),
-                          maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'タップしてメモを表示',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.withOpacity(0.7),
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+    return ExpandedMedicationMemoCheckbox(
+      memo: memo,
+      isSelected: isSelected,
+      checkedCount: checkedCount,
+      totalCount: totalCount,
+      getMedicationMemoDoseStatus: (memoId, index) {
+        return _getMedicationMemoDoseStatusForSelectedDay(memoId, index);
+      },
+      onDoseStatusChanged: (memoId, doseIndex, isChecked) async {
+        if (_selectedDay != null) {
+          await _saveSnapshotBeforeChange(
+            '服用回数チェック_${memo.name}_${doseIndex + 1}回目_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}',
+          );
+          final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+          setState(() {
+            _weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
+            _weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
+            _weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
+            _weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+            
+            final updatedCheckedCount = _getMedicationMemoCheckedCountForSelectedDay(memoId);
+            final memoTotalCount = _medicationMemos.firstWhere((m) => m.id == memoId).dosageFrequency;
+            _weekdayMedicationStatus[dateStr]![memoId] = updatedCheckedCount == memoTotalCount;
+            _medicationMemoStatus[memoId] = updatedCheckedCount == memoTotalCount;
+          });
+          await _saveAllData();
+          await _calculateAdherenceStats();
+        }
+      },
+      onShowWarningDialog: () => _showWarningDialog(context),
+      onShowMemoDetailDialog: (name, notes) => _showMemoDetailDialog(context, name, notes),
     );
   }
 
@@ -2665,11 +2382,7 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     );
   }
 
-  // ページネーション機能（大量データ対応）
-  static const int _pageSize = 20; // 1ページあたりの件数
-  int _currentPage = 0;
-  List<MedicationMemo> _displayedMemos = [];
-  bool _isLoadingMore = false;
+  // ページネーション機能（PaginationManagerを使用）
   final ScrollController _memoScrollController = ScrollController();
   
   // アラーム制限機能
@@ -2687,26 +2400,23 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   
 
 
-  // ページネーション機能の実装
+  // ページネーション機能の実装（PaginationManagerを使用）
   Future<void> _loadMoreMemos() async {
-    if (_isLoadingMore || _currentPage * _pageSize >= _medicationMemos.length) return;
+    if (!_paginationManager.hasMore) return;
     
-    setState(() => _isLoadingMore = true);
+    final loaded = _paginationManager.loadMore();
     
-    // ページングで一部だけ読み込み
-      final startIndex = _currentPage * _pageSize;
-      final endIndex = (startIndex + _pageSize).clamp(0, _medicationMemos.length);
+    if (loaded && mounted) {
+      setState(() {});
       
-      if (startIndex < _medicationMemos.length) {
-        final newMemos = _medicationMemos.sublist(startIndex, endIndex);
-        
-        setState(() {
-          _displayedMemos.addAll(newMemos);
-          _currentPage++;
-          _isLoadingMore = false;
-        });
-      } else {
-        setState(() => _isLoadingMore = false);
+      // スクロール位置を調整
+      if (_memoScrollController.hasClients) {
+        _memoScrollController.animateTo(
+          _memoScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     }
   }
   
@@ -2727,24 +2437,10 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   
   // 制限ダイアログ表示
   void _showLimitDialog(String type) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.warning, color: Colors.orange),
-            const SizedBox(width: 8),
-            Text('${type}上限'),
-          ],
-        ),
-        content: Text('${type}は最大${type == 'アラーム' ? maxAlarms : maxMemos}件まで設定できます。\n不要な${type}を削除してください。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('了解'),
-          ),
-        ],
-      ),
+    WarningDialog.showLimitDialog(
+      context,
+      type,
+      type == 'アラーム' ? maxAlarms : maxMemos,
     );
   }
 
@@ -3226,121 +2922,12 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   void _showCustomAdherenceDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  const Icon(Icons.analytics, color: Colors.blue, size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      '任意の日数の遵守率',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '分析したい期間の日数を入力してください',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                    controller: _customDaysController,
-                      focusNode: _customDaysFocusNode,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: '日数（1-365日）',
-                        hintText: '例: 30',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.calendar_today),
-                        helperText: '過去何日間のデータを分析しますか？',
-                    ),
-                    onChanged: (value) {
-                        // 入力値の検証
-                      },
-                    ),
-                    const SizedBox(height: 20),
-            if (_customAdherenceResult != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _customAdherenceResult! >= 80
-                      ? Colors.green.withOpacity(0.1)
-                      : _customAdherenceResult! >= 60
-                          ? Colors.orange.withOpacity(0.1)
-                          : Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _customAdherenceResult! >= 80
-                        ? Colors.green
-                        : _customAdherenceResult! >= 60
-                            ? Colors.orange
-                            : Colors.red,
-                    width: 2,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      '${_customDaysResult}日間の遵守率',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_customAdherenceResult!.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: _customAdherenceResult! >= 80
-                            ? Colors.green
-                            : _customAdherenceResult! >= 60
-                                ? Colors.orange
-                                : Colors.red,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
+      builder: (context) => CustomAdherenceDialog(
+        statsScrollController: _statsScrollController,
+        onCalculate: (rate, days) {
+          _calculateCustomAdherence(days);
+        },
       ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('キャンセル'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final days = int.tryParse(_customDaysController.text);
-                    if (days != null && days >= 1 && days <= 365) {
-                      _calculateCustomAdherence(days);
-                      setDialogState(() {}); // ダイアログ内の状態を更新
-                    } else {
-                      _showSnackBar('1から365の範囲で日数を入力してください');
-                    }
-                  },
-                  child: const Text('分析実行'),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
   
@@ -3403,45 +2990,12 @@ class _MedicationHomePageState extends State<MedicationHomePage>
       builder: (context) => MemoDialog(
         existingMemos: _medicationMemos,
         onMemoAdded: (memo) async {
-          // ✅ 変更前スナップショット
-          await _saveSnapshotBeforeChange('メモ追加_${memo.name.isEmpty ? '無題' : memo.name}');
-          try {
-            // タイトルが空なら自動連番で補完
-            MedicationMemo memoToSave = memo;
-            final rawTitle = memo.name.trim();
-            if (rawTitle.isEmpty) {
-              final titles = _medicationMemos.map((m) => m.name).toList();
-              final autoTitle = _generateDefaultTitle(titles);
-              memoToSave = MedicationMemo(
-                id: memo.id,
-                name: autoTitle,
-                type: memo.type,
-                dosage: memo.dosage,
-                notes: memo.notes,
-                createdAt: memo.createdAt,
-                lastTaken: memo.lastTaken,
-                color: memo.color,
-                selectedWeekdays: memo.selectedWeekdays,
-              );
-            }
-
-            // ✅ 改善版：メモを保存（多重バックアップ付き）
-            await _saveMedicationMemoWithBackup(memoToSave);
-            
-            // UIを更新（データ再読み込みは不要）
-          setState(() {
-            _medicationMemos.add(memoToSave);
-              // 新しく追加されたメモを表示リストにも追加
-              _displayedMemos.add(memoToSave);
-          });
-            
-            // データを保存
-            await _saveAllData();
-            
-            _showSnackBar('服用メモを追加しました');
-          } catch (e) {
-            _showSnackBar('メモの追加に失敗しました: $e');
-          }
+          await _memoEventHandler.addMemo(
+            memo,
+            _medicationMemos,
+            maxMemos,
+            _saveAllData,
+          );
         },
       ),
     );
@@ -3453,74 +3007,30 @@ class _MedicationHomePageState extends State<MedicationHomePage>
         initialMemo: memo,
         existingMemos: _medicationMemos,
         onMemoAdded: (updatedMemo) async {
-          // ✅ 変更前スナップショット
-          await _saveSnapshotBeforeChange('メモ編集_${memo.name.isEmpty ? '無題' : memo.name}');
-          // タイトルが空なら自動連番で補完
-          MedicationMemo memoToSave = updatedMemo;
-          final rawTitle = updatedMemo.name.trim();
-          if (rawTitle.isEmpty) {
-            final titles = _medicationMemos.where((m) => m.id != memo.id).map((m) => m.name).toList();
-            final autoTitle = _generateDefaultTitle(titles);
-            memoToSave = MedicationMemo(
-              id: updatedMemo.id,
-              name: autoTitle,
-              type: updatedMemo.type,
-              dosage: updatedMemo.dosage,
-              notes: updatedMemo.notes,
-              createdAt: updatedMemo.createdAt,
-              lastTaken: updatedMemo.lastTaken,
-              color: updatedMemo.color,
-              selectedWeekdays: updatedMemo.selectedWeekdays,
-            );
-          }
-
-          // ✅ 改善版：メモを保存（多重バックアップ付き）
-          await _saveMedicationMemoWithBackup(memoToSave);
-
-          setState(() {
-            final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
-            if (index != -1) {
-              _medicationMemos[index] = memoToSave;
-            }
-            // 表示リストも更新
-            final displayedIndex = _displayedMemos.indexWhere((m) => m.id == memo.id);
-            if (displayedIndex != -1) {
-              _displayedMemos[displayedIndex] = memoToSave;
-            }
-          });
-          
-          _showSnackBar('服用メモを更新しました');
+          await _memoEventHandler.editMemo(
+            memo,
+            updatedMemo,
+            _medicationMemos,
+            _saveAllData,
+          );
         },
       ),
     );
   }
   void _markAsTaken(MedicationMemo memo) async {
-    final updatedMemo = MedicationMemo(
-      id: memo.id,
-      name: memo.name,
-      type: memo.type,
-      dosage: memo.dosage,
-      notes: memo.notes,
-      createdAt: memo.createdAt,
-      lastTaken: DateTime.now(),
-      color: memo.color,
-      selectedWeekdays: memo.selectedWeekdays,
+    await _memoEventHandler.markAsTaken(
+      memo,
+      (updatedMemo) {
+        setState(() {
+          final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
+          if (index != -1) {
+            _medicationMemos[index] = updatedMemo;
+          }
+        });
+      },
     );
-    
-    // ✅ 改善版：メモを保存（多重バックアップ付き）
-    await _saveMedicationMemoWithBackup(updatedMemo);
-    
-    setState(() {
-      final index = _medicationMemos.indexWhere((m) => m.id == memo.id);
-      if (index != -1) {
-        _medicationMemos[index] = updatedMemo;
-      }
-    });
-    
-    _showSnackBar('${memo.name}の服用を記録しました');
   }
   void _deleteMemo(String id) async {
-    // ✅ 変更前スナップショット
     final target = _medicationMemos.firstWhere(
       (m) => m.id == id,
       orElse: () => MedicationMemo(
@@ -3530,31 +3040,14 @@ class _MedicationHomePageState extends State<MedicationHomePage>
         createdAt: DateTime.now(),
       ),
     );
-    await _saveSnapshotBeforeChange('メモ削除_${target.name}');
-    try {
-      // ✅ 改善版：メモを削除（多重バックアップ付き）
-      await _deleteMedicationMemoWithBackup(id);
-      
-      // UIを更新
-    setState(() {
-      _medicationMemos.removeWhere((memo) => memo.id == id);
-        _displayedMemos.removeWhere((memo) => memo.id == id);
-        // 関連データも削除
-        _medicationMemoStatus.remove(id);
-        _weekdayMedicationStatus.remove(id);
-        // 日付別の服用状態も削除
-        for (final dateStr in _weekdayMedicationDoseStatus.keys) {
-          _weekdayMedicationDoseStatus[dateStr]?.remove(id);
-        }
-      });
-      
-      // データを保存
-      await _saveAllData();
-      
-    _showSnackBar('メモを削除しました');
-    } catch (e) {
-      _showSnackBar('削除に失敗しました: $e');
-    }
+    
+    await _memoEventHandler.deleteMemo(
+      id,
+      target,
+      _medicationMemos,
+      _deleteMedicationMemoWithBackup,
+      _saveAllData,
+    );
   }
 
   // 空タイトル時の自動連番生成
@@ -3729,286 +3222,67 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     final stats = _calculateMedicationStats();
     final total = stats['total'] ?? 0;
     final taken = stats['taken'] ?? 0;
-    final progress = total > 0 ? taken / total : 0.0;
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: progress == 1.0 
-            ? [Colors.green.withOpacity(0.1), Colors.green.withOpacity(0.05)]
-            : [Colors.orange.withOpacity(0.1), Colors.orange.withOpacity(0.05)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: progress == 1.0 ? Colors.green : Colors.orange,
-          width: 2,
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      progress == 1.0 ? Icons.check_circle : Icons.schedule,
-                      color: progress == 1.0 ? Colors.green : Colors.orange,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '今日の服用状況',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: progress == 1.0 ? Colors.green : Colors.orange,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '$taken / $total 服用済み',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: progress == 1.0 ? Colors.green : Colors.orange,
-                  ),
-                ),
-                if (total > 0) ...[
-                  const SizedBox(height: 4),
-                  LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.grey.withOpacity(0.3),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress == 1.0 ? Colors.green : Colors.orange,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: progress == 1.0 ? Colors.green : Colors.orange,
-              boxShadow: [
-                BoxShadow(
-                  color: (progress == 1.0 ? Colors.green : Colors.orange).withOpacity(0.3),
-                  spreadRadius: 2,
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                '${(progress * 100).toInt()}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    // 新しいウィジェットを使用
+    return MedicationStatsCardSimple(
+      total: total,
+      taken: taken,
     );
   }
 
   Widget _buildMemoField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ✅ 修正：オーバーフローを防ぐためにFlexibleを使用
-        Row(
-          children: [
-            Icon(Icons.note_alt, color: Colors.blue, size: 16),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-              '今日のメモ',
-              style: TextStyle(
-                fontSize: 14, // フォントサイズ削減
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-                ),
-                overflow: TextOverflow.ellipsis, // テキストオーバーフロー対策
-              ),
-            ),
-            const Spacer(),
-            if (_memoController.text.isNotEmpty)
-              Flexible(
-                child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), // パディング削減
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8), // 角丸削減
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
-                ),
-                child: const Text(
-                  '保存済み',
-                  style: TextStyle(
-                    fontSize: 10, // フォントサイズ削減
-                    color: Colors.green,
-                    fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6), // 間隔削減
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8), // 角丸削減
-            border: Border.all(
-              color: _isMemoFocused ? Colors.blue.withOpacity(0.5) : Colors.grey.withOpacity(0.3),
-              width: _isMemoFocused ? 1.5 : 1,
-            ),
-            boxShadow: _isMemoFocused ? [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ] : null,
-          ),
-          child: ValueListenableBuilder<String>(
-            valueListenable: _memoTextNotifier,
-            builder: (context, memoText, _) {
-              _memoController.value = _memoController.value.copyWith(text: memoText, selection: TextSelection.collapsed(offset: memoText.length));
-              return TextField(
-            controller: _memoController,
-            focusNode: _memoFocusNode,
-            maxLines: 2, // 2行表示に固定
-            minLines: 2, // 最小行数を2に変更
-            decoration: InputDecoration(
-              hintText: '副作用、病院、通院記録など',
-              hintStyle: const TextStyle(
-                color: Colors.grey,
-                fontSize: 12, // フォントサイズ削減
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.all(12), // パディング削減
-              suffixIcon: (_memoController.text.isNotEmpty)
-                  ? IconButton(
-                      onPressed: () async {
-                        // ✅ 変更前スナップショット（メモクリア）
-                        if (_selectedDay != null) {
-                          await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
-                        }
-                        _memoTextNotifier.value = '';
-                        _saveMemo();
-                      },
-                      icon: const Icon(Icons.clear, color: Colors.grey, size: 16),
-                    )
-                  : null,
-            ),
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.lightGreen[300] 
-                  : Colors.black87,
-            ),
-            onTap: () async {
-              // トライアル制限チェック
-              final isExpired = await TrialService.isTrialExpired();
-              if (isExpired) {
-                showDialog(
-                  context: context,
-                  builder: (context) => TrialLimitDialog(featureName: 'メモ'),
-                );
-                FocusScope.of(context).unfocus();
-                return;
-              }
-              setState(() {
-                _isMemoFocused = true;
-              });
-            },
-            onChanged: (value) {
-              // デバウンス処理でスナップショット保存を制限
-              _debounce?.cancel();
-              _debounce = Timer(const Duration(milliseconds: 500), () async {
-                // デバウンス後にスナップショット保存（1回だけ）
-                if (_selectedDay != null && !_memoSnapshotSaved) {
-                await _saveSnapshotBeforeChange('メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
-                  _memoSnapshotSaved = true;
-              }
-                _memoTextNotifier.value = value;
-                _saveMemo();
-              });
-              // 即座にUIを更新
-              _memoTextNotifier.value = value;
-            },
-            onSubmitted: (value) {
-              // キーボードの決定ボタンで完了
-              _completeMemo();
-            },
-            onEditingComplete: () {
-              _completeMemo();
-            },
-              );
-            },
-          ),
-        ),
-        // メモ入力時の完了ボタン（コンパクト化）
-        if (_isMemoFocused) ...[
-          const SizedBox(height: 8), // 間隔削減
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  _completeMemo();
-                },
-                icon: const Icon(Icons.save, size: 16), // アイコンサイズ削減
-                label: const Text('保存', style: TextStyle(fontSize: 12)), // フォントサイズ削減
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // パディング削減
-                  minimumSize: const Size(0, 32), // 最小サイズ設定
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  // ✅ 変更前スナップショット（メモクリア）
-                  if (_selectedDay != null) {
-                    await _saveSnapshotBeforeChange('メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}');
-                  }
-                  setState(() {
-                    _memoController.clear();
-                    _isMemoFocused = false;
-                  });
-                  _saveMemo();
-                  FocusScope.of(context).unfocus();
-                },
-                icon: const Icon(Icons.clear, size: 16), // アイコンサイズ削減
-                label: const Text('クリア', style: TextStyle(fontSize: 12)), // フォントサイズ削減
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // パディング削減
-                  minimumSize: const Size(0, 32), // 最小サイズ設定
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
+    return DayMemoFieldWidget(
+      selectedDay: _selectedDay,
+      initialMemoText: _memoController.text,
+      memoTextNotifier: _memoTextNotifier,
+      isMemoFocused: _isMemoFocused,
+      onMemoChanged: (value) {
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 500), () async {
+          if (_selectedDay != null && !_memoSnapshotSaved) {
+            await _saveSnapshotBeforeChange(
+              'メモ変更_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}',
+            );
+            _memoSnapshotSaved = true;
+          }
+          _memoTextNotifier.value = value;
+          _saveMemo();
+        });
+        _memoTextNotifier.value = value;
+      },
+      onMemoSaved: _completeMemo,
+      onMemoCleared: () async {
+        if (_selectedDay != null) {
+          await _saveSnapshotBeforeChange(
+            'メモクリア_${DateFormat('yyyy-MM-dd').format(_selectedDay!)}',
+          );
+        }
+        setState(() {
+          _memoController.clear();
+          _isMemoFocused = false;
+        });
+        _saveMemo();
+        FocusScope.of(context).unfocus();
+      },
+      onMemoFocused: () async {
+        final isExpired = await TrialService.isTrialExpired();
+        if (isExpired) {
+          showDialog(
+            context: context,
+            builder: (context) => TrialLimitDialog(featureName: 'メモ'),
+          );
+          FocusScope.of(context).unfocus();
+          return;
+        }
+        setState(() {
+          _isMemoFocused = true;
+        });
+      },
+      onMemoUnfocused: () {
+        setState(() {
+          _isMemoFocused = false;
+        });
+      },
     );
   }
 
@@ -4046,48 +3320,11 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   
   // 警告ダイアログを表示するメソッド
   void _showWarningDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            const Icon(Icons.warning, color: Colors.orange),
-            const SizedBox(width: 12),
-            const Text('注意'),
-          ],
-        ),
-        content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Text(
-              '服用回数が多いため、',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.orange,
-              ),
-            ),
-            Text(
-              '医師の指示に従ってください',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('了解'),
-          ),
-        ],
-      ),
+    WarningDialog.show(
+      context,
+      title: '注意',
+      message: '服用回数が多いため、\n医師の指示に従ってください',
+      confirmText: '了解',
     );
     
     // 3秒後に自動で閉じる
@@ -4116,87 +3353,31 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     if (!mounted) return;
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(children: [Icon(Icons.backup, color: Colors.orange), SizedBox(width: 8), Text('バックアップ')]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('・毎日深夜2:00（自動）- フルバックアップ\n・手動保存（任意）- 任意タイミングで保存'),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop('create'),
-                icon: const Icon(Icons.save),
-                label: const Text('手動バックアップを作成'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-                ),
+      builder: (context) => BackupDialog(
+        hasUndoAvailable: _hasUndoAvailable,
+        onCreate: () async => await _createManualBackup(),
+        onShowHistory: () async => await _showBackupHistory(),
+        onUndo: () async => await _undoLastChange(),
+        onRestoreLatest: () async {
+          final prefs = await SharedPreferences.getInstance();
+          final key = prefs.getString('last_full_backup_key');
+          if (key != null) {
+            await _restoreBackup(key);
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('フルバックアップが見つかりません'),
+                backgroundColor: Colors.red,
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).pop('history'),
-                icon: const Icon(Icons.history),
-                label: const Text('保存履歴を見る'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                ),
-              ),
-              const SizedBox(height: 8),
-              FutureBuilder<bool>(
-                future: _hasUndoAvailable(),
-                builder: (context, snapshot) {
-                  final available = snapshot.data ?? false;
-                  return SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                  onPressed: available ? () => Navigator.of(context).pop('undo') : null,
-                      icon: const Icon(Icons.undo),
-                      label: const Text('1つ前の状態に復元'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: available ? Colors.teal : Colors.grey,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    final key = prefs.getString('last_full_backup_key');
-                Navigator.of(context).pop(key != null ? 'restore:$key' : null);
-              },
-              icon: const Icon(Icons.restore),
-              label: const Text('最新フルバックアップを復元'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-            ),
-          ),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('閉じる'))],
+            );
+          }
+        },
       ),
     );
-    if (result == null) return;
-    if (result == 'create') {
-      await _createManualBackup();
-    } else if (result == 'history') {
-      await _showBackupHistory();
-    } else if (result == 'undo') {
-      await _undoLastChange();
-    } else if (result.startsWith('restore:')) {
+    if (result != null && result.startsWith('restore:')) {
       final key = result.split(':')[1];
-                      await _restoreBackup(key);
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('フルバックアップが見つかりません'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
+      await _restoreBackup(key);
+    }
   }
 
   // ✅ 直前の変更が存在するか（スナップショット有無）
@@ -4243,9 +3424,9 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   // ✅ 1つ前の状態に復元（最新スナップショットから）
   Future<void> _undoLastChange() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastSnapshotKey = prefs.getString('last_snapshot_key');
-      if (lastSnapshotKey == null) {
+      final snapshotData = await _snapshotPersistence.restoreLastSnapshot();
+      
+      if (snapshotData == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -4257,10 +3438,36 @@ class _MedicationHomePageState extends State<MedicationHomePage>
         return;
       }
 
-      await _restoreBackup(lastSnapshotKey);
-      // 復元に使用したスナップショットは削除（1回使い切り）
-      await prefs.remove(lastSnapshotKey);
-      await prefs.remove('last_snapshot_key');
+      // スナップショットからの復元
+      final restored = await HomePageBackupHelper.restoreDataAsync(snapshotData);
+      
+      // アラームをSharedPreferencesに保存
+      final prefs = await SharedPreferences.getInstance();
+      final restoredAlarmList = restored['restoredAlarmList'] as List<Map<String, dynamic>>;
+      await prefs.setInt('alarm_count', restoredAlarmList.length);
+      
+      for (int i = 0; i < restoredAlarmList.length; i++) {
+        final alarm = restoredAlarmList[i];
+        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
+        await prefs.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
+        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+        await prefs.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
+        await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] as bool? ?? true);
+        await prefs.setBool('alarm_${i}_isRepeatEnabled', alarm['isRepeatEnabled'] as bool? ?? false);
+        await prefs.setInt('alarm_${i}_volume', alarm['volume'] as int? ?? 80);
+        
+        final dynamic selectedDaysRaw = alarm['selectedDays'];
+        final List<bool> selectedDays = selectedDaysRaw is List
+            ? List<bool>.from(selectedDaysRaw.map((e) => e == true))
+            : <bool>[false, false, false, false, false, false, false];
+        for (int j = 0; j < 7; j++) {
+          await prefs.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
+        }
+      }
+      
+      // データ復元
+      _backupHandler.onDataRestored(restored);
+      
       if (mounted) {
         setState(() {
           _focusedDay = _selectedDay ?? DateTime.now();
@@ -4342,65 +3549,7 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     );
     
     if (result != null && result.isNotEmpty) {
-      await _performBackup(result);
-    }
-  }
-
-  // ✅ 統合されたバックアップ作成メソッド（1回で完了）
-  Future<void> _performBackup(String backupName) async {
-    if (!mounted) return;
-    
-    // ローディング表示
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              ),
-              SizedBox(width: 8),
-              Text('バックアップを作成中...'),
-            ],
-          ),
-        duration: Duration(seconds: 1),
-      ),
-    );
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final backupKey = 'backup_${DateTime.now().millisecondsSinceEpoch}';
-      
-      final backupData = await _createSafeBackupData(backupName);
-      final jsonString = await _safeJsonEncode(backupData);
-      final encryptedData = await _encryptDataAsync(jsonString);
-      
-      // 4. 保存（1回で完了）
-      await prefs.setString(backupKey, encryptedData);
-      
-      await HomePageBackupHelper.updateBackupHistory(backupName, backupKey);
-      
-      if (!mounted) return;
-      
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-          content: Text('✓ バックアップ「$backupName」を作成しました'),
-            backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-          ),
-        );
-    } catch (e) {
-      debugPrint('バックアップ作成エラー: $e');
-      if (!mounted) return;
-      
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-          content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      await _backupHandler.performBackup(result, context);
     }
   }
 
@@ -4433,361 +3582,60 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   }
 
 
-  // ✅ 非同期データ復元（最適化版）
-  Future<void> _restoreDataAsync(Map<String, dynamic> backupData) async {
-    try {
-      final restored = await HomePageBackupHelper.restoreDataAsync(backupData);
-      
-      // アラームをSharedPreferencesに保存
-      final prefs = await SharedPreferences.getInstance();
-      final restoredAlarmList = restored['restoredAlarmList'] as List<Map<String, dynamic>>;
-      await prefs.setInt('alarm_count', restoredAlarmList.length);
-      
-      for (int i = 0; i < restoredAlarmList.length; i++) {
-        final alarm = restoredAlarmList[i];
-        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
-        await prefs.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
-        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
-        await prefs.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
-        await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] as bool? ?? true);
-        await prefs.setBool('alarm_${i}_isRepeatEnabled', alarm['isRepeatEnabled'] as bool? ?? false);
-        await prefs.setInt('alarm_${i}_volume', alarm['volume'] as int? ?? 80);
-        
-        final dynamic selectedDaysRaw = alarm['selectedDays'];
-        final List<bool> selectedDays = selectedDaysRaw is List
-            ? List<bool>.from(selectedDaysRaw.map((e) => e == true))
-            : <bool>[false, false, false, false, false, false, false];
-        for (int j = 0; j < 7; j++) {
-          await prefs.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
-        }
-      }
-      
-      if (!mounted) return;
-      
-      setState(() {
-        _medicationMemos = restored['restoredMemos'] as List<MedicationMemo>;
-        _addedMedications = restored['restoredAddedMedications'] as List<Map<String, dynamic>>;
-        _medicines = restored['restoredMedicines'] as List<MedicineData>;
-        _medicationData = restored['restoredMedicationData'] as Map<String, Map<String, MedicationInfo>>;
-        _weekdayMedicationStatus = restored['restoredWeekdayStatus'] as Map<String, Map<String, bool>>;
-        _weekdayMedicationDoseStatus = restored['restoredWeekdayDoseStatus'] as Map<String, Map<String, Map<int, bool>>>;
-        _medicationMemoStatus = restored['restoredMemoStatus'] as Map<String, bool>;
-        _dayColors = restored['restoredDayColors'] as Map<String, Color>;
-        _alarmList = restoredAlarmList;
-        _alarmSettings = restored['restoredAlarmSettings'] as Map<String, dynamic>;
-        _adherenceRates = restored['restoredAdherenceRates'] as Map<String, double>;
-        _alarmTabKey = UniqueKey();
-      });
-      
-      await _saveAllData();
-      debugPrint('バックアップ復元完了: ${_medicationMemos.length}件のメモ');
-    } catch (e) {
-      debugPrint('データ復元エラー: $e');
-      rethrow;
-    }
-  }
 
 
 
 
   // ✅ バックアップ履歴の更新（サービスに移動）
   Future<void> _updateBackupHistory(String backupName, String backupKey, {String type = 'manual'}) async {
-    await HomePageBackupHelper.updateBackupHistory(backupName, backupKey, type: type);
+    await _backupHandler.updateBackupHistory(backupName, backupKey, type: type);
   }
 
   // ✅ バックアップ履歴表示機能（強化版）
   Future<void> _showBackupHistory() async {
     if (!mounted) return;
     
-    final history = await BackupHistoryService.getBackupHistory();
-    
-    // 自動バックアップも含めて全てのバックアップを取得
-    final allBackups = <Map<String, dynamic>>[];
-    
-    // 手動バックアップ履歴を追加
-    for (final backup in history) {
-      allBackups.add({
-        ...backup,
-        'type': 'manual',
-        'source': '履歴',
-      });
-    }
-    
-    // 自動バックアップを追加
-    final autoBackupKey = await BackupHistoryService.getLastAutoBackupKey();
-    if (autoBackupKey != null) {
-      allBackups.add({
-        'name': '自動バックアップ（最新）',
-        'key': autoBackupKey,
-        'createdAt': DateTime.now().toIso8601String(),
-        'type': 'auto',
-        'source': '自動',
-      });
-    }
-    
-    if (allBackups.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('バックアップがありません'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.history, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('バックアップ一覧'),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 500,
-          child: ListView.builder(
-            itemCount: allBackups.length,
-            itemBuilder: (context, index) {
-              final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
-              final createdAt = DateTime.parse(backup['createdAt'] as String);
-              final isAuto = backup['type'] == 'auto';
-              
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                child: ListTile(
-                  leading: Icon(
-                    isAuto ? Icons.schedule : Icons.backup,
-                    color: isAuto ? Colors.green : Colors.orange,
-                  ),
-                  title: Text(backup['name'] as String),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
-                      Text(
-                        '${backup['source']}バックアップ',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isAuto ? Colors.green : Colors.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) async {
-                      switch (value) {
-                        case 'restore':
-                          await _restoreBackup(backup['key'] as String);
-                          break;
-                        case 'delete':
-                          if (!isAuto) {
-                            await _deleteBackup(backup['key'] as String, index);
-                          }
-                          break;
-                        case 'preview':
-                          await _previewBackup(backup['key'] as String);
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'restore',
-                        child: Row(
-                          children: [
-                            Icon(Icons.restore, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text('復元'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'preview',
-                        child: Row(
-                          children: [
-                            Icon(Icons.visibility, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text('プレビュー'),
-                          ],
-                        ),
-                      ),
-                      if (!isAuto) const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('削除'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
-          ),
-        ],
+      builder: (context) => BackupHistoryDialog(
+        onRestore: (backupKey) async {
+          await _restoreBackup(backupKey);
+        },
+        onDelete: (backupKey, index) async {
+          await _deleteBackup(backupKey, index);
+        },
+        onPreview: (backupKey) async {
+          await _previewBackup(backupKey);
+        },
       ),
     );
   }
 
   // ✅ バックアッププレビュー機能（簡略化）
   Future<void> _previewBackup(String backupKey) async {
-    try {
-      final backupData = await _loadBackupDataAsync(backupKey);
-      if (backupData == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('バックアップデータが見つかりません'), backgroundColor: Colors.red),
-          );
-        }
-        return;
-      }
-      if (!mounted) return;
-      final result = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('バックアッププレビュー'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-                children: [
-                Text('名前: ${backupData['name']}'),
-                  Text('作成日時: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(backupData['createdAt']))}'),
-                  const SizedBox(height: 8),
-                  const Text('📊 バックアップ内容:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('・服用メモ数: ${(backupData['medicationMemos'] as List).length}件'),
-                  Text('・追加薬品数: ${(backupData['addedMedications'] as List).length}件'),
-                  Text('・薬品データ数: ${(backupData['medicines'] as List).length}件'),
-                  Text('・アラーム数: ${(backupData['alarmList'] as List).length}件'),
-                  const SizedBox(height: 16),
-                  const Text('このバックアップを復元しますか？'),
-                ],
-              ),
-            ),
-            actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('キャンセル')),
-            ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('復元する')),
-            ],
-          ),
-        );
-      if (result == true) await _restoreBackup(backupKey);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('プレビューの表示に失敗しました: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
+    if (!mounted) return;
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => BackupPreviewDialog(
+        backupKey: backupKey,
+        onRestore: (key) async {
+          await _restoreBackup(key);
+        },
+      ),
+    );
   }
 
   // ✅ バックアップ復元機能（最適化版）
   Future<void> _restoreBackup(String backupKey) async {
-    // ローディング表示
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 8),
-              Text('バックアップを復元中...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-    
-    try {
-      // 非同期でバックアップデータを読み込み
-      final backupData = await _loadBackupDataAsync(backupKey);
-      
-      if (backupData == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('バックアップデータが見つかりません'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-      
-      // ✅ 新しい最適化された復元処理を使用
-      await _restoreDataAsync(backupData);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('バックアップを復元しました'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('バックアップの復元に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // ✅ 非同期でバックアップデータを読み込み
-  Future<Map<String, dynamic>?> _loadBackupDataAsync(String backupKey) async {
-    return HomePageBackupHelper.loadBackupDataAsync(backupKey);
+    await _backupHandler.restoreBackup(backupKey, context);
   }
 
 
 
   // ✅ バックアップ削除機能
   Future<void> _deleteBackup(String backupKey, int index) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // バックアップデータを削除
-      await prefs.remove(backupKey);
-      
-      // 履歴から削除（サービスを使用）
-      await BackupHistoryService.removeFromHistory(backupKey);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('バックアップを削除しました'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('バックアップの削除に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    await _backupHandler.deleteBackup(backupKey, context);
   }
 
 
