@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_page.dart';
 import '../services/trial_service.dart';
+// 新しいアーキテクチャを使用する場合は、以下のコメントを外してください
+// import '../pages/integrated_home_page.dart';
 
 /// アプリケーションのルートウィジェット
 /// テーマとロケールを設定し、ホーム画面を表示します

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -18,6 +19,10 @@ import 'services/app_preferences.dart';
 import 'services/in_app_purchase_service.dart';
 import 'services/trial_service.dart';
 import 'screens/medication_alarm_app.dart';
+import 'repositories/medication_repository.dart';
+import 'repositories/calendar_repository.dart';
+import 'repositories/backup_repository.dart';
+import 'repositories/alarm_repository.dart';
 
 /// アプリケーションのエントリーポイント
 /// 初期化処理とエラーハンドリングを設定
@@ -70,8 +75,15 @@ void main() async {
     debugPrint('❌ トライアルリセットエラー: $e');
   }
   
-  // アプリを起動
-  runApp(const MedicationAlarmApp());
+  // リポジトリの初期化
+  await _initializeRepositories();
+  
+  // アプリを起動（ProviderScopeでラップ）
+  runApp(
+    const ProviderScope(
+      child: MedicationAlarmApp(),
+    ),
+  );
   
   // 重い初期化処理は非同期で実行
   Future.microtask(() async {
@@ -108,6 +120,53 @@ Future<void> _initializeAppAsync() async {
     if (kDebugMode) {
       debugPrint('非同期初期化エラー: $e');
     }
+  }
+}
+
+/// リポジトリの初期化
+Future<void> _initializeRepositories() async {
+  try {
+    debugPrint('🗄️ リポジトリ初期化開始...');
+    
+    // メディケーションリポジトリの初期化
+    try {
+      final medicationRepo = MedicationRepository();
+      await medicationRepo.initialize();
+      debugPrint('✅ MedicationRepository初期化完了');
+    } catch (e) {
+      debugPrint('❌ MedicationRepository初期化エラー: $e');
+    }
+    
+    // カレンダーリポジトリの初期化
+    try {
+      final calendarRepo = CalendarRepository();
+      await calendarRepo.initialize();
+      debugPrint('✅ CalendarRepository初期化完了');
+    } catch (e) {
+      debugPrint('❌ CalendarRepository初期化エラー: $e');
+    }
+    
+    // バックアップリポジトリの初期化
+    try {
+      final backupRepo = BackupRepository();
+      await backupRepo.initialize();
+      debugPrint('✅ BackupRepository初期化完了');
+    } catch (e) {
+      debugPrint('❌ BackupRepository初期化エラー: $e');
+    }
+    
+    // アラームリポジトリの初期化
+    try {
+      final alarmRepo = AlarmRepository();
+      await alarmRepo.initialize();
+      debugPrint('✅ AlarmRepository初期化完了');
+    } catch (e) {
+      debugPrint('❌ AlarmRepository初期化エラー: $e');
+    }
+    
+    debugPrint('✅ 全リポジトリ初期化完了');
+  } catch (e) {
+    debugPrint('❌ リポジトリ初期化エラー: $e');
   }
 }
 

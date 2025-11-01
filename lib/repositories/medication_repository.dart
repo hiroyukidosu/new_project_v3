@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/medication_memo.dart';
+import '../models/adapters/medication_memo_adapter.dart';
 import '../utils/logger.dart';
 
 /// メディケーションデータのリポジトリ
@@ -30,7 +31,7 @@ class MedicationRepository {
       await Hive.initFlutter();
       
       // Hiveアダプターの登録
-      if (!Hive.isAdapterRegistered(MedicationMemoAdapter().typeId)) {
+      if (!Hive.isAdapterRegistered(2)) {
         Hive.registerAdapter(MedicationMemoAdapter());
       }
       
