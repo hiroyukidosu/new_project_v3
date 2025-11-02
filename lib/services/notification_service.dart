@@ -1,155 +1,309 @@
-import 'dart:io';
+// lib/services/notification_service.dart
+// 通知関連サービス
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:permission_handler/permission_handler.dart';
-import 'package:intl/intl.dart';
-import '../models/medication_info.dart';
-import '../models/notification_types.dart';
+import '../models/alarm_model.dart';
 
 /// 通知サービス
-/// アプリ通知の設定・管理を行う
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
-  static bool _isInitialized = false;
-  
-  static Future<bool> initialize() async {
-    if (_isInitialized) return true;
+  static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+  static Function(NotificationResponse)? _onNotificationTappedCallback;
+
+  /// 通知を初期化
+  static Future<void> initialize(Function(NotificationResponse) onNotificationTapped) async {
+    if (_initialized) return;
+
+    _onNotificationTappedCallback = onNotificationTapped;
+
+    // 権限リクエスト
+    await _requestPermissions();
+
+    // Android初期化設定
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    
+    // iOS初期化設定
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    final initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    // 初期化
+    await _notifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: onNotificationTapped,
+    );
+
+    // チャンネル作成
+    await createNotificationChannels();
+
+    _initialized = true;
+    debugPrint('✅ 通知初期化完了');
+  }
+
+  /// 権限リクエスト
+  static Future<void> _requestPermissions() async {
     try {
-      tzdata.initializeTimeZones();
-      tz.setLocalLocation(tz.getLocation('Asia/Tokyo'));
-     
-      if (Platform.isAndroid) {
-        final notificationStatus = await Permission.notification.request();
-        if (notificationStatus.isDenied || notificationStatus.isPermanentlyDenied) {
-          if (notificationStatus.isPermanentlyDenied) await openAppSettings();
-          return false;
-        }
-        if (await Permission.scheduleExactAlarm.isDenied) {
-          await Permission.scheduleExactAlarm.request();
-        }
+      final status = await Permission.notification.request();
+      if (status.isGranted) {
+        debugPrint('✅ 通知権限が許可されました');
+      } else {
+        debugPrint('⚠️ 通知権限が拒否されました');
       }
-      
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
-      );
-      const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
-      
-      final initialized = await _plugin.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: (response) {
-          // 通知タップ時の処理
-        },
-      );
-      
-      if ((initialized ?? false) && Platform.isAndroid) {
-        final channels = [
-          const AndroidNotificationChannel(
-            'medication_sound',
-            '薬物アラーム',
-            description: '服薬時間の通知',
-            importance: Importance.max,
-            playSound: true,
-            enableVibration: true,
-          ),
-        ];
-        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-        for (final channel in channels) {
-          await androidPlugin?.createNotificationChannel(channel);
-        }
-      }
-      
-      _isInitialized = initialized ?? false;
-      return _isInitialized;
     } catch (e) {
-      return false;
+      debugPrint('❌ 通知権限リクエストエラー: $e');
     }
   }
-  
-  static Future<void> scheduleNotifications(
-    Map<String, List<TimeOfDay>> notificationTimes,
-    Map<String, Map<String, MedicationInfo>> medicationData,
-    Map<String, NotificationType> notificationTypes,
-  ) async {
-    if (!_isInitialized) return;
-    try {
-      // 既存の通知を全てキャンセル
-      await _plugin.cancelAll();
-      int notificationId = 1;
-      final now = DateTime.now();
-      
-      // medicationDataの全てのエントリーに対して通知をスケジュール
-      for (final entry in medicationData.entries) {
-        final dateStr = entry.key;
-        final date = DateFormat('yyyy-MM-dd').parse(dateStr);
-          
-        for (final timeSlot in notificationTimes.keys) {
-          final times = notificationTimes[timeSlot] ?? [];
-          
-          for (final time in times) {
-            var scheduledDate = DateTime(
-              date.year, date.month, date.day, 
-              time.hour, time.minute
-            );
-            
-            // 未来の日付・時刻のみスケジュール
-            if (scheduledDate.isAfter(DateTime.now())) {
-              final medicines = entry.value[timeSlot]?.medicine ?? '';
-              final displayMedicines = medicines.isNotEmpty ? medicines : '薬';
-          
-              const androidDetails = AndroidNotificationDetails(
-                'medication_sound',
-                '薬物アラーム',
-                channelDescription: '服薬時間の通知',
-                importance: Importance.max,
-                priority: Priority.high,
-                playSound: true,
-                enableVibration: true,
-                icon: '@mipmap/ic_launcher',
-                autoCancel: true,
-                ongoing: false,
-                actions: [
-                  AndroidNotificationAction(
-                    'stop_alarm',
-                    '停止',
-                    cancelNotification: true,
-                  ),
-                ],
-              );
-          
-              const iosDetails = DarwinNotificationDetails(
-                sound: 'default',
-                presentAlert: true,
-                presentBadge: true,
-                presentSound: true,
-              );
-          
-              final notificationDetails = NotificationDetails(
-                android: androidDetails, 
-                iOS: iosDetails,
-              );
-          
-              // ZonedScheduleを使用して正確な時刻にスケジュール
-              await _plugin.zonedSchedule(
-                notificationId++,
-                '薬物アラーム',
-                '$displayMedicines を飲む時間です',
-                tz.TZDateTime.from(scheduledDate, tz.local),
-                notificationDetails,
-                androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-                uiLocalNotificationDateInterpretation: 
-                  UILocalNotificationDateInterpretation.absoluteTime,
-              );
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // エラー処理
+
+  /// 通知チャンネルを作成
+  static Future<void> createNotificationChannels() async {
+    // アラームチャンネル（音声+バイブレーション）
+    const alarmChannel = AndroidNotificationChannel(
+      'alarm_channel',
+      '服用時間のアラーム',
+      description: '服用時間のアラーム通知',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    // バイブレーションチャンネル
+    const vibrationChannel = AndroidNotificationChannel(
+      'vibration_channel',
+      'バイブ',
+      description: 'バイブ通知',
+      importance: Importance.max,
+      playSound: false,
+      enableVibration: true,
+    );
+
+    // サイレントチャンネル
+    const silentChannel = AndroidNotificationChannel(
+      'silent_channel',
+      'サイレント',
+      description: 'サイレント通知',
+      importance: Importance.defaultImportance,
+      playSound: false,
+      enableVibration: false,
+    );
+
+    // チャンネル作成
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(alarmChannel);
+
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(vibrationChannel);
+
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(silentChannel);
+
+    debugPrint('✅ 通知チャンネル作成完了');
+  }
+
+  /// アラーム通知を表示
+  static Future<void> showAlarmNotification({
+    required Alarm alarm,
+    required String selectedNotificationType,
+  }) async {
+    if (!_initialized) {
+      debugPrint('⚠️ 通知が初期化されていません');
+      return;
+    }
+
+    final alarmType = alarm.alarmType.isEmpty ? selectedNotificationType : alarm.alarmType;
+    
+    String channelId;
+    String channelName;
+    String channelDescription;
+    bool playSound;
+    bool enableVibration;
+    
+    switch (alarmType) {
+      case 'sound':
+        channelId = 'alarm_channel';
+        channelName = '服用時間のアラーム';
+        channelDescription = '服用時間のアラーム通知';
+        playSound = true;
+        enableVibration = false;
+        break;
+      case 'sound_vibration':
+        channelId = 'alarm_channel';
+        channelName = '服用時間のアラーム';
+        channelDescription = '服用時間のアラーム通知';
+        playSound = true;
+        enableVibration = true;
+        break;
+      case 'vibration':
+        channelId = 'vibration_channel';
+        channelName = 'バイブ';
+        channelDescription = 'バイブ通知';
+        playSound = false;
+        enableVibration = true;
+        break;
+      case 'silent':
+        channelId = 'silent_channel';
+        channelName = 'サイレント';
+        channelDescription = 'サイレント通知';
+        playSound = false;
+        enableVibration = false;
+        break;
+      default:
+        channelId = 'alarm_channel';
+        channelName = '服用時間のアラーム';
+        channelDescription = '服用時間のアラーム通知';
+        playSound = true;
+        enableVibration = false;
+    }
+    
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      channelDescription: channelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.alarm,
+      ongoing: true,
+      autoCancel: false,
+      playSound: playSound,
+      enableVibration: enableVibration,
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'default',
+      categoryIdentifier: 'alarm_category',
+    );
+
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notifications.show(
+      alarm.hashCode,
+      alarm.name,
+      'お薬を飲む時間になりました - 通知をタップしてアプリを開く',
+      details,
+      payload: 'alarm_${alarm.hashCode}',
+    );
+
+    debugPrint('✅ アラーム通知表示: ${alarm.name}');
+  }
+
+  /// 通知詳細を取得
+  static NotificationDetails getNotificationDetails(String type) {
+    switch (type) {
+      case 'sound':
+        return NotificationDetails(
+          android: AndroidNotificationDetails(
+            'alarm_channel',
+            '服用時間のアラーム',
+            channelDescription: '服用時間のアラーム通知',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            sound: 'default',
+          ),
+        );
+      case 'sound_vibration':
+        return NotificationDetails(
+          android: AndroidNotificationDetails(
+            'alarm_channel',
+            '服用時間のアラーム',
+            channelDescription: '服用時間のアラーム通知',
+            importance: Importance.max,
+            priority: Priority.high,
+            enableVibration: true,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            sound: 'default',
+          ),
+        );
+      case 'vibration':
+        return NotificationDetails(
+          android: AndroidNotificationDetails(
+            'vibration_channel',
+            'バイブ',
+            channelDescription: 'バイブ通知',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: false,
+            enableVibration: true,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: false,
+          ),
+        );
+      case 'silent':
+        return NotificationDetails(
+          android: AndroidNotificationDetails(
+            'silent_channel',
+            'サイレント',
+            channelDescription: 'サイレント通知',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: false,
+          ),
+        );
+      default:
+        return NotificationDetails(
+          android: AndroidNotificationDetails(
+            'alarm_channel',
+            '服用時間のアラーム',
+            channelDescription: '服用時間のアラーム通知',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            sound: 'default',
+          ),
+        );
+    }
+  }
+
+  /// 通知メッセージを取得
+  static String getNotificationMessage(String type) {
+    switch (type) {
+      case 'sound':
+        return '服用時間のアラームが鳴っています（音のみ）';
+      case 'sound_vibration':
+        return '服用時間のアラームが鳴っています（音+バイブ）';
+      case 'vibration':
+        return '服用時間のアラームが鳴っています（バイブ）';
+      case 'silent':
+        return 'サイレント通知です';
+      default:
+        return '服用時間のアラーム通知です';
     }
   }
 }

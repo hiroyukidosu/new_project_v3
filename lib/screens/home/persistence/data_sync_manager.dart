@@ -26,11 +26,15 @@ class DataSyncManager {
 
   /// すべてのデータを保存
   Future<void> saveAllData({
+    required List<MedicationMemo> medicationMemos,
     required DateTime? selectedDay,
     required Map<String, bool> medicationMemoStatus,
+    required Map<String, Map<String, bool>> weekdayMedicationStatus,
+    required Map<String, Map<String, Map<int, bool>>> weekdayMedicationDoseStatus,
     required List<Map<String, dynamic>> addedMedications,
     required List<Map<String, dynamic>> alarmList,
     required Map<String, Color> dayColors,
+    required String memoText,
     required Map<String, double> adherenceRates,
   }) async {
     try {

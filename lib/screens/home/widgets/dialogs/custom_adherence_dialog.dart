@@ -34,11 +34,16 @@ class _CustomAdherenceDialogState extends State<CustomAdherenceDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.calculate, color: Colors.blue),
-          SizedBox(width: 8),
-          Text('任意の日数の遵守率を計算'),
+          const Icon(Icons.analytics, color: Colors.blue, size: 20),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '任意の日数の遵守率',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
       content: SingleChildScrollView(
@@ -47,7 +52,7 @@ class _CustomAdherenceDialogState extends State<CustomAdherenceDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '分析したい日数を入力してください（1-365日）',
+              '分析したい期間の日数を入力してください',
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 16),

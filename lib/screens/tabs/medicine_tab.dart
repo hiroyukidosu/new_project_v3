@@ -6,29 +6,40 @@ import 'package:intl/intl.dart';
 import '../../models/medication_memo.dart';
 import '../../services/trial_service.dart';
 import '../../widgets/trial_limit_dialog.dart';
+import '../home/state/home_page_state_manager.dart';
 
 /// 服用メモタブ
 /// 服用メモのリストを表示・管理
 class MedicineTab extends StatelessWidget {
-  final List<MedicationMemo> medicationMemos;
-  final ScrollController scrollController;
-  final Function(MedicationMemo) onMarkAsTaken;
-  final Function(MedicationMemo) onEditMemo;
-  final Function(String) onDeleteMemo;
-  final Function(BuildContext) onShowWarningDialog;
+  // 完全移行: StateManagerを優先的に使用
+  final HomePageStateManager? stateManager;
+  
+  // 後方互換性のための既存props（段階的削除用）
+  final List<MedicationMemo>? medicationMemos;
+  final ScrollController? scrollController;
+  final Function(MedicationMemo)? onMarkAsTaken;
+  final Function(MedicationMemo)? onEditMemo;
+  final Function(String)? onDeleteMemo;
+  final Function(BuildContext)? onShowWarningDialog;
 
   const MedicineTab({
     super.key,
-    required this.medicationMemos,
-    required this.scrollController,
-    required this.onMarkAsTaken,
-    required this.onEditMemo,
-    required this.onDeleteMemo,
-    required this.onShowWarningDialog,
+    this.stateManager,
+    // 後方互換性のための既存props
+    this.medicationMemos,
+    this.scrollController,
+    this.onMarkAsTaken,
+    this.onEditMemo,
+    this.onDeleteMemo,
+    this.onShowWarningDialog,
   });
 
   @override
   Widget build(BuildContext context) {
+    // StateManagerからデータを取得
+    final memos = stateManager?.medicationMemos ?? medicationMemos ?? [];
+    final controller = stateManager?.medicationPageController ?? scrollController;
+    
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Card(
@@ -55,7 +66,7 @@ class MedicineTab extends StatelessWidget {
               // 服用メモリスト（無限スクロール対応・高さ最適化）
               Expanded(
                 flex: 1,
-                child: medicationMemos.isEmpty
+                child: ((memos.isEmpty))
                     ? const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -76,9 +87,9 @@ class MedicineTab extends StatelessWidget {
                         ),
                       )
                     : ListView.builder(
-                        controller: scrollController,
+                        controller: controller,
                         physics: const BouncingScrollPhysics(),
-                        itemCount: medicationMemos.length,
+                        itemCount: memos.length,
                         cacheExtent: 1000,
                         addAutomaticKeepAlives: true,
                         addRepaintBoundaries: true,
@@ -86,7 +97,8 @@ class MedicineTab extends StatelessWidget {
                         shrinkWrap: true,
                         primary: false,
                         itemBuilder: (context, index) {
-                          final memo = medicationMemos[index];
+                          if (index >= memos.length) return const SizedBox.shrink();
+                          final memo = memos[index];
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                             elevation: 4,
@@ -167,13 +179,13 @@ class MedicineTab extends StatelessWidget {
                                           }
                                           switch (value) {
                                             case 'taken':
-                                              onMarkAsTaken(memo);
+                                              onMarkAsTaken?.call(memo);
                                               break;
                                             case 'edit':
-                                              onEditMemo(memo);
+                                              onEditMemo?.call(memo);
                                               break;
                                             case 'delete':
-                                              onDeleteMemo(memo.id);
+                                              onDeleteMemo?.call(memo.id);
                                               break;
                                           }
                                         },
@@ -238,7 +250,7 @@ class MedicineTab extends StatelessWidget {
                                               const SizedBox(width: 8),
                                               GestureDetector(
                                                 onTap: () {
-                                                  onShowWarningDialog(context);
+                                                  onShowWarningDialog?.call(context);
                                                 },
                                                 child: const Icon(Icons.warning, size: 16, color: Colors.orange),
                                               ),

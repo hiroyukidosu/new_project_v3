@@ -50,6 +50,21 @@ class PaginationManager {
     return true;
   }
 
+  /// 指定ページに移動
+  void goToPage(int page) {
+    if (page < 0) return;
+    if (page * pageSize >= _allMemos.length) return;
+    
+    _currentPage = page;
+    _displayedMemos.clear();
+    
+    final startIndex = _currentPage * pageSize;
+    final endIndex = (startIndex + pageSize).clamp(0, _allMemos.length);
+    
+    final newMemos = _allMemos.sublist(startIndex, endIndex);
+    _displayedMemos.addAll(newMemos);
+  }
+
   /// リセット
   void reset() {
     _currentPage = 0;
@@ -59,5 +74,10 @@ class PaginationManager {
 
   /// すべて読み込み済みか
   bool get hasMore => _currentPage * pageSize < _allMemos.length;
+
+  /// 次のページを読み込む（loadMoreのエイリアス）
+  void loadNextPage() {
+    loadMore();
+  }
 }
 

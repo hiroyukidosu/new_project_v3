@@ -14,7 +14,7 @@ import '../../helpers/home_page_backup_helper.dart';
 class BackupHandler {
   final Function(Map<String, dynamic>) onDataRestored;
   final Function(String) onShowSnackBar;
-  final Function(bool) onMountedCheck;
+  final bool Function() onMountedCheck;
   final Future<Map<String, dynamic>> Function(String) createBackupData;
 
   BackupHandler({
@@ -29,7 +29,7 @@ class BackupHandler {
     String backupName,
     BuildContext? context,
   ) async {
-    if (!onMountedCheck(false)) return;
+    if (!onMountedCheck()) return;
 
     // ローディング表示
     if (context != null) {
@@ -78,7 +78,7 @@ class BackupHandler {
 
       await HomePageBackupHelper.updateBackupHistory(backupName, backupKey);
 
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✓ バックアップ「$backupName」を作成しました'),
@@ -89,7 +89,7 @@ class BackupHandler {
       }
     } catch (e) {
       Logger.error('バックアップ作成エラー', e);
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
@@ -106,7 +106,7 @@ class BackupHandler {
     String backupName,
     BuildContext? context,
   ) async {
-    if (!onMountedCheck(false)) return;
+    if (!onMountedCheck()) return;
 
     // ローディング表示
     if (context != null) {
@@ -141,7 +141,7 @@ class BackupHandler {
 
       await HomePageBackupHelper.updateBackupHistory(backupName, backupKey);
 
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✓ バックアップ「$backupName」を作成しました'),
@@ -152,7 +152,7 @@ class BackupHandler {
       }
     } catch (e) {
       Logger.error('バックアップ作成エラー', e);
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('バックアップの作成に失敗しました: ${e.toString()}'),
@@ -170,7 +170,7 @@ class BackupHandler {
     BuildContext? context,
   ) async {
     // ローディング表示
-    if (context != null && onMountedCheck(false)) {
+    if (context != null && onMountedCheck()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -194,7 +194,7 @@ class BackupHandler {
       final backupData = await HomePageBackupHelper.loadBackupDataAsync(backupKey);
 
       if (backupData == null) {
-        if (context != null && onMountedCheck(false)) {
+        if (context != null && onMountedCheck()) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('バックアップデータが見つかりません'),
@@ -235,7 +235,7 @@ class BackupHandler {
       // 親に復元データを通知
       onDataRestored(restored);
 
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('バックアップを復元しました'),
@@ -247,7 +247,7 @@ class BackupHandler {
       Logger.info('バックアップ復元完了');
     } catch (e) {
       Logger.error('バックアップ復元エラー', e);
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('バックアップの復元に失敗しました: $e'),
@@ -272,7 +272,7 @@ class BackupHandler {
       // 履歴から削除（サービスを使用）
       await BackupHistoryService.removeFromHistory(backupKey);
 
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('バックアップを削除しました'),
@@ -282,7 +282,7 @@ class BackupHandler {
       }
     } catch (e) {
       Logger.error('バックアップ削除エラー', e);
-      if (context != null && onMountedCheck(false)) {
+      if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('バックアップの削除に失敗しました: $e'),

@@ -7,27 +7,34 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../services/trial_service.dart';
 import '../../models/medication_memo.dart';
 import '../../models/medication_info.dart';
+import '../home/state/home_page_state_manager.dart';
 
 /// 統計タブ
 /// 服薬遵守率の統計を表示
 class StatsTab extends StatefulWidget {
-  final ScrollController scrollController;
-  final Map<String, double> adherenceRates;
-  final Map<String, Map<String, MedicationInfo>> medicationData;
-  final List<MedicationMemo> medicationMemos;
-  final Map<String, Map<String, bool>> weekdayMedicationStatus;
-  final Function(String) onShowSnackBar;
-  final Function(double?, int?) onCustomAdherenceCalculated;
+  // 完全移行: StateManagerを優先的に使用
+  final HomePageStateManager? stateManager;
+  
+  // 後方互換性のための既存props（段階的削除用）
+  final ScrollController? scrollController;
+  final Map<String, double>? adherenceRates;
+  final Map<String, Map<String, MedicationInfo>>? medicationData;
+  final List<MedicationMemo>? medicationMemos;
+  final Map<String, Map<String, bool>>? weekdayMedicationStatus;
+  final Function(String)? onShowSnackBar;
+  final Function(double?, int?)? onCustomAdherenceCalculated;
 
   const StatsTab({
     super.key,
-    required this.scrollController,
-    required this.adherenceRates,
-    required this.medicationData,
-    required this.medicationMemos,
-    required this.weekdayMedicationStatus,
-    required this.onShowSnackBar,
-    required this.onCustomAdherenceCalculated,
+    this.stateManager,
+    // 後方互換性のための既存props
+    this.scrollController,
+    this.adherenceRates,
+    this.medicationData,
+    this.medicationMemos,
+    this.weekdayMedicationStatus,
+    this.onShowSnackBar,
+    this.onCustomAdherenceCalculated,
   });
 
   @override
@@ -129,7 +136,7 @@ class _StatsTabState extends State<StatsTab> {
                           _buildMedicationUsageChart(),
                           const SizedBox(height: 20),
                           // 期間別遵守率カード
-                          ...widget.adherenceRates.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList(),
+                          ...(widget.adherenceRates?.entries.map((entry) => _buildStatCard(entry.key, entry.value)).toList() ?? []),
                           const SizedBox(height: 20),
                           // 任意の日数の遵守率カード
                           _buildCustomAdherenceCard(),
@@ -368,7 +375,7 @@ class _StatsTabState extends State<StatsTab> {
                       _calculateCustomAdherence(days);
                       setDialogState(() {}); // ダイアログ内の状態を更新
                     } else {
-                      widget.onShowSnackBar('1から365の範囲で日数を入力してください');
+                      widget.onShowSnackBar?.call('1から365の範囲で日数を入力してください');
                     }
                   },
                   child: const Text('分析実行'),
@@ -394,7 +401,7 @@ class _StatsTabState extends State<StatsTab> {
       for (int i = 0; i < days; i++) {
         final date = now.subtract(Duration(days: i));
         final dateStr = DateFormat('yyyy-MM-dd').format(date);
-        final dayData = widget.medicationData[dateStr];
+        final dayData = widget.medicationData?[dateStr];
         
         // 動的薬リストの統計
         if (dayData != null) {
@@ -408,12 +415,12 @@ class _StatsTabState extends State<StatsTab> {
         
         // 服用メモのチェック状況を統計に反映
         final weekday = date.weekday % 7; // 0=日曜日, 1=月曜日, ..., 6=土曜日
-        final weekdayMemos = widget.medicationMemos.where((memo) => memo.selectedWeekdays.contains(weekday)).toList();
+        final weekdayMemos = widget.medicationMemos?.where((memo) => memo.selectedWeekdays.contains(weekday)).toList() ?? [];
         
         for (final memo in weekdayMemos) {
           totalDoses++;
           // 日付別の服用メモ状態を確認
-          if (widget.weekdayMedicationStatus[dateStr]?[memo.id] == true) {
+          if ((widget.weekdayMedicationStatus?[dateStr]?[memo.id] ?? false) == true) {
             takenDoses++;
           }
         }
@@ -421,7 +428,7 @@ class _StatsTabState extends State<StatsTab> {
       
       // データがない場合の警告
       if (totalDoses == 0) {
-        widget.onShowSnackBar('指定した期間に服薬データがありません');
+        widget.onShowSnackBar?.call('指定した期間に服薬データがありません');
         return;
       }
       
@@ -434,29 +441,32 @@ class _StatsTabState extends State<StatsTab> {
       });
       
       // 親に通知
-      widget.onCustomAdherenceCalculated(rate, days);
+      widget.onCustomAdherenceCalculated?.call(rate, days);
       
       // ダイアログを閉じる
       Navigator.of(context).pop();
       
       // スクロール位置を復元（統計ページの一番下に戻る）
-      if (widget.scrollController.hasClients) {
+      final controller = widget.scrollController;
+      if (controller != null && controller.hasClients) {
         Future.delayed(const Duration(milliseconds: 300), () {
-          widget.scrollController.animateTo(
-            widget.scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeOut,
-          );
+          if (controller.hasClients) {
+            controller.animateTo(
+              controller.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOut,
+            );
+          }
         });
       }
       
     } catch (e) {
-      widget.onShowSnackBar('カスタム遵守率の計算に失敗しました: $e');
+      widget.onShowSnackBar?.call('カスタム遵守率の計算に失敗しました: $e');
     }
   }
   
   Widget _buildAdherenceChart() {
-    if (widget.adherenceRates.isEmpty) {
+    if (widget.adherenceRates?.isEmpty ?? true) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -476,7 +486,7 @@ class _StatsTabState extends State<StatsTab> {
         ),
       );
     }
-    final chartData = widget.adherenceRates.entries.toList();
+    final chartData = widget.adherenceRates?.entries.toList() ?? [];
     final maxValue = chartData.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final minValue = chartData.map((e) => e.value).reduce((a, b) => a < b ? a : b);
     return Card(
@@ -582,7 +592,7 @@ class _StatsTabState extends State<StatsTab> {
     Map<String, int> medicationCount = {};
     
     // 動的薬リストの統計
-    for (final dayData in widget.medicationData.values) {
+    for (final dayData in widget.medicationData?.values ?? <Map<String, MedicationInfo>>[]) {
       for (final timeSlot in dayData.values) {
         if (timeSlot.medicine.isNotEmpty) {
           medicationCount[timeSlot.medicine] = (medicationCount[timeSlot.medicine] ?? 0) + 1;
@@ -591,11 +601,11 @@ class _StatsTabState extends State<StatsTab> {
     }
     
     // 服用メモのチェック状態を統計に反映（日付別）
-    for (final entry in widget.weekdayMedicationStatus.entries) {
+    for (final entry in widget.weekdayMedicationStatus?.entries ?? <MapEntry<String, Map<String, bool>>>[]) {
       final dateStr = entry.key;
       final dayStatus = entry.value;
       
-      for (final memo in widget.medicationMemos) {
+      for (final memo in widget.medicationMemos ?? <MedicationMemo>[]) {
         if (dayStatus[memo.id] == true) {
           medicationCount[memo.name] = (medicationCount[memo.name] ?? 0) + 1;
         }
