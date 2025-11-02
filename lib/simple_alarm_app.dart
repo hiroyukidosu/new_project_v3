@@ -11,6 +11,7 @@ class SimpleAlarmApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '服用時間のアラーム',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

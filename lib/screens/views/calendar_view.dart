@@ -154,9 +154,30 @@ class _CalendarViewState extends State<CalendarView> {
   // 注意: _saveDayColors()は削除（StateManager.saveAllData()で実行済み）
 
   /// カレンダーの日付セルを構築
-  Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false}) {
+  Widget _buildCalendarDay(DateTime day, {bool isSelected = false, bool isToday = false, bool isOutsideMonth = false}) {
     final dateStr = DateFormat('yyyy-MM-dd').format(day);
     final weekday = day.weekday % 7;
+    
+    // 前後の月の日付の場合は、マークを表示しない
+    if (isOutsideMonth) {
+      return Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Text(
+            '${day.day}',
+            style: const TextStyle(
+              color: Colors.white30,
+              fontWeight: FontWeight.w400,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      );
+    }
     
     // 服用メモで設定された曜日かチェック
     final hasScheduledMemo = widget.stateManager.medicationMemos.any((memo) => 
@@ -272,7 +293,7 @@ class _CalendarViewState extends State<CalendarView> {
   /// カレンダースタイルを構築
   CalendarStyle _buildCalendarStyle() {
     return CalendarStyle(
-      outsideDaysVisible: false,
+      outsideDaysVisible: true,
       cellMargin: const EdgeInsets.all(2),
       cellPadding: const EdgeInsets.all(4),
       cellAlignment: Alignment.center,
@@ -296,8 +317,17 @@ class _CalendarViewState extends State<CalendarView> {
         fontWeight: FontWeight.w500,
         color: Colors.white,
       ),
+      outsideTextStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: Colors.white30,
+      ),
       defaultDecoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      outsideDecoration: BoxDecoration(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       selectedDecoration: BoxDecoration(
@@ -498,13 +528,19 @@ class _CalendarViewState extends State<CalendarView> {
                                 availableGestures: AvailableGestures.none,
                                 calendarBuilders: CalendarBuilders(
                                   defaultBuilder: (context, day, focusedDay) {
-                                    return _buildCalendarDay(day);
+                                    final isOutsideMonth = day.month != focusedDay.month;
+                                    return _buildCalendarDay(day, isOutsideMonth: isOutsideMonth);
                                   },
                                   selectedBuilder: (context, day, focusedDay) {
-                                    return _buildCalendarDay(day, isSelected: true);
+                                    final isOutsideMonth = day.month != focusedDay.month;
+                                    return _buildCalendarDay(day, isSelected: true, isOutsideMonth: isOutsideMonth);
                                   },
                                   todayBuilder: (context, day, focusedDay) {
-                                    return _buildCalendarDay(day, isToday: true);
+                                    final isOutsideMonth = day.month != focusedDay.month;
+                                    return _buildCalendarDay(day, isToday: true, isOutsideMonth: isOutsideMonth);
+                                  },
+                                  outsideBuilder: (context, day, focusedDay) {
+                                    return _buildCalendarDay(day, isOutsideMonth: true);
                                   },
                                 ),
                                 headerStyle: HeaderStyle(

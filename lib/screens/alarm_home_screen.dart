@@ -48,14 +48,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
     try {
       // ストレージサービス初期化
       await StorageService.initialize();
-      debugPrint('✅ StorageService初期化完了');
       
       // 設定とアラームを読み込み
       await _loadSettings();
-      debugPrint('✅ 設定読み込み完了');
-      
       await _loadAlarms();
-      debugPrint('✅ アラーム読み込み完了 ${_alarms.length}件');
       
       // データ整合性チェック
       await StorageService.validateAlarmData();
@@ -87,10 +83,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
         setState(() {});
         _updateTime();
         _alarmService?.startAlarmCheck();
-        debugPrint('✅ アプリ初期化完了');
       }
     } catch (e) {
-      debugPrint('❌ 初期化エラー: $e');
       if (mounted && !_disposed) {
         _updateTime();
         _alarmService?.startAlarmCheck();
@@ -152,7 +146,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
         });
       }
     } catch (e) {
-      debugPrint('_updateTime setState エラー: $e');
       return;
     }
     
@@ -164,13 +157,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
   }
 
   void _addAlarm() {
-    debugPrint('📝 アラーム追加ダイアログを表示');
     showDialog(
       context: context,
       builder: (context) => AddAlarmDialog(
         onAlarmAdded: (alarmMap) async {
           await SnapshotService.saveBeforeChange('アラーム追加_${alarmMap['name'] ?? '無名'}');
-          debugPrint('📝 アラーム追加開始: ${alarmMap.toString()}');
           
           try {
             final alarm = Alarm.fromMap(alarmMap);
@@ -193,9 +184,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
               }
             }
           } catch (e, stackTrace) {
-            debugPrint('❌ アラーム追加エラー: $e');
-            debugPrint('スタックトレース: $stackTrace');
-            
             if (mounted && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -219,8 +207,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
         onAlarmAdded: (alarmMap) async {
           await SnapshotService.saveBeforeChange('アラーム編集_${alarmMap['name'] ?? '無名'}');
           try {
-            debugPrint('📝 アラーム編集開始 インデックス $index');
-            
             final updatedAlarm = Alarm.fromMap(alarmMap);
             if (updatedAlarm.isValid()) {
               setState(() {
@@ -240,8 +226,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
               }
             }
           } catch (e) {
-            debugPrint('❌ アラーム編集エラー: $e');
-            
             if (mounted && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -275,7 +259,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
         );
       }
     } catch (e) {
-      debugPrint('❌ アラーム削除エラー: $e');
+      // エラーは無視（UIで既に通知済み）
     }
   }
 
@@ -445,7 +429,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
                                 await _stopAlarm();
                               }
                             } catch (e) {
-                              debugPrint('アラーム切り替えエラー: $e');
                               setState(() {
                                 _alarms[index] = alarm.copyWith(enabled: value);
                               });

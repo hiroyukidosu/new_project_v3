@@ -47,7 +47,7 @@ class AlarmService {
       try {
         await checkAlarms(isAlarmEnabled: true, alarms: []);
       } catch (e) {
-        debugPrint('_checkAlarms エラー: $e');
+        // エラーログは不要
       }
     });
   }
@@ -70,20 +70,12 @@ class AlarmService {
       for (final alarm in alarms) {
         if (alarm.temporarilyDisabled) {
           alarms[alarms.indexOf(alarm)] = alarm.copyWith(temporarilyDisabled: false);
-          debugPrint('アラーム ${alarm.name} を再有効化');
         }
       }
     }
     _lastCheckTime = now;
     
-    if (AlarmOptimization.shouldLogAlarmCheck()) {
-      debugPrint('服用時間のアラームチェック: $currentTime, アラーム数: ${alarms.length}, 有効: $isAlarmEnabled');
-    }
-    
     for (final alarm in alarms) {
-      if (AlarmOptimization.shouldLogAlarmCheck()) {
-        debugPrint('服用時間のアラーム: ${alarm.name}, 時間: ${alarm.time}, 有効: ${alarm.enabled}');
-      }
       
       if (alarm.enabled && AlarmHelpers.isTimeMatch(alarm.time, currentTime)) {
         // 同一時刻に既にどれかのアラームが発火していればスキップ
@@ -93,9 +85,6 @@ class AlarmService {
         }
         // 一時的に無効化されたアラームはスキップ
         if (alarm.temporarilyDisabled) {
-          if (AlarmOptimization.shouldLogAlarmCheck()) {
-            debugPrint('服用時間のアラームスキップ: ${alarm.name} (一時的に無効化中)');
-          }
           continue;
         }
         
@@ -103,7 +92,6 @@ class AlarmService {
         if (AlarmHelpers.shouldTriggerAlarm(alarm, currentWeekday)) {
           // 同じアラームが連続で発火しないようにチェック（1分間隔で制限）
           if (!AlarmHelpers.wasRecentlyTriggered(alarm)) {
-            debugPrint('服用時間のアラーム発火: ${alarm.name}');
             await triggerAlarm(alarm);
             // 発火時刻を記録
             final updatedAlarm = alarm.copyWith(lastTriggered: now);
@@ -111,14 +99,6 @@ class AlarmService {
             _lastFiredTimeLabel = currentTime;
             _lastFiredMinuteMarker = minuteMarker;
             break; // 同じ分内で発火しないように打ち切る
-          } else {
-            if (AlarmOptimization.shouldLogAlarmCheck()) {
-              debugPrint('服用時間のアラームスキップ: ${alarm.name} (最近発火済み)');
-            }
-          }
-        } else {
-          if (AlarmOptimization.shouldLogAlarmCheck()) {
-            debugPrint('服用時間のアラームスキップ: ${alarm.name} (繰り返し条件に合わない)');
           }
         }
       }
@@ -128,11 +108,8 @@ class AlarmService {
   /// アラームを発火
   Future<void> triggerAlarm(Alarm alarm) async {
     if (AudioService.isPlaying) {
-      debugPrint('服用時間のアラーム既に再生中: ${alarm.name}');
       return;
     }
-
-    debugPrint('服用時間のアラーム開始: ${alarm.name}');
     
     if (!isMounted()) return;
     
@@ -147,18 +124,15 @@ class AlarmService {
       
       // アラーム種類に応じた処理
       final alarmType = alarm.alarmType.isEmpty ? selectedNotificationType : alarm.alarmType;
-      debugPrint('服用時間のアラーム種類: $alarmType');
       
       switch (alarmType) {
         case 'sound':
-          debugPrint('音声服用時間のアラーム開始: $selectedAlarmSound');
           await AudioService.playAlarmSound(
             selectedAlarmSound: selectedAlarmSound,
             notificationVolume: notificationVolume,
           );
           break;
         case 'sound_vibration':
-          debugPrint('音声+バイブ服用時間のアラーム開始: $selectedAlarmSound');
           await AudioService.playAlarmSound(
             selectedAlarmSound: selectedAlarmSound,
             notificationVolume: notificationVolume,
@@ -166,18 +140,15 @@ class AlarmService {
           await AudioService.startContinuousVibration();
           break;
         case 'vibration':
-          debugPrint('バイブレーション服用時間のアラーム開始');
           await AudioService.startContinuousVibration();
           break;
         case 'silent':
-          debugPrint('サイレント服用時間のアラーム');
           break;
       }
 
       // アラーム停止ダイアログ
       onAlarmStopDialog();
     } catch (e) {
-      debugPrint('服用時間のアラーム再生エラー: $e');
       if (!isMounted()) return;
       triggerStateUpdate();
     }
@@ -186,8 +157,6 @@ class AlarmService {
   /// アラームを停止
   Future<void> stopAlarm(List<Alarm> alarms) async {
     try {
-      debugPrint('服用時間のアラーム停止開始');
-      
       await AudioService.stopAlarm();
       
       // 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
@@ -201,17 +170,13 @@ class AlarmService {
             lastTriggered: now,
             temporarilyDisabled: true,
           );
-          debugPrint('アラーム ${alarm.name} のlastTriggeredを更新し、一時的に無効化: $now');
         }
       }
       
       if (isMounted()) {
         triggerStateUpdate();
       }
-      
-      debugPrint('服用時間のアラームが停止されました');
     } catch (e) {
-      debugPrint('服用時間のアラーム停止エラー: $e');
       if (isMounted()) {
         triggerStateUpdate();
       }
@@ -222,7 +187,6 @@ class AlarmService {
   void stopTimer() {
     _alarmTimer?.cancel();
     _alarmTimer = null;
-    debugPrint('✅ AlarmService タイマー停止');
   }
 
   /// クリーンアップ
@@ -231,7 +195,6 @@ class AlarmService {
     _lastCheckTime = null;
     _lastFiredTimeLabel = null;
     _lastFiredMinuteMarker = null;
-    debugPrint('✅ AlarmService dispose完了');
   }
 }
 

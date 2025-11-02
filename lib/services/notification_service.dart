@@ -46,20 +46,14 @@ class NotificationService {
     await createNotificationChannels();
 
     _initialized = true;
-    debugPrint('✅ 通知初期化完了');
   }
 
   /// 権限リクエスト
   static Future<void> _requestPermissions() async {
     try {
-      final status = await Permission.notification.request();
-      if (status.isGranted) {
-        debugPrint('✅ 通知権限が許可されました');
-      } else {
-        debugPrint('⚠️ 通知権限が拒否されました');
-      }
+      await Permission.notification.request();
     } catch (e) {
-      debugPrint('❌ 通知権限リクエストエラー: $e');
+      // エラーは無視
     }
   }
 
@@ -107,8 +101,6 @@ class NotificationService {
     await _notifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(silentChannel);
-
-    debugPrint('✅ 通知チャンネル作成完了');
   }
 
   /// アラーム通知を表示
@@ -117,7 +109,6 @@ class NotificationService {
     required String selectedNotificationType,
   }) async {
     if (!_initialized) {
-      debugPrint('⚠️ 通知が初期化されていません');
       return;
     }
 
@@ -200,8 +191,6 @@ class NotificationService {
       details,
       payload: 'alarm_${alarm.hashCode}',
     );
-
-    debugPrint('✅ アラーム通知表示: ${alarm.name}');
   }
 
   /// 通知詳細を取得
