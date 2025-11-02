@@ -159,6 +159,9 @@ class AlarmService {
     try {
       await AudioService.stopAlarm();
       
+      // すべての通知をキャンセル
+      await NotificationService.cancelAllNotifications();
+      
       // 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
       final now = DateTime.now();
       final currentTime = AlarmHelpers.getCurrentTimeString();

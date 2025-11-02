@@ -204,5 +204,13 @@ class StorageService {
       // エラーは無視
     }
   }
+
+  /// SharedPreferencesインスタンスを取得
+  static Future<SharedPreferences> getSharedPreferences() async {
+    if (_prefs == null) {
+      await initialize();
+    }
+    return _prefs!;
+  }
 }
 

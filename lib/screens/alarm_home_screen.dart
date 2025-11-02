@@ -2,6 +2,7 @@
 // 主要な画面UI
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/alarm_model.dart';
 import '../widgets/current_time_card.dart';
 import '../widgets/alarm_list_item.dart';
@@ -21,7 +22,7 @@ class AlarmHomeScreen extends StatefulWidget {
   State<AlarmHomeScreen> createState() => _AlarmHomeScreenState();
 }
 
-class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
+class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingObserver {
   String _currentTime = '';
   String _currentDate = '';
   List<Alarm> _alarms = [];
@@ -39,6 +40,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeApp();
     });
@@ -48,6 +50,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
     try {
       // ストレージサービス初期化
       await StorageService.initialize();
+      
+      // バックグラウンドからの停止フラグをチェック
+      await _checkAlarmStopFlag();
       
       // 設定とアラームを読み込み
       await _loadSettings();
@@ -92,6 +97,33 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
     }
   }
 
+  /// バックグラウンドからの停止フラグをチェック
+  Future<void> _checkAlarmStopFlag() async {
+    try {
+      final prefs = await StorageService.getSharedPreferences();
+      final shouldStop = prefs.getBool('alarm_should_stop') ?? false;
+      if (shouldStop) {
+        // フラグをリセット
+        await prefs.setBool('alarm_should_stop', false);
+        // アラームを停止
+        if (mounted && !_disposed) {
+          await _stopAlarm();
+        }
+      }
+    } catch (e) {
+      // エラーは無視
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // アプリがフォアグラウンドに戻った時に停止フラグをチェック
+    if (state == AppLifecycleState.resumed) {
+      _checkAlarmStopFlag();
+    }
+  }
+
   Future<void> _loadSettings() async {
     final settings = await StorageService.loadSettings();
     setState(() {
@@ -126,7 +158,22 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
   }
 
   Future<void> _initializeNotifications() async {
-    // NotificationServiceの初期化は別途実装
+    await NotificationService.initialize(
+      _onNotificationTapped,
+      null, // コールバックは不要（_onNotificationTapped内で処理）
+    );
+  }
+
+  /// 通知タップ時の処理（コミット時の実装に合わせて）
+  void _onNotificationTapped(NotificationResponse response) {
+    if (!mounted || _disposed) return;
+    
+    if (response.actionId == 'stop') {
+      _stopAlarm();
+    } else {
+      // 通知タップ時も停止処理を実行（コミット時の実装に合わせて）
+      _stopAlarm();
+    }
   }
 
   void _updateTime() {
@@ -313,6 +360,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _alarmService?.dispose();
     super.dispose();

@@ -4,19 +4,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alarm_model.dart';
+import 'storage_service.dart';
+
+// バックグラウンド通知ハンドラー（トップレベル関数）
+@pragma('vm:entry-point')
+void notificationActionHandler(NotificationResponse response) async {
+  if (response.actionId == 'stop') {
+    // バックグラウンドで停止フラグを設定
+    await _setAlarmStopFlag();
+  }
+}
+
+// バックグラウンドでの停止フラグ設定
+Future<void> _setAlarmStopFlag() async {
+  try {
+    await StorageService.initialize();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('alarm_should_stop', true);
+    await prefs.setInt('alarm_stop_timestamp', DateTime.now().millisecondsSinceEpoch);
+  } catch (e) {
+    // エラーは無視
+  }
+}
 
 /// 通知サービス
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
   static Function(NotificationResponse)? _onNotificationTappedCallback;
+  static Function(String)? _onStopAlarmCallback;
 
   /// 通知を初期化
-  static Future<void> initialize(Function(NotificationResponse) onNotificationTapped) async {
+  static Future<void> initialize(
+    Function(NotificationResponse) onNotificationTapped,
+    Function(String)? onStopAlarm,
+  ) async {
     if (_initialized) return;
 
     _onNotificationTappedCallback = onNotificationTapped;
+    _onStopAlarmCallback = onStopAlarm; // 使用しないが互換性のために保持
 
     // 権限リクエスト
     await _requestPermissions();
@@ -36,10 +64,18 @@ class NotificationService {
       iOS: iosSettings,
     );
 
-    // 初期化
+    // 初期化（バックグラウンドハンドラーも設定）
     await _notifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: onNotificationTapped,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        // コールバックを直接呼び出す（コミット時の実装に合わせて）
+        if (_onNotificationTappedCallback != null) {
+          _onNotificationTappedCallback!(response);
+        } else {
+          onNotificationTapped(response);
+        }
+      },
+      onDidReceiveBackgroundNotificationResponse: notificationActionHandler,
     );
 
     // チャンネル作成
@@ -157,6 +193,14 @@ class NotificationService {
         enableVibration = false;
     }
     
+    // 停止アクションを定義（アプリを開くように設定）
+    const stopAction = AndroidNotificationAction(
+      'stop',
+      '停止',
+      showsUserInterface: true,  // アプリを開く
+      cancelNotification: true,
+    );
+
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,
@@ -169,6 +213,7 @@ class NotificationService {
       autoCancel: false,
       playSound: playSound,
       enableVibration: enableVibration,
+      actions: [stopAction],
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -294,5 +339,15 @@ class NotificationService {
       default:
         return '服用時間のアラーム通知です';
     }
+  }
+
+  /// 通知をキャンセル
+  static Future<void> cancelNotification(int id) async {
+    await _notifications.cancel(id);
+  }
+
+  /// すべての通知をキャンセル
+  static Future<void> cancelAllNotifications() async {
+    await _notifications.cancelAll();
   }
 }
