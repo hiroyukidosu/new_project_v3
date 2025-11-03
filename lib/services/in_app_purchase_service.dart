@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'trial_service.dart';
 
 /// アプリ内課金サービス
 /// 製品ID hirochaso980 を使用した課金処理を行う
@@ -102,13 +103,22 @@ class InAppPurchaseService {
   }
   
   // 購入更新を処理
-  static void _handlePurchaseUpdate(PurchaseDetails purchaseDetails, Function(bool success, String? error) onPurchaseResult) {
+  static void _handlePurchaseUpdate(PurchaseDetails purchaseDetails, Function(bool success, String? error) onPurchaseResult) async {
     if (purchaseDetails.status == PurchaseStatus.purchased) {
       if (kDebugMode) {
         debugPrint('購入成功: ${purchaseDetails.productID}');
       }
       // 購入状態を保存
-      // TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+      try {
+        await TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+        if (kDebugMode) {
+          debugPrint('購入状態を保存しました: ${TrialService.purchasedStatus}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('購入状態の保存エラー: $e');
+        }
+      }
       onPurchaseResult(true, '製品の購入が正常に完了しました。');
     } else if (purchaseDetails.status == PurchaseStatus.error) {
       if (kDebugMode) {
@@ -131,9 +141,8 @@ class InAppPurchaseService {
   // 購入状態を確認
   static Future<bool> isPurchased() async {
     try {
-      // final status = await TrialService.getPurchaseStatus();
-      // return status == TrialService.purchasedStatus;
-      return false; // 仮実装
+      final status = await TrialService.getPurchaseStatus();
+      return status == TrialService.purchasedStatus;
     } catch (e) {
       debugPrint('購入状態確認エラー: $e');
       return false;
@@ -157,14 +166,23 @@ class InAppPurchaseService {
       
       // 購入履歴復元リスナーを設定
       _subscription?.cancel();
-      _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) {
+      _subscription = _inAppPurchase.purchaseStream.listen((purchaseDetailsList) async {
         for (var purchaseDetails in purchaseDetailsList) {
           if (purchaseDetails.status == PurchaseStatus.purchased) {
             if (kDebugMode) {
               debugPrint('購入履歴復元成功: ${purchaseDetails.productID}');
             }
             // 購入状態を保存
-            // TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+            try {
+              await TrialService.setPurchaseStatus(TrialService.purchasedStatus);
+              if (kDebugMode) {
+                debugPrint('購入履歴復元時に購入状態を保存しました: ${TrialService.purchasedStatus}');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('購入履歴復元時の購入状態保存エラー: $e');
+              }
+            }
           }
         }
       });

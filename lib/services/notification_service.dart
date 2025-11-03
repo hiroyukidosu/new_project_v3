@@ -67,12 +67,44 @@ class NotificationService {
     // 初期化（バックグラウンドハンドラーも設定）
     await _notifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // コールバックを直接呼び出す（コミット時の実装に合わせて）
-        if (_onNotificationTappedCallback != null) {
-          _onNotificationTappedCallback!(response);
-        } else {
-          onNotificationTapped(response);
+      onDidReceiveNotificationResponse: (NotificationResponse response) async {
+        try {
+          // 停止アクションの処理（フォアグラウンドでも動作するように）
+          if (response.actionId == 'stop') {
+            // バックグラウンドでも停止フラグを設定（アプリがバックグラウンドの時用）
+            await _setAlarmStopFlag();
+            // 通知をキャンセル
+            if (response.id != null) {
+              try {
+                await _notifications.cancel(response.id!);
+              } catch (e) {
+                // 通知キャンセルエラーは無視
+              }
+            }
+            // フォアグラウンドでもコールバックを呼び出してアラームを停止（コミットbb37ef5の実装に合わせて）
+            try {
+              if (_onNotificationTappedCallback != null) {
+                _onNotificationTappedCallback!(response);
+              } else {
+                onNotificationTapped(response);
+              }
+            } catch (e) {
+              // コールバックエラーは無視
+            }
+            return;
+          }
+          // その他の通知応答はコールバックを呼び出す
+          try {
+            if (_onNotificationTappedCallback != null) {
+              _onNotificationTappedCallback!(response);
+            } else {
+              onNotificationTapped(response);
+            }
+          } catch (e) {
+            // コールバックエラーは無視
+          }
+        } catch (e) {
+          // 全体のエラーハンドリング（予期しないエラーを捕捉）
         }
       },
       onDidReceiveBackgroundNotificationResponse: notificationActionHandler,
@@ -209,8 +241,8 @@ class NotificationService {
       priority: Priority.high,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
-      ongoing: true,
-      autoCancel: false,
+      ongoing: false,  // 5秒後に自動的に消えるように変更
+      autoCancel: true,  // 通知をタップした時に自動的に消えるように変更
       playSound: playSound,
       enableVibration: enableVibration,
       actions: [stopAction],

@@ -12,9 +12,11 @@ import 'audio_service.dart';
 /// アラームサービス
 class AlarmService {
   Timer? _alarmTimer;
+  Timer? _notificationAutoCancelTimer;  // 通知自動キャンセル用タイマー
   DateTime? _lastCheckTime;
   String? _lastFiredTimeLabel; // 'HH:mm'
   int? _lastFiredMinuteMarker; // 日付番号 (hour*60+minute)
+  int? _currentNotificationId;  // 現在表示中の通知ID
   
   final Function(Alarm) onAlarmTriggered;
   final Function() onAlarmStopDialog;
@@ -116,11 +118,27 @@ class AlarmService {
     try {
       triggerStateUpdate();
       
+      // 通知IDを保存
+      _currentNotificationId = alarm.hashCode;
+      
       // 通知を表示
       await NotificationService.showAlarmNotification(
         alarm: alarm,
         selectedNotificationType: selectedNotificationType,
       );
+      
+      // 5秒後に通知を自動的にキャンセル
+      _notificationAutoCancelTimer?.cancel();
+      _notificationAutoCancelTimer = Timer(const Duration(seconds: 5), () async {
+        try {
+          if (_currentNotificationId != null && isMounted()) {
+            await NotificationService.cancelNotification(_currentNotificationId!);
+            _currentNotificationId = null;
+          }
+        } catch (e) {
+          // エラーは無視（通知キャンセル失敗は致命的ではない）
+        }
+      });
       
       // アラーム種類に応じた処理
       final alarmType = alarm.alarmType.isEmpty ? selectedNotificationType : alarm.alarmType;
@@ -159,8 +177,13 @@ class AlarmService {
     try {
       await AudioService.stopAlarm();
       
+      // 通知自動キャンセルタイマーをキャンセル
+      _notificationAutoCancelTimer?.cancel();
+      _notificationAutoCancelTimer = null;
+      
       // すべての通知をキャンセル
       await NotificationService.cancelAllNotifications();
+      _currentNotificationId = null;
       
       // 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
       final now = DateTime.now();
@@ -190,6 +213,8 @@ class AlarmService {
   void stopTimer() {
     _alarmTimer?.cancel();
     _alarmTimer = null;
+    _notificationAutoCancelTimer?.cancel();
+    _notificationAutoCancelTimer = null;
   }
 
   /// クリーンアップ
@@ -198,6 +223,7 @@ class AlarmService {
     _lastCheckTime = null;
     _lastFiredTimeLabel = null;
     _lastFiredMinuteMarker = null;
+    _currentNotificationId = null;
   }
 }
 

@@ -3,7 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// import '../../services/notification_service.dart';
+import '../../services/notification_service.dart';
 
 /// アラーム管理機能のMixin
 /// このmixinを使用するクラスは、必要な状態変数とメソッドを提供する必要があります
@@ -82,7 +82,7 @@ mixin HomePageAlarmMixin<T extends StatefulWidget> on State<T> {
       debugPrint('アラーム再登録開始: ${alarmList.length}件');
       
       // 既存の通知をキャンセル
-      // await NotificationService.cancelAllNotifications();
+      await NotificationService.cancelAllNotifications();
       
       // 各アラームを再登録
       for (int i = 0; i < alarmList.length; i++) {
