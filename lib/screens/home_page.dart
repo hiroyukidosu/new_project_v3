@@ -89,6 +89,7 @@ import 'home/widgets/home_tab_bar_view.dart';
 import 'home/handlers/home_page_event_handler.dart';
 import 'home/initialization/home_page_initializer.dart';
 import 'home/initialization/home_page_dependencies.dart';
+import '../services/daily_memo_service.dart';
 
 class MedicationHomePage extends StatefulWidget {
   const MedicationHomePage({super.key});
@@ -215,6 +216,8 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   /// 非同期初期化（Phase 1: 初期化ロジック分離）
   Future<void> _initializeAsync() async {
     try {
+      // 日メモHive初期化＆SPからの一括移行（初回のみ）
+      await DailyMemoService.initialize();
       final dependencies = await HomePageInitializer.initialize(
         context,
         this,
@@ -589,8 +592,7 @@ class _MedicationHomePageState extends State<MedicationHomePage>
       final memoController = _dependencies!.stateManager.memoController;
       if (selectedDay != null) {
         final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('memo_$dateStr', memoController?.text ?? '');
+        await DailyMemoService.setMemo(dateStr, memoController?.text ?? '');
       }
     } catch (e) {
     }
