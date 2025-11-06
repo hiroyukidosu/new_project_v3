@@ -2,18 +2,57 @@
 // 通知関連サービス
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alarm_model.dart';
 import 'storage_service.dart';
+import 'audio_service.dart';
 
 // バックグラウンド通知ハンドラー（トップレベル関数）
 @pragma('vm:entry-point')
 void notificationActionHandler(NotificationResponse response) async {
   if (response.actionId == 'stop') {
-    // バックグラウンドで停止フラグを設定
+    // バックグラウンドで即座にアラームを停止
+    await _stopAlarmFromBackground(response);
+    
+    // 停止フラグも設定（念のため）
     await _setAlarmStopFlag();
+  }
+}
+
+// バックグラウンドでのアラーム停止処理
+Future<void> _stopAlarmFromBackground(NotificationResponse response) async {
+  try {
+    // 1. 音声とバイブレーションを即座に停止
+    // AudioServiceはstaticなので、直接アクセス可能
+    await AudioService.stopAlarm();
+    
+    // 2. 通知をキャンセル
+    final notifications = FlutterLocalNotificationsPlugin();
+    if (response.id != null) {
+      try {
+        await notifications.cancel(response.id!);
+      } catch (e) {
+        // 個別キャンセル失敗時は全キャンセルを試行
+        try {
+          await notifications.cancelAll();
+        } catch (e2) {
+          // エラーは無視
+        }
+      }
+    } else {
+      // IDが不明な場合は全通知をキャンセル
+      try {
+        await notifications.cancelAll();
+      } catch (e) {
+        // エラーは無視
+      }
+    }
+  } catch (e) {
+    // エラーは無視（ログに記録するだけ）
+    debugPrint('バックグラウンドアラーム停止エラー: $e');
   }
 }
 
@@ -71,17 +110,38 @@ class NotificationService {
         try {
           // 停止アクションの処理（フォアグラウンドでも動作するように）
           if (response.actionId == 'stop') {
-            // バックグラウンドでも停止フラグを設定（アプリがバックグラウンドの時用）
-            await _setAlarmStopFlag();
-            // 通知をキャンセル
+            // 1. 即座にアラームを停止（音声・バイブレーション・通知）
+            try {
+              await AudioService.stopAlarm();
+            } catch (e) {
+              debugPrint('フォアグラウンドアラーム停止エラー（AudioService）: $e');
+            }
+            
+            // 2. 通知を確実にキャンセル（特定IDと全キャンセルの両方を試行）
             if (response.id != null) {
               try {
                 await _notifications.cancel(response.id!);
               } catch (e) {
-                // 通知キャンセルエラーは無視
+                // 個別キャンセル失敗時は全キャンセルを試行
+                try {
+                  await _notifications.cancelAll();
+                } catch (e2) {
+                  // エラーは無視
+                }
+              }
+            } else {
+              // IDが不明な場合は全通知をキャンセル
+              try {
+                await _notifications.cancelAll();
+              } catch (e) {
+                // エラーは無視
               }
             }
-            // フォアグラウンドでもコールバックを呼び出してアラームを停止（コミットbb37ef5の実装に合わせて）
+            
+            // 3. バックグラウンドでも停止フラグを設定（アプリがバックグラウンドの時用）
+            await _setAlarmStopFlag();
+            
+            // 4. フォアグラウンドでもコールバックを呼び出してアラームを停止（コミットbb37ef5の実装に合わせて）
             try {
               if (_onNotificationTappedCallback != null) {
                 _onNotificationTappedCallback!(response);
@@ -90,6 +150,7 @@ class NotificationService {
               }
             } catch (e) {
               // コールバックエラーは無視
+              debugPrint('通知コールバックエラー: $e');
             }
             return;
           }

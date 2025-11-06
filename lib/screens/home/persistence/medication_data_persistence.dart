@@ -1,4 +1,7 @@
 // lib/screens/home/persistence/medication_data_persistence.dart
+// レビュー指摘の修正：データ整合性の改善とトランザクション的保存を追加
+
+import 'medication_dose_record.dart';
 
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -8,6 +11,9 @@ import '../../../utils/logger.dart';
 
 /// 服用メモデータの永続化を管理するクラス
 class MedicationDataPersistence {
+  // Hive box name for monthly-segmented app data
+  static const String _appDataBox = 'medication_data';
+
   /// 複数のバックアップキー（3重バックアップ）
   static const List<String> _backupKeys = [
     'medication_memos_backup',
@@ -16,21 +22,197 @@ class MedicationDataPersistence {
     'medication_memos_v2',
   ];
 
+  // Monthly-segmented key prefixes
+  static const String _dosePrefix = 'dose_status'; // dose_status_YYYY-MM
+  static const String _weekdayPrefix = 'weekday_status'; // weekday_status_YYYY-MM
+  static const String _memoEnabledPrefix = 'memo_enabled'; // memo_enabled_YYYY-MM
+
+  // Data versioning for migration control
+  static const String _dataVersionKey = 'data_version';
+  static const int _currentVersion = 2; // v2 => Hive monthly segmented
+
+  static String _monthKey(String prefix, DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    return '${prefix}_${y}-${m}';
+  }
+
+  static bool _isMonthlyKey(String key, String prefix) {
+    return key.startsWith('${prefix}_') && RegExp(r'_\d{4}-\d{2}$').hasMatch(key);
+  }
+
+  Future<Box> _openAppDataBox() async {
+    // 既に開かれている場合は既存のBoxを返す
+    if (Hive.isBoxOpen(_appDataBox)) {
+      return Hive.box(_appDataBox);
+    }
+    // 型指定なしで開く（既存のデータとの互換性のため）
+    return await Hive.openBox(_appDataBox);
+  }
+  
+  /// トランザクション的な保存（レビュー指摘の修正：データ整合性の改善）
+  Future<void> saveAtomically<T>(
+    String key,
+    T data,
+    Future<void> Function() validator,
+  ) async {
+    final box = await _openAppDataBox();
+    final backup = box.get(key);
+    
+    try {
+      await box.put(key, data);
+      await validator();
+      Logger.debug('✅ アトミック保存成功: $key');
+    } catch (e, stackTrace) {
+      // ロールバック
+      if (backup != null) {
+        await box.put(key, backup);
+        Logger.warning('ロールバック実行: $key');
+      }
+      Logger.error('アトミック保存エラー: $key', e);
+      Logger.error('スタックトレース', stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureMigratedToHiveMonthly() async {
+    final box = await _openAppDataBox();
+    final version = box.get(_dataVersionKey, defaultValue: 1) as int;
+    if (version >= _currentVersion) return;
+
+    try {
+      // 1) migrate dose status
+      final prefs = await SharedPreferences.getInstance();
+      final doseJson = prefs.getString('medication_dose_status_v2');
+      if (doseJson != null && doseJson.isNotEmpty) {
+        final Map<String, dynamic> data = jsonDecode(doseJson);
+        final Map<String, Map<String, Map<int, bool>>> doseStatus = data.map((dateKey, dateValue) =>
+          MapEntry(dateKey, (dateValue as Map<String, dynamic>).map((memoKey, memoValue) =>
+            MapEntry(memoKey, (memoValue as Map<String, dynamic>).map((doseKey, doseValue) =>
+              MapEntry(int.parse(doseKey), doseValue as bool)
+            ))
+          ))
+        );
+
+        final Map<String, Map<String, dynamic>> monthly = {};
+        doseStatus.forEach((dateStr, memoMap) {
+          // dateStr expected yyyy-MM-dd
+          final parts = dateStr.split('-');
+          if (parts.length < 2) return;
+          final monthKey = '${_dosePrefix}_${parts[0]}-${parts[1]}';
+          monthly.putIfAbsent(monthKey, () => {
+            'month': '${parts[0]}-${parts[1]}',
+            'records': <String, dynamic>{},
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+          // store original per-date memo/dose map to keep fidelity
+          final monthData = monthly[monthKey];
+          if (monthData != null) {
+            final records = monthData['records'] as Map<String, dynamic>?;
+            if (records != null) {
+              records[dateStr] = memoMap.map((memoId, doseMap) =>
+                MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
+              );
+            }
+          }
+        });
+
+        for (final entry in monthly.entries) {
+          await box.put(entry.key, entry.value);
+        }
+        await prefs.remove('medication_dose_status_v2');
+      }
+
+      // 2) migrate weekday status
+      final weekdayJson = prefs.getString('weekday_medication_status_v2');
+      if (weekdayJson != null && weekdayJson.isNotEmpty) {
+        // 可能な限り、既存のdose_status月に複製して配置
+        final weekdayData = jsonDecode(weekdayJson);
+        final Set<String> doseMonths = box.keys.whereType<String>()
+            .where((k) => _isMonthlyKey(k, _dosePrefix))
+            .map((k) => k.split('_').last)
+            .toSet();
+        if (doseMonths.isEmpty) {
+          final now = DateTime.now();
+          doseMonths.add('${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}');
+        }
+        for (final month in doseMonths) {
+          await box.put('${_weekdayPrefix}_$month', {
+            'month': month,
+            'weekdays': weekdayData,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        }
+        await prefs.remove('weekday_medication_status_v2');
+      }
+
+      // 3) medication memo ON/OFF status
+      final memoStatusJson = prefs.getString('medication_memo_status_v2');
+      if (memoStatusJson != null && memoStatusJson.isNotEmpty) {
+        final enabledData = jsonDecode(memoStatusJson);
+        final Set<String> doseMonths = box.keys.whereType<String>()
+            .where((k) => _isMonthlyKey(k, _dosePrefix))
+            .map((k) => k.split('_').last)
+            .toSet();
+        if (doseMonths.isEmpty) {
+          final now = DateTime.now();
+          doseMonths.add('${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}');
+        }
+        for (final month in doseMonths) {
+          await box.put('${_memoEnabledPrefix}_$month', {
+            'month': month,
+            'enabled': enabledData,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        }
+        await prefs.remove('medication_memo_status_v2');
+        await prefs.remove('medication_memo_status_backup');
+      }
+
+      await box.put(_dataVersionKey, _currentVersion);
+      Logger.info('Hive monthly migration completed');
+    } catch (e) {
+      Logger.error('Hive monthly migration failed', e);
+    }
+  }
+
   /// Hiveボックスからメモを読み込み
+  /// 優先順位: Hive → SharedPreferences（フォールバック）
   Future<List<MedicationMemo>> loadMedicationMemos() async {
     try {
-      // 1. Hiveから読み込み
+      // 1. Hiveから読み込み（優先）
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         final memos = box.values.toList();
         if (memos.isNotEmpty) {
-          Logger.info('Hiveから読み込み成功: ${memos.length}件');
+          Logger.info('✅ Hiveから読み込み成功: ${memos.length}件');
+          // Hiveにデータがある場合は、SharedPreferencesから復元しない
           return memos;
+        } else {
+          Logger.debug('⚠️ Hiveボックスが空です。SharedPreferencesから復元を試みます。');
         }
+      } else {
+        Logger.warning('⚠️ Hiveボックスが開いていません。SharedPreferencesから復元を試みます。');
       }
 
-      // 2. SharedPreferencesからバックアップ復元
-      return await _loadFromSharedPreferences();
+      // 2. SharedPreferencesからバックアップ復元（フォールバック）
+      final memos = await _loadFromSharedPreferences();
+      if (memos.isNotEmpty) {
+        // SharedPreferencesから復元したデータをHiveに保存
+        try {
+          if (Hive.isBoxOpen('medication_memos')) {
+            final box = Hive.box<MedicationMemo>('medication_memos');
+            await box.clear();
+            for (final memo in memos) {
+              await box.put(memo.id, memo);
+            }
+            Logger.info('✅ SharedPreferencesから復元したデータをHiveに保存: ${memos.length}件');
+          }
+        } catch (e) {
+          Logger.warning('⚠️ Hiveへの復元データ保存に失敗: $e');
+        }
+      }
+      return memos;
     } catch (e) {
       Logger.error('メモ読み込みエラー', e);
       return [];
@@ -143,13 +325,19 @@ class MedicationDataPersistence {
   /// メモステータスを保存
   Future<void> saveMedicationMemoStatus(Map<String, bool> status) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final statusJson = status.map((key, value) => MapEntry(key, value));
-      
-      await prefs.setString('medication_memo_status_v2', jsonEncode(statusJson));
-      await prefs.setString('medication_memo_status_backup', jsonEncode(statusJson));
-      
-      Logger.debug('メモステータス保存完了: ${status.length}件');
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
+      final now = DateTime.now();
+      final monthKey = _monthKey(_memoEnabledPrefix, now);
+      final existing = (box.get(monthKey) as Map?) ?? {
+        'month': '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}',
+        'enabled': <String, dynamic>{},
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      existing['enabled'] = status.map((k, v) => MapEntry(k, v));
+      existing['updated_at'] = DateTime.now().toIso8601String();
+      await box.put(monthKey, existing);
+      Logger.debug('メモステータス保存完了(Hive): ${status.length}件');
     } catch (e) {
       Logger.error('メモステータス保存エラー', e);
     }
@@ -158,17 +346,20 @@ class MedicationDataPersistence {
   /// メモステータスを読み込み
   Future<Map<String, bool>> loadMedicationMemoStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      for (final key in ['medication_memo_status_v2', 'medication_memo_status_backup']) {
-        final jsonString = prefs.getString(key);
-        if (jsonString != null && jsonString.isNotEmpty) {
-          final Map<String, dynamic> statusJson = jsonDecode(jsonString);
-          return statusJson.map((key, value) => MapEntry(key, value as bool));
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
+      final Map<String, bool> result = {};
+      for (final key in box.keys) {
+        if (key is String && _isMonthlyKey(key, _memoEnabledPrefix)) {
+          final data = box.get(key);
+          if (data is Map && data['enabled'] is Map) {
+            (data['enabled'] as Map).forEach((k, v) {
+              result[k.toString()] = v == true;
+            });
+          }
         }
       }
-      
-      return {};
+      return result;
     } catch (e) {
       Logger.error('メモステータス読み込みエラー', e);
       return {};
@@ -178,11 +369,19 @@ class MedicationDataPersistence {
   /// 曜日別服用ステータスを保存
   Future<void> saveWeekdayMedicationStatus(Map<String, Map<String, bool>> status) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final statusJson = status.map((key, value) => MapEntry(key, value));
-      
-      await prefs.setString('weekday_medication_status_v2', jsonEncode(statusJson));
-      Logger.debug('曜日別ステータス保存完了');
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
+      final now = DateTime.now();
+      final monthKey = _monthKey(_weekdayPrefix, now);
+      final existing = (box.get(monthKey) as Map?) ?? {
+        'month': '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}',
+        'weekdays': <String, dynamic>{},
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      existing['weekdays'] = status.map((k, v) => MapEntry(k, v));
+      existing['updated_at'] = DateTime.now().toIso8601String();
+      await box.put(monthKey, existing);
+      Logger.debug('曜日別ステータス保存完了(Hive)');
     } catch (e) {
       Logger.error('曜日別ステータス保存エラー', e);
     }
@@ -191,17 +390,20 @@ class MedicationDataPersistence {
   /// 曜日別服用ステータスを読み込み
   Future<Map<String, Map<String, bool>>> loadWeekdayMedicationStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString('weekday_medication_status_v2');
-      
-      if (jsonString != null && jsonString.isNotEmpty) {
-        final Map<String, dynamic> statusJson = jsonDecode(jsonString);
-        return statusJson.map((key, value) => 
-          MapEntry(key, Map<String, bool>.from(value as Map))
-        );
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
+      final Map<String, Map<String, bool>> result = {};
+      for (final key in box.keys) {
+        if (key is String && _isMonthlyKey(key, _weekdayPrefix)) {
+          final data = box.get(key);
+          if (data is Map && data['weekdays'] is Map) {
+            result[key] = Map<String, bool>.from(
+              (data['weekdays'] as Map).map((k, v) => MapEntry(k.toString(), v == true))
+            );
+          }
+        }
       }
-      
-      return {};
+      return result;
     } catch (e) {
       Logger.error('曜日別ステータス読み込みエラー', e);
       return {};
@@ -213,45 +415,97 @@ class MedicationDataPersistence {
     Map<String, Map<String, Map<int, bool>>> doseStatus
   ) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
       
-      // JSON変換可能な形式に変換
-      final jsonData = doseStatus.map((dateKey, dateValue) => 
-        MapEntry(dateKey, dateValue.map((memoKey, memoValue) => 
-          MapEntry(memoKey, memoValue.map((doseKey, doseValue) => 
-            MapEntry(doseKey.toString(), doseValue)
-          ))
-        ))
-      );
+      // 空の場合は何もしない
+      if (doseStatus.isEmpty) {
+        Logger.debug('服用回数別ステータスが空のため、保存をスキップします');
+        return;
+      }
       
-      await prefs.setString('medication_dose_status_v2', jsonEncode(jsonData));
-      Logger.debug('服用回数別ステータス保存完了');
-    } catch (e) {
+      // Group by month (YYYY-MM)
+      final Map<String, Map<String, dynamic>> monthly = {};
+      doseStatus.forEach((dateStr, memoMap) {
+        // dateStr expected yyyy-MM-dd
+        final parts = dateStr.split('-');
+        if (parts.length < 2) {
+          Logger.warning('不正な日付形式: $dateStr');
+          return;
+        }
+        final monthKey = '${_dosePrefix}_${parts[0]}-${parts[1]}';
+        monthly.putIfAbsent(monthKey, () => {
+          'month': '${parts[0]}-${parts[1]}',
+          'records': <String, dynamic>{},
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+        final monthData = monthly[monthKey];
+        if (monthData != null) {
+          final records = monthData['records'] as Map<String, dynamic>?;
+          if (records != null) {
+            records[dateStr] = memoMap.map((memoId, doseMap) =>
+              MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
+            );
+          }
+          monthData['updated_at'] = DateTime.now().toIso8601String();
+        }
+      });
+
+      int savedCount = 0;
+      for (final entry in monthly.entries) {
+        // Merge with existing month to avoid overwriting other dates
+        final existing = (box.get(entry.key) as Map?) ?? {
+          'month': entry.value['month'],
+          'records': <String, dynamic>{},
+          'updated_at': DateTime.now().toIso8601String(),
+        };
+        final existingRecords = Map<String, dynamic>.from(existing['records'] as Map);
+        existingRecords.addAll(entry.value['records'] as Map<String, dynamic>);
+        existing['records'] = existingRecords;
+        existing['updated_at'] = DateTime.now().toIso8601String();
+        await box.put(entry.key, existing);
+        savedCount += (entry.value['records'] as Map).length;
+      }
+
+      Logger.info('服用回数別ステータス保存完了(Hive): ${doseStatus.length}日分、${savedCount}件のレコード');
+    } catch (e, stackTrace) {
       Logger.error('服用回数別ステータス保存エラー', e);
+      Logger.error('服用回数別ステータス保存スタックトレース', stackTrace);
     }
   }
 
   /// 服用回数別ステータスを読み込み
   Future<Map<String, Map<String, Map<int, bool>>>> loadMedicationDoseStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString('medication_dose_status_v2');
+      await _ensureMigratedToHiveMonthly();
+      final box = await _openAppDataBox();
+      final Map<String, Map<String, Map<int, bool>>> result = {};
+      int loadedDates = 0;
+      int loadedRecords = 0;
       
-      if (jsonString != null && jsonString.isNotEmpty) {
-        final Map<String, dynamic> jsonData = jsonDecode(jsonString);
-        
-        return jsonData.map((dateKey, dateValue) => 
-          MapEntry(dateKey, (dateValue as Map<String, dynamic>).map((memoKey, memoValue) => 
-            MapEntry(memoKey, (memoValue as Map<String, dynamic>).map((doseKey, doseValue) => 
-              MapEntry(int.parse(doseKey), doseValue as bool)
-            ))
-          ))
-        );
+      for (final key in box.keys) {
+        if (key is String && _isMonthlyKey(key, _dosePrefix)) {
+          final data = box.get(key);
+          if (data is Map && data['records'] is Map) {
+            final recs = data['records'] as Map;
+            for (final entry in recs.entries) {
+              final dateStr = entry.key.toString();
+              final memoMap = entry.value as Map;
+              result[dateStr] = memoMap.map((memoId, doseMap) =>
+                MapEntry(memoId.toString(), (doseMap as Map).map((k, v) => MapEntry(int.parse(k.toString()), v == true)))
+              );
+              loadedDates++;
+              loadedRecords += memoMap.length;
+            }
+          }
+        }
       }
       
-      return {};
-    } catch (e) {
+      Logger.info('服用回数別ステータス読み込み完了: ${loadedDates}日分、${loadedRecords}件のレコード');
+      return result;
+    } catch (e, stackTrace) {
       Logger.error('服用回数別ステータス読み込みエラー', e);
+      Logger.error('服用回数別ステータス読み込みスタックトレース', stackTrace);
       return {};
     }
   }

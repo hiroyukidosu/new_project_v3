@@ -1,42 +1,26 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/medication_memo.dart';
-import '../models/adapters/medication_memo_adapter.dart';
+import '../config/storage_keys.dart';
+import '../services/hive_lifecycle_service.dart';
 import '../utils/logger.dart';
 
-/// メディケーションデータのリポジトリ
+/// メディケーションデータのリポジトリ（Hive完全移行版）
 class MedicationRepository {
-  static const String _memosKey = 'medication_memos';
-  static const String _statusKey = 'medication_memo_status';
-  static const String _weekdayKey = 'weekday_medication_status';
-  static const String _addedKey = 'added_medications';
-  static const String _alarmKey = 'alarm_data';
-  static const String _calendarKey = 'calendar_marks';
-  static const String _preferencesKey = 'user_preferences';
-  static const String _medicationDataKey = 'medication_data';
-  static const String _dayColorsKey = 'day_colors';
-  static const String _statisticsKey = 'statistics';
-  static const String _appSettingsKey = 'app_settings';
-  static const String _doseStatusKey = 'medication_dose_status';
-  
-  late SharedPreferences _prefs;
-  late Box<MedicationMemo> _memoBox;
-  late Box<String> _dataBox;
+  Box<MedicationMemo>? _memoBox;
+  Box? _dataBox; // 型指定なし（medication_data_persistence.dartとの互換性のため）
   
   /// リポジトリの初期化
   Future<void> initialize() async {
     try {
-      _prefs = await SharedPreferences.getInstance();
-      await Hive.initFlutter();
+      // Hiveライフサイクルサービスからボックスを取得
+      _memoBox = HiveLifecycleService.getBox<MedicationMemo>('medication_memos');
+      // medication_dataは型指定なしで開かれているため、型指定なしで取得
+      _dataBox = HiveLifecycleService.getBoxUntyped('medication_data');
       
-      // Hiveアダプターの登録
-      if (!Hive.isAdapterRegistered(2)) {
-        Hive.registerAdapter(MedicationMemoAdapter());
+      if (_memoBox == null || _dataBox == null) {
+        throw Exception('Hiveボックスが初期化されていません');
       }
-      
-      _memoBox = await Hive.openBox<MedicationMemo>('medication_memos');
-      _dataBox = await Hive.openBox<String>('medication_data');
       
       Logger.info('MedicationRepository初期化完了');
     } catch (e) {
@@ -48,7 +32,10 @@ class MedicationRepository {
   /// メモの取得
   Future<List<MedicationMemo>> getMemos() async {
     try {
-      final memos = _memoBox.values.toList();
+      if (_memoBox == null) {
+        await initialize();
+      }
+      final memos = _memoBox!.values.toList();
       Logger.debug('メモ取得完了: ${memos.length}件');
       return memos;
     } catch (e) {
@@ -60,8 +47,10 @@ class MedicationRepository {
   /// メモの保存
   Future<void> saveMemo(MedicationMemo memo) async {
     try {
-      await _memoBox.put(memo.id, memo);
-      await _prefs.setString('memo_${memo.id}', jsonEncode(memo.toJson()));
+      if (_memoBox == null) {
+        await initialize();
+      }
+      await _memoBox!.put(memo.id, memo);
       Logger.debug('メモ保存完了: ${memo.id}');
     } catch (e) {
       Logger.error('メモ保存エラー: ${memo.id}', e);
@@ -72,8 +61,10 @@ class MedicationRepository {
   /// メモの削除
   Future<void> deleteMemo(String id) async {
     try {
-      await _memoBox.delete(id);
-      await _prefs.remove('memo_$id');
+      if (_memoBox == null) {
+        await initialize();
+      }
+      await _memoBox!.delete(id);
       Logger.debug('メモ削除完了: $id');
     } catch (e) {
       Logger.error('メモ削除エラー: $id', e);
@@ -84,8 +75,13 @@ class MedicationRepository {
   /// メモステータスの取得
   Future<Map<String, bool>> getMemoStatus() async {
     try {
-      final statusJson = _prefs.getString(_statusKey);
-      if (statusJson != null) {
+      if (_dataBox == null) {
+        await initialize();
+      }
+      final statusValue = _dataBox!.get(StorageKeys.medicationMemoStatusKey);
+      if (statusValue != null) {
+        // Stringまたは既にMapの場合を処理
+        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
         final status = jsonDecode(statusJson) as Map<String, dynamic>;
         return status.map((key, value) => MapEntry(key, value as bool));
       }
@@ -99,8 +95,10 @@ class MedicationRepository {
   /// メモステータスの保存
   Future<void> saveMemoStatus(Map<String, bool> status) async {
     try {
-      await _prefs.setString(_statusKey, jsonEncode(status));
-      await _dataBox.put(_statusKey, jsonEncode(status));
+      if (_dataBox == null) {
+        await initialize();
+      }
+      await _dataBox!.put(StorageKeys.medicationMemoStatusKey, jsonEncode(status));
       Logger.debug('メモステータス保存完了');
     } catch (e) {
       Logger.error('メモステータス保存エラー', e);
@@ -111,8 +109,12 @@ class MedicationRepository {
   /// 曜日メディケーションステータスの取得
   Future<Map<String, bool>> getWeekdayMedicationStatus() async {
     try {
-      final statusJson = _prefs.getString(_weekdayKey);
-      if (statusJson != null) {
+      if (_dataBox == null) {
+        await initialize();
+      }
+      final statusValue = _dataBox!.get(StorageKeys.weekdayMedicationStatusKey);
+      if (statusValue != null) {
+        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
         final status = jsonDecode(statusJson) as Map<String, dynamic>;
         return status.map((key, value) => MapEntry(key, value as bool));
       }
@@ -126,8 +128,10 @@ class MedicationRepository {
   /// 曜日メディケーションステータスの保存
   Future<void> saveWeekdayMedicationStatus(Map<String, bool> status) async {
     try {
-      await _prefs.setString(_weekdayKey, jsonEncode(status));
-      await _dataBox.put(_weekdayKey, jsonEncode(status));
+      if (_dataBox == null) {
+        await initialize();
+      }
+      await _dataBox!.put(StorageKeys.weekdayMedicationStatusKey, jsonEncode(status));
       Logger.debug('曜日メディケーションステータス保存完了');
     } catch (e) {
       Logger.error('曜日メディケーションステータス保存エラー', e);
@@ -138,8 +142,12 @@ class MedicationRepository {
   /// 追加メディケーションの取得
   Future<List<Map<String, dynamic>>> getAddedMedications() async {
     try {
-      final medicationsJson = _prefs.getString(_addedKey);
-      if (medicationsJson != null) {
+      if (_dataBox == null) {
+        await initialize();
+      }
+      final medicationsValue = _dataBox!.get(StorageKeys.addedMedicationsKey);
+      if (medicationsValue != null) {
+        final medicationsJson = medicationsValue is String ? medicationsValue : jsonEncode(medicationsValue);
         final medications = jsonDecode(medicationsJson) as List<dynamic>;
         return medications.cast<Map<String, dynamic>>();
       }
@@ -153,8 +161,10 @@ class MedicationRepository {
   /// 追加メディケーションの保存
   Future<void> saveAddedMedications(List<Map<String, dynamic>> medications) async {
     try {
-      await _prefs.setString(_addedKey, jsonEncode(medications));
-      await _dataBox.put(_addedKey, jsonEncode(medications));
+      if (_dataBox == null) {
+        await initialize();
+      }
+      await _dataBox!.put(StorageKeys.addedMedicationsKey, jsonEncode(medications));
       Logger.debug('追加メディケーション保存完了: ${medications.length}件');
     } catch (e) {
       Logger.error('追加メディケーション保存エラー', e);
@@ -162,142 +172,15 @@ class MedicationRepository {
     }
   }
   
-  /// アラームデータの取得
-  Future<Map<String, dynamic>> getAlarmData() async {
-    try {
-      final alarmJson = _prefs.getString(_alarmKey);
-      if (alarmJson != null) {
-        return jsonDecode(alarmJson) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      Logger.error('アラームデータ取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// アラームデータの保存
-  Future<void> saveAlarmData(Map<String, dynamic> alarmData) async {
-    try {
-      await _prefs.setString(_alarmKey, jsonEncode(alarmData));
-      await _dataBox.put(_alarmKey, jsonEncode(alarmData));
-      Logger.debug('アラームデータ保存完了');
-    } catch (e) {
-      Logger.error('アラームデータ保存エラー', e);
-      rethrow;
-    }
-  }
-  
-  /// カレンダーマークの取得
-  Future<Map<String, dynamic>> getCalendarMarks() async {
-    try {
-      final marksJson = _prefs.getString(_calendarKey);
-      if (marksJson != null) {
-        return jsonDecode(marksJson) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      Logger.error('カレンダーマーク取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// カレンダーマークの保存
-  Future<void> saveCalendarMarks(Map<String, dynamic> marks) async {
-    try {
-      await _prefs.setString(_calendarKey, jsonEncode(marks));
-      await _dataBox.put(_calendarKey, jsonEncode(marks));
-      Logger.debug('カレンダーマーク保存完了');
-    } catch (e) {
-      Logger.error('カレンダーマーク保存エラー', e);
-      rethrow;
-    }
-  }
-  
-  /// ユーザー設定の取得
-  Future<Map<String, dynamic>> getUserPreferences() async {
-    try {
-      final prefsJson = _prefs.getString(_preferencesKey);
-      if (prefsJson != null) {
-        return jsonDecode(prefsJson) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      Logger.error('ユーザー設定取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// ユーザー設定の保存
-  Future<void> saveUserPreferences(Map<String, dynamic> preferences) async {
-    try {
-      await _prefs.setString(_preferencesKey, jsonEncode(preferences));
-      await _dataBox.put(_preferencesKey, jsonEncode(preferences));
-      Logger.debug('ユーザー設定保存完了');
-    } catch (e) {
-      Logger.error('ユーザー設定保存エラー', e);
-      rethrow;
-    }
-  }
-  
-  /// メディケーションデータの取得
-  Future<Map<String, dynamic>> getMedicationData() async {
-    try {
-      final dataJson = _prefs.getString(_medicationDataKey);
-      if (dataJson != null) {
-        return jsonDecode(dataJson) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      Logger.error('メディケーションデータ取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// メディケーションデータの保存
-  Future<void> saveMedicationData(Map<String, dynamic> data) async {
-    try {
-      await _prefs.setString(_medicationDataKey, jsonEncode(data));
-      await _dataBox.put(_medicationDataKey, jsonEncode(data));
-      Logger.debug('メディケーションデータ保存完了');
-    } catch (e) {
-      Logger.error('メディケーションデータ保存エラー', e);
-      rethrow;
-    }
-  }
-  
-  /// 日付色の取得
-  Future<Map<String, String>> getDayColors() async {
-    try {
-      final colorsJson = _prefs.getString(_dayColorsKey);
-      if (colorsJson != null) {
-        final colors = jsonDecode(colorsJson) as Map<String, dynamic>;
-        return colors.map((key, value) => MapEntry(key, value as String));
-      }
-      return {};
-    } catch (e) {
-      Logger.error('日付色取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// 日付色の保存
-  Future<void> saveDayColors(Map<String, String> colors) async {
-    try {
-      await _prefs.setString(_dayColorsKey, jsonEncode(colors));
-      await _dataBox.put(_dayColorsKey, jsonEncode(colors));
-      Logger.debug('日付色保存完了');
-    } catch (e) {
-      Logger.error('日付色保存エラー', e);
-      rethrow;
-    }
-  }
-  
   /// 統計データの取得
   Future<Map<String, dynamic>> getStatistics() async {
     try {
-      final statsJson = _prefs.getString(_statisticsKey);
-      if (statsJson != null) {
+      if (_dataBox == null) {
+        await initialize();
+      }
+      final statsValue = _dataBox!.get(StorageKeys.statisticsKey);
+      if (statsValue != null) {
+        final statsJson = statsValue is String ? statsValue : jsonEncode(statsValue);
         return jsonDecode(statsJson) as Map<String, dynamic>;
       }
       return {};
@@ -310,8 +193,10 @@ class MedicationRepository {
   /// 統計データの保存
   Future<void> saveStatistics(Map<String, dynamic> statistics) async {
     try {
-      await _prefs.setString(_statisticsKey, jsonEncode(statistics));
-      await _dataBox.put(_statisticsKey, jsonEncode(statistics));
+      if (_dataBox == null) {
+        await initialize();
+      }
+      await _dataBox!.put(StorageKeys.statisticsKey, jsonEncode(statistics));
       Logger.debug('統計データ保存完了');
     } catch (e) {
       Logger.error('統計データ保存エラー', e);
@@ -319,37 +204,15 @@ class MedicationRepository {
     }
   }
   
-  /// アプリ設定の取得
-  Future<Map<String, dynamic>> getAppSettings() async {
-    try {
-      final settingsJson = _prefs.getString(_appSettingsKey);
-      if (settingsJson != null) {
-        return jsonDecode(settingsJson) as Map<String, dynamic>;
-      }
-      return {};
-    } catch (e) {
-      Logger.error('アプリ設定取得エラー', e);
-      return {};
-    }
-  }
-  
-  /// アプリ設定の保存
-  Future<void> saveAppSettings(Map<String, dynamic> settings) async {
-    try {
-      await _prefs.setString(_appSettingsKey, jsonEncode(settings));
-      await _dataBox.put(_appSettingsKey, jsonEncode(settings));
-      Logger.debug('アプリ設定保存完了');
-    } catch (e) {
-      Logger.error('アプリ設定保存エラー', e);
-      rethrow;
-    }
-  }
-  
   /// 服用ステータスの取得
   Future<Map<String, dynamic>> getMedicationDoseStatus() async {
     try {
-      final statusJson = _prefs.getString(_doseStatusKey);
-      if (statusJson != null) {
+      if (_dataBox == null) {
+        await initialize();
+      }
+      final statusValue = _dataBox!.get(StorageKeys.medicationDoseStatusKey);
+      if (statusValue != null) {
+        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
         return jsonDecode(statusJson) as Map<String, dynamic>;
       }
       return {};
@@ -362,8 +225,10 @@ class MedicationRepository {
   /// 服用ステータスの保存
   Future<void> saveMedicationDoseStatus(Map<String, dynamic> status) async {
     try {
-      await _prefs.setString(_doseStatusKey, jsonEncode(status));
-      await _dataBox.put(_doseStatusKey, jsonEncode(status));
+      if (_dataBox == null) {
+        await initialize();
+      }
+      await _dataBox!.put(StorageKeys.medicationDoseStatusKey, jsonEncode(status));
       Logger.debug('服用ステータス保存完了');
     } catch (e) {
       Logger.error('服用ステータス保存エラー', e);
@@ -379,13 +244,7 @@ class MedicationRepository {
         'memoStatus': await getMemoStatus(),
         'weekdayStatus': await getWeekdayMedicationStatus(),
         'addedMedications': await getAddedMedications(),
-        'alarmData': await getAlarmData(),
-        'calendarMarks': await getCalendarMarks(),
-        'userPreferences': await getUserPreferences(),
-        'medicationData': await getMedicationData(),
-        'dayColors': await getDayColors(),
         'statistics': await getStatistics(),
-        'appSettings': await getAppSettings(),
         'doseStatus': await getMedicationDoseStatus(),
         'backupDate': DateTime.now().toIso8601String(),
       };
@@ -401,8 +260,7 @@ class MedicationRepository {
   /// リソースの解放
   Future<void> dispose() async {
     try {
-      await _memoBox.close();
-      await _dataBox.close();
+      // Hiveライフサイクルサービスが管理するため、ここでは何もしない
       Logger.info('MedicationRepository解放完了');
     } catch (e) {
       Logger.error('MedicationRepository解放エラー', e);

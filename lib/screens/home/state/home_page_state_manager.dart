@@ -18,6 +18,7 @@ import '../business/pagination_manager.dart';
 import 'home_page_state_notifiers.dart';
 import '../../helpers/home_page_data_helper.dart';
 import '../../helpers/home_page_alarm_helper.dart';
+import '../../helpers/calendar_operations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ホームページの状態を集中管理するクラス
@@ -92,6 +93,8 @@ class HomePageStateManager {
   DateTime lastAlarmCheckLog = DateTime.now();
   Timer? debounce;
   Timer? saveDebounceTimer;
+  bool _isSaving = false; // 保存中フラグ（重複保存防止）
+  DateTime? _lastSaveTime; // 最後の保存時刻
 
   // サービス・ハンドラー（依存性注入）
   late MedicationDataPersistence medicationDataPersistence;
@@ -198,42 +201,174 @@ class HomePageStateManager {
     notifiers.selectedDayNotifier.value = selectedDay;
     notifiers.focusedDayNotifier.value = focusedDay;
 
-    // データ読み込み（非同期）
-    await _loadSavedData();
-    await _loadMedicationMemosWithRetry();
-    paginationManager.setAllMemos(medicationMemos);
-
+    // デフォルト値の設定（データが読み込めなかった場合のフォールバック）
     if (selectedDates.isEmpty) {
       selectedDates.add(_normalizeDate(DateTime.now()));
     }
-
+    if (medicationMemoStatus.isEmpty) {
+      medicationMemoStatus = {};
+    }
+    if (addedMedications.isEmpty) {
+      addedMedications = [];
+    }
+    if (dayColors.isEmpty) {
+      dayColors = {};
+    }
+    
+    // すぐに初期化完了フラグを立てる（UI表示を可能にする）
+    // データ読み込みは非同期で実行し、完了後に更新
     isInitialized = true;
+    debugPrint('✅ 初期化完了（最小限の初期化）');
+    
+    // データ読み込みは非同期で実行（init()の完了をブロックしない）
+    _startAsyncDataLoading();
+  }
+  
+  /// 非同期データ読み込みを開始（init()の完了をブロックしない）
+  void _startAsyncDataLoading() {
+    // Phase 1: 必須データ読み込み（UI表示に必要）
+    // 非同期で実行し、完了後にデータを更新
+    Future.microtask(() async {
+      try {
+        await _loadEssentialData().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('⚠️ 必須データ読み込みタイムアウト（5秒）- デフォルト値で継続');
+          },
+        );
+      } catch (e) {
+        debugPrint('⚠️ 必須データ読み込みエラー: $e（アプリは継続します）');
+      }
+    });
+
+    // Phase 2以降: メモ読み込みとその他のデータ読み込みは非同期で実行
+    Future.microtask(() async {
+      try {
+        // メモ読み込み（リトライ付き、タイムアウト付き）
+        await _loadMedicationMemosWithRetry().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('⚠️ メモ読み込みタイムアウト（10秒）');
+            medicationMemos = [];
+            paginationManager.setAllMemos(medicationMemos);
+          },
+        );
+        paginationManager.setAllMemos(medicationMemos);
+        debugPrint('✅ メモ読み込み完了: ${medicationMemos.length}件');
+      } catch (e) {
+        debugPrint('⚠️ メモ読み込みエラー: $e（アプリは継続します）');
+        // エラー時も空のリストで初期化
+        medicationMemos = [];
+        paginationManager.setAllMemos(medicationMemos);
+      }
+    });
+
+    // Phase 2以降: 重要データと遅延データの読み込み（非ブロッキング）
+    _loadSavedData();
   }
 
-  /// データ読み込み
+  /// データ読み込み（段階的初期化で最適化）
+  /// 注意: Phase 1は既にinit()で実行済み
   Future<void> _loadSavedData() async {
     try {
-      await _loadAllData();
+      // Phase 2: 重要データを並列読み込み（非ブロッキング）
+      Future.microtask(() async {
+        try {
+          await _loadImportantData();
+        } catch (e) {
+          debugPrint('重要データ読み込みエラー: $e');
+        }
+      });
+      
+      // Phase 3: 統計データなどは遅延読み込み（バックグラウンド）
+      Future.microtask(() async {
+        try {
+          await Future.delayed(const Duration(milliseconds: 500)); // UI表示を優先
+          await _loadDeferredData();
+        } catch (e) {
+          debugPrint('遅延データ読み込みエラー: $e');
+        }
+      });
     } catch (e) {
       debugPrint('データ読み込みエラー: $e');
     }
   }
 
-  /// 全データ読み込み
+  /// Phase 1: 必須データ読み込み（UI表示に必要）
+  /// 最小限のデータのみを読み込んで、UIを早期に表示
+  /// エラーが発生しても処理を継続
+  Future<void> _loadEssentialData() async {
+    try {
+      // 並列読み込みで高速化（独立したデータ）
+      // 各処理に個別のエラーハンドリングを追加
+      await Future.wait([
+        _loadMemoStatus().catchError((e) {
+          debugPrint('⚠️ メモ状態読み込みエラー: $e');
+          medicationMemoStatus = {};
+        }),
+        _loadMedicationList().catchError((e) {
+          debugPrint('⚠️ 薬リスト読み込みエラー: $e');
+          addedMedications = [];
+        }),
+        _loadCalendarMarks().catchError((e) {
+          debugPrint('⚠️ カレンダーマーク読み込みエラー: $e');
+          if (selectedDates.isEmpty) {
+            selectedDates.add(_normalizeDate(DateTime.now()));
+          }
+        }),
+        _loadDayColors().catchError((e) {
+          debugPrint('⚠️ 日付色読み込みエラー: $e');
+          dayColors = {};
+        }),
+      ], eagerError: false); // エラーが発生しても他の処理を継続
+      
+      debugPrint('✅ 必須データ読み込み完了');
+    } catch (e) {
+      debugPrint('必須データ読み込みエラー: $e（デフォルト値で継続）');
+    }
+  }
+
+  /// Phase 2: 重要データ読み込み（アプリ機能に必要）
+  /// アラーム、設定など、アプリの主要機能に必要なデータ
+  Future<void> _loadImportantData() async {
+    try {
+      // 並列読み込みで高速化
+      await Future.wait([
+        _loadAlarmData(),
+        _loadUserPreferences(),
+        _loadAppSettings(),
+        _loadMedicationData(), // 選択日のデータ
+      ]);
+      
+      debugPrint('✅ 重要データ読み込み完了');
+    } catch (e) {
+      debugPrint('重要データ読み込みエラー: $e');
+    }
+  }
+
+  /// Phase 3: 遅延データ読み込み（統計・分析データ）
+  /// 遵守率計算など、重い処理は後で実行
+  Future<void> _loadDeferredData() async {
+    try {
+      // 重要: 服用回数別ステータスを統計データより先に読み込む（遵守率計算に必要）
+      await _loadMedicationDoseStatus();
+      
+      // 服用回数別ステータス読み込み後に統計を読み込み（その後、_loadMedicationDoseStatus内で再計算される）
+      await _loadStatistics();
+      
+      debugPrint('✅ 遅延データ読み込み完了');
+    } catch (e) {
+      debugPrint('遅延データ読み込みエラー: $e');
+    }
+  }
+
+  /// 全データ読み込み（後方互換性のため残す）
+  /// 注意: 通常は段階的読み込みを使用
   Future<void> _loadAllData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      await _loadMemoStatus();
-      await _loadMedicationList();
-      await _loadAlarmData();
-      await _loadCalendarMarks();
-      await _loadUserPreferences();
-      await _loadMedicationData();
-      await _loadDayColors();
-      await _loadStatistics();
-      await _loadMedicationDoseStatus();
-      await _loadAppSettings();
+      await _loadEssentialData();
+      await _loadImportantData();
+      await _loadDeferredData();
       
       debugPrint('全データ読み込み完了');
     } catch (e) {
@@ -290,14 +425,74 @@ class HomePageStateManager {
   }
 
   /// 統計データ読み込み
+  /// 注意: 服用回数別ステータス読み込み後に実行される（_loadMedicationDoseStatus内で再計算されるため、ここでは初期値のみ読み込む）
   Future<void> _loadStatistics() async {
     adherenceRates = await HomePageDataHelper.loadStatistics();
+    // 初期値として設定（_loadMedicationDoseStatus内で再計算される）
     notifiers.adherenceRatesNotifier.value = Map<String, double>.from(adherenceRates);
   }
 
   /// 服用回数別状態読み込み
   Future<void> _loadMedicationDoseStatus() async {
-    weekdayMedicationDoseStatus = await medicationDataPersistence.loadMedicationDoseStatus() ?? {};
+    try {
+      final loaded = await medicationDataPersistence.loadMedicationDoseStatus();
+      weekdayMedicationDoseStatus = loaded ?? {};
+      debugPrint('服用回数別ステータス読み込み: ${weekdayMedicationDoseStatus.length}日分のデータ');
+      if (weekdayMedicationDoseStatus.isNotEmpty) {
+        final sampleDate = weekdayMedicationDoseStatus.keys.first;
+        final sampleMemos = weekdayMedicationDoseStatus[sampleDate]?.length ?? 0;
+        debugPrint('サンプル日付($sampleDate): $sampleMemos件のメモ');
+        // サンプルデータの詳細をログ出力
+        final sampleMemoId = weekdayMedicationDoseStatus[sampleDate]?.keys.first;
+        if (sampleMemoId != null) {
+          final sampleDoseStatus = weekdayMedicationDoseStatus[sampleDate]?[sampleMemoId];
+          debugPrint('サンプルメモ($sampleMemoId)のチェック状態: $sampleDoseStatus');
+        }
+      } else {
+        debugPrint('⚠️ 服用回数別ステータスが空です');
+      }
+      
+      // 服用回数別ステータス読み込み後、遵守率統計を再計算（服用完了率を反映）
+      await _recalculateAdherenceStats();
+    } catch (e, stackTrace) {
+      debugPrint('服用回数別ステータス読み込みエラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+      weekdayMedicationDoseStatus = {};
+    }
+  }
+  
+  /// 遵守率統計を再計算（服用完了率を反映）（完全再構築版 - 徹底的に作り直し）
+  Future<void> _recalculateAdherenceStats() async {
+    try {
+      debugPrint('========================================');
+      debugPrint('遵守率統計再計算開始（完全再構築版）');
+      debugPrint('服用回数別ステータス: ${weekdayMedicationDoseStatus.length}日分');
+      if (weekdayMedicationDoseStatus.isNotEmpty) {
+        final sampleDate = weekdayMedicationDoseStatus.keys.first;
+        final sampleMemos = weekdayMedicationDoseStatus[sampleDate]?.length ?? 0;
+        debugPrint('サンプル日付: $sampleDate, メモ数: $sampleMemos');
+      }
+      debugPrint('========================================');
+      
+      // CalendarOperationsを使用して遵守率統計を計算
+      final calendarOps = CalendarOperations(
+        stateManager: this,
+        onMountedCheck: () => true,
+        onStateChanged: () {
+          // UI更新は不要（ValueNotifierが自動的に更新する）
+        },
+      );
+      await calendarOps.calculateAdherenceStats();
+      
+      debugPrint('========================================');
+      debugPrint('遵守率統計再計算完了');
+      debugPrint('遵守率データ: $adherenceRates');
+      debugPrint('Notifier値: ${notifiers.adherenceRatesNotifier.value}');
+      debugPrint('========================================');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 遵守率統計再計算エラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+    }
   }
 
   /// アプリ設定読み込み
@@ -332,23 +527,71 @@ class HomePageStateManager {
     }
   }
 
-  /// 全データ保存
-  Future<void> saveAllData() async {
+  /// 全データ保存（完全再構築版 - 徹底的に作り直し）
+  /// 保存後に遵守率統計を再計算して、グラフに反映させる
+  /// 重複保存防止とデバウンス処理を追加
+  Future<void> saveAllData({bool force = false}) async {
+    // 既に保存中の場合はスキップ（重複保存防止）
+    if (_isSaving && !force) {
+      debugPrint('⚠️ 保存処理が既に実行中のため、スキップします');
+      return;
+    }
+    
+    // 最後の保存から1秒以内の場合はスキップ（デバウンス）
+    if (!force && _lastSaveTime != null) {
+      final timeSinceLastSave = DateTime.now().difference(_lastSaveTime!);
+      if (timeSinceLastSave.inMilliseconds < 1000) {
+        debugPrint('⚠️ 最後の保存から${timeSinceLastSave.inMilliseconds}msしか経過していないため、スキップします');
+        return;
+      }
+    }
+    
+    _isSaving = true;
     try {
-      await dataSyncManager.saveAllData(
-        medicationMemos: medicationMemos,
-        medicationMemoStatus: medicationMemoStatus,
-        weekdayMedicationStatus: weekdayMedicationStatus,
-        weekdayMedicationDoseStatus: weekdayMedicationDoseStatus,
-        addedMedications: addedMedications,
-        alarmList: alarmList,
-        dayColors: dayColors,
-        selectedDay: selectedDay,
-        memoText: memoController.text,
-        adherenceRates: adherenceRates,
-      );
-    } catch (e) {
-      debugPrint('データ保存エラー: $e');
+      // メモテキストを確実に取得（memoTextNotifierとmemoControllerの両方を確認）
+      final memoText = notifiers.memoTextNotifier.value.isNotEmpty
+          ? notifiers.memoTextNotifier.value
+          : memoController.text;
+
+      debugPrint('========================================');
+      debugPrint('全データ保存開始（完全再構築版）');
+      debugPrint('服用回数別ステータス: ${weekdayMedicationDoseStatus.length}日分');
+      if (weekdayMedicationDoseStatus.isNotEmpty) {
+        final sampleDate = weekdayMedicationDoseStatus.keys.first;
+        final sampleMemos = weekdayMedicationDoseStatus[sampleDate]?.length ?? 0;
+        debugPrint('サンプル日付: $sampleDate, メモ数: $sampleMemos');
+      }
+      debugPrint('========================================');
+      
+      // 重い処理をバックグラウンドで実行（computeは使えないため、Future.microtaskで非同期実行）
+      await Future.microtask(() async {
+        await dataSyncManager.saveAllData(
+          medicationMemos: medicationMemos,
+          medicationMemoStatus: medicationMemoStatus,
+          weekdayMedicationStatus: weekdayMedicationStatus,
+          weekdayMedicationDoseStatus: weekdayMedicationDoseStatus,
+          addedMedications: addedMedications,
+          alarmList: alarmList,
+          dayColors: dayColors,
+          selectedDay: selectedDay,
+          memoText: memoText,
+          adherenceRates: adherenceRates,
+        );
+      });
+      
+      debugPrint('全データ保存完了');
+      
+      // 重要：データ保存後に遵守率統計を再計算（グラフに反映させる）
+      debugPrint('遵守率統計を再計算します...');
+      await _recalculateAdherenceStats();
+      
+      _lastSaveTime = DateTime.now();
+      debugPrint('全データ保存と遵守率統計再計算完了');
+    } catch (e, stackTrace) {
+      debugPrint('❌ データ保存エラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+    } finally {
+      _isSaving = false;
     }
   }
 
@@ -360,30 +603,64 @@ class HomePageStateManager {
   /// バックアップデータ作成
   Future<Map<String, dynamic>> _createSafeBackupData(String label) async {
     try {
+      // Colorオブジェクトをint値に変換（シリアライズ可能にする）
+      final dayColorsSerialized = <String, int>{};
+      dayColors.forEach((key, color) {
+        dayColorsSerialized[key] = color.value;
+      });
+      
+      // addedMedications内のColorオブジェクトも変換
+      final addedMedicationsSerialized = addedMedications.map((med) {
+        final medCopy = Map<String, dynamic>.from(med);
+        if (medCopy['color'] is Color) {
+          medCopy['color'] = (medCopy['color'] as Color).value;
+        }
+        return medCopy;
+      }).toList();
+      
       return {
         'medicationMemos': medicationMemos.map((m) => m.toJson()).toList(),
         'medicationMemoStatus': medicationMemoStatus,
         'weekdayMedicationStatus': weekdayMedicationStatus,
         'weekdayMedicationDoseStatus': weekdayMedicationDoseStatus,
-        'addedMedications': addedMedications,
-        'dayColors': dayColors.map((k, v) => MapEntry(k, v.value)), // Colorをint値に変換
+        'addedMedications': addedMedicationsSerialized,
+        'dayColors': dayColorsSerialized,
         'adherenceRates': adherenceRates,
         'label': label,
         'timestamp': DateTime.now().toIso8601String(),
       };
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('バックアップデータ作成エラー: $e');
-      // エラー時はdayColorsを除外して保存
-      return {
-        'medicationMemos': medicationMemos.map((m) => m.toJson()).toList(),
-        'medicationMemoStatus': medicationMemoStatus,
-        'weekdayMedicationStatus': weekdayMedicationStatus,
-        'weekdayMedicationDoseStatus': weekdayMedicationDoseStatus,
-        'addedMedications': addedMedications,
-        'adherenceRates': adherenceRates,
-        'label': label,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
+      debugPrint('スタックトレース: $stackTrace');
+      // エラー時はdayColorsとaddedMedicationsのColorを除外して保存
+      try {
+        final addedMedicationsWithoutColor = addedMedications.map((med) {
+          final medCopy = Map<String, dynamic>.from(med);
+          medCopy.remove('color'); // Colorオブジェクトを削除
+          return medCopy;
+        }).toList();
+        
+        return {
+          'medicationMemos': medicationMemos.map((m) => m.toJson()).toList(),
+          'medicationMemoStatus': medicationMemoStatus,
+          'weekdayMedicationStatus': weekdayMedicationStatus,
+          'weekdayMedicationDoseStatus': weekdayMedicationDoseStatus,
+          'addedMedications': addedMedicationsWithoutColor,
+          'adherenceRates': adherenceRates,
+          'label': label,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      } catch (e2) {
+        debugPrint('フォールバックバックアップデータ作成もエラー: $e2');
+        // 最小限のデータのみ返す
+        return {
+          'medicationMemos': medicationMemos.map((m) => m.toJson()).toList(),
+          'medicationMemoStatus': medicationMemoStatus,
+          'adherenceRates': adherenceRates,
+          'label': label,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+      }
     }
   }
 

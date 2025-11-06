@@ -74,6 +74,10 @@ class BackupPreviewDialog extends StatelessWidget {
                 Navigator.of(context).pop(true);
                 onRestore(backupKey);
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('復元する'),
             ),
           ],

@@ -125,7 +125,7 @@ class UIHelpers {
   /// 制限ダイアログ表示
   void showLimitDialog(String type) {
     const maxAlarms = 100;
-    const maxMemos = 1000;
+    const maxMemos = 500;
     WarningDialog.showLimitDialog(
       context,
       type,
@@ -161,7 +161,7 @@ class UIHelpers {
 
   /// メモ追加可能かチェック
   bool canAddMemo() {
-    const maxMemos = 1000;
+    const maxMemos = 500;
     final memos = stateManager?.medicationMemos ?? [];
     return memos.length < maxMemos;
   }

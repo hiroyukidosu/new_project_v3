@@ -47,7 +47,7 @@ class MedicineView extends StatelessWidget {
           await stateManager.memoEventHandler.addMemo(
             memo,
             stateManager.medicationMemos,
-            100, // maxMemos
+            500, // maxMemos
             () async => await stateManager.saveAllData(),
           );
           if (context.mounted) {

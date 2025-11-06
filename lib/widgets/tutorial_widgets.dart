@@ -12,11 +12,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/trial_service.dart';
 import '../services/medication_service.dart';
 import '../services/notification_service.dart';
-import '../screens/medication_home_page.dart';
+import '../screens/home_page.dart';
 import 'trial_widgets.dart';
 
 class TutorialWrapper extends StatefulWidget {
-  const TutorialWrapper({super.key});
+  final Widget child;
+  
+  const TutorialWrapper({
+    super.key,
+    required this.child,
+  });
+  
   @override
   State<TutorialWrapper> createState() => _TutorialWrapperState();
 }
@@ -40,7 +46,10 @@ class _TutorialWrapperState extends State<TutorialWrapper> {
         MedicationService.initialize().catchError((e) {
           return null;
         }),
-        NotificationService.initialize().catchError((e) {
+        NotificationService.initialize(
+          (response) {}, // ダミーコールバック
+          null,
+        ).catchError((e) {
           return false;
         }),
       ]);
@@ -79,7 +88,7 @@ class _TutorialWrapperState extends State<TutorialWrapper> {
     } else if (_showTrialMessage) {
       return TrialMessageScreen(onComplete: _onTrialMessageComplete);
     } else {
-      return const MedicationHomePage();
+      return widget.child;
     }
   }
 }

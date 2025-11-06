@@ -13,7 +13,7 @@ class AddMedicationMemoUseCase {
 
   AddMedicationMemoUseCase(
     this._repository, {
-    this.maxMemos = 1000,
+    this.maxMemos = 500,
   });
 
   /// メモを追加

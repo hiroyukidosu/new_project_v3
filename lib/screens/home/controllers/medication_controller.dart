@@ -35,7 +35,7 @@ class MedicationController {
     );
 
     final memos = stateManager.medicationMemos;
-    const maxMemos = 1000; // メモ上限
+    const maxMemos = 500; // メモ上限
     showDialog(
       context: context,
       builder: (context) => MemoDialog(

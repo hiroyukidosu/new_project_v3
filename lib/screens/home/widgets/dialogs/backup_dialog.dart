@@ -25,7 +25,7 @@ class BackupDialog extends StatelessWidget {
     return AlertDialog(
       title: const Row(
         children: [
-          Icon(Icons.backup, color: Colors.orange),
+          Icon(Icons.backup, color: Colors.purple),
           SizedBox(width: 8),
           Text('バックアップ'),
         ],
@@ -45,7 +45,7 @@ class BackupDialog extends StatelessWidget {
               icon: const Icon(Icons.save),
               label: const Text('手動バックアップを作成'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.purple,
                 foregroundColor: Colors.white,
               ),
             ),
@@ -61,35 +61,13 @@ class BackupDialog extends StatelessWidget {
               icon: const Icon(Icons.history),
               label: const Text('保存履歴を見る'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
               ),
             ),
           ),
           const SizedBox(height: 8),
-          FutureBuilder<bool>(
-            future: hasUndoAvailable(),
-            builder: (context, snapshot) {
-              final available = snapshot.data ?? false;
-              return SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: available
-                      ? () {
-                          Navigator.of(context).pop('undo');
-                          onUndo();
-                        }
-                      : null,
-                  icon: const Icon(Icons.undo),
-                  label: const Text('1つ前の状態に復元'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: available ? Colors.teal : Colors.grey,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              );
-            },
-          ),
+          // 1つ前の状態に復元機能は削除されました
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
@@ -105,7 +83,7 @@ class BackupDialog extends StatelessWidget {
               icon: const Icon(Icons.restore),
               label: const Text('最新フルバックアップを復元'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: Colors.teal,
                 foregroundColor: Colors.white,
               ),
             ),

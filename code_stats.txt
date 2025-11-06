@@ -1,0 +1,275 @@
+プロジェクト内 全Dartファイル コード量レポート
+====================================================================================================
+
+総ファイル数: 266
+総コード行数: 55,401 行
+
+----------------------------------------------------------------------------------------------------
+ファイル別（行数の多い順）
+----------------------------------------------------------------------------------------------------
+  1.  1,044 行 - lib\widgets\calendar\calendar_tab.dart
+  2.    841 行 - lib\widgets\memo_dialog.dart
+  3.    836 行 - lib\l10n\app_localizations.dart
+  4.    807 行 - lib\screens\views\calendar_view.dart
+  5.    761 行 - lib\screens\home_page.dart
+  6.    710 行 - lib\screens\medication_home_page.dart
+  7.    686 行 - lib\screens\tabs\stats_tab.dart
+  8.    659 行 - lib\screens\mixins\home_page_data_mixin.dart
+  9.    592 行 - lib\core\analytics_integration.dart
+ 10.    570 行 - lib\core\memory_leak_prevention_advanced.dart
+ 11.    558 行 - lib\screens\mixins\home_page_calendar_mixin.dart
+ 12.    553 行 - lib\screens\views\medicine_view.dart
+ 13.    549 行 - lib\screens\home\widgets\medication_item_widgets.dart
+ 14.    526 行 - lib\core\infinite_scroll_optimization.dart
+ 15.    521 行 - lib\core\security_improvement.dart
+ 16.    518 行 - lib\core\testability_improvement.dart
+ 17.    503 行 - lib\screens\alarm_home_screen.dart
+ 18.    475 行 - lib\screens\mixins\purchase_mixin.dart
+ 19.    471 行 - lib\core\security_audit_system.dart
+ 20.    462 行 - lib\core\ui_rendering_optimization.dart
+ 21.    462 行 - lib\screens\helpers\backup_operations.dart
+ 22.    456 行 - lib\core\accessibility_enhancement.dart
+ 23.    455 行 - lib\core\specific_error_handling.dart
+ 24.    450 行 - lib\parts\main_services.dart
+ 25.    449 行 - lib\viewmodels\medication_viewmodel.dart
+ 26.    443 行 - lib\utils\data_persistence.dart
+ 27.    442 行 - lib\core\secure_storage_implementation.dart
+ 28.    441 行 - lib\core\enhanced_purchase_verification.dart
+ 29.    441 行 - lib\screens\tabs\medicine_tab.dart
+ 30.    433 行 - lib\core\security_integration.dart
+ 31.    431 行 - lib\pages\stats\stats_page.dart
+ 32.    430 行 - lib\screens\tabs\medicine_tab_fixed.dart
+ 33.    411 行 - lib\repositories\medication_repository.dart
+ 34.    411 行 - lib\screens\home\state\home_page_state_manager.dart
+ 35.    409 行 - lib\widgets\common_components.dart
+ 36.    404 行 - lib\core\async_processing_improvement.dart
+ 37.    404 行 - lib\screens\mixins\backup_core_mixin.dart
+ 38.    402 行 - lib\core\performance_optimization_integration.dart
+ 39.    395 行 - lib\core\error_handling_improvement.dart
+ 40.    389 行 - lib\screens\helpers\data_operations.dart
+ 41.    386 行 - lib\core\async_race_condition_fix.dart
+ 42.    385 行 - lib\core\critical_issues_integration.dart
+ 43.    363 行 - lib\core\memory_leak_risk_prevention.dart
+ 44.    362 行 - lib\core\controller_management_optimization.dart
+ 45.    359 行 - lib\core\advanced_performance_optimizer.dart
+ 46.    359 行 - lib\core\async_race_condition_prevention.dart
+ 47.    353 行 - lib\services\notification_service.dart
+ 48.    352 行 - lib\core\state_management_optimization.dart
+ 49.    350 行 - lib\core\unified_repository.dart
+ 50.    346 行 - lib\widgets\optimized_scroll_widgets.dart
+ 51.    345 行 - lib\screens\home\initialization\home_page_initializer.dart
+ 52.    343 行 - lib\screens\mixins\home_page_alarm_mixin.dart
+ 53.    342 行 - lib\screens\mixins\home_page_ui_builders_mixin.dart
+ 54.    338 行 - lib\widgets\tutorial_widgets.dart
+ 55.    337 行 - lib\core\data_encryption.dart
+ 56.    335 行 - lib\core\performance_optimizer.dart
+ 57.    332 行 - lib\alarm\alarm_logic_manager.dart
+ 58.    327 行 - lib\core\performance_improvements_integration.dart
+ 59.    327 行 - lib\core\performance_measurement.dart
+ 60.    326 行 - lib\models\type_safe_models.dart
+ 61.    319 行 - lib\core\advanced_lazy_loading.dart
+ 62.    319 行 - lib\core\unified_data_manager.dart
+ 63.    315 行 - lib\screens\home\persistence\data_sync_manager.dart
+ 64.    312 行 - lib\core\image_optimization.dart
+ 65.    312 行 - lib\core\isolate_processing.dart
+ 66.    305 行 - lib\screens\home\handlers\backup_handler.dart
+ 67.    295 行 - lib\widgets\add_alarm_dialog.dart
+ 68.    291 行 - lib\pages\calendar\calendar_page.dart
+ 69.    290 行 - lib\screens\home\home_screen.dart
+ 70.    286 行 - lib\alarm\alarm_data_manager.dart
+ 71.    279 行 - lib\screens\home\widgets\expanded_medication_memo_checkbox.dart
+ 72.    277 行 - lib\core\memory_leak_prevention.dart
+ 73.    276 行 - lib\services\secure_trial_service.dart
+ 74.    275 行 - lib\screens\helpers\medication_operations.dart
+ 75.    266 行 - lib\screens\helpers\home_page_data_helper.dart
+ 76.    264 行 - lib\services\data_save_manager.dart
+ 77.    261 行 - lib\utils\memory_optimizer.dart
+ 78.    259 行 - lib\screens\home\persistence\medication_data_persistence.dart
+ 79.    254 行 - lib\screens\trial\trial_screen.dart
+ 80.    252 行 - lib\utils\responsive_utils.dart
+ 81.    249 行 - lib\services\state_management_service.dart
+ 82.    248 行 - lib\services\error_handling_service.dart
+ 83.    245 行 - lib\widgets\common\common_widgets.dart
+ 84.    239 行 - lib\widgets\common\medication_widgets.dart
+ 85.    236 行 - lib\screens\tutorial\tutorial_screen.dart
+ 86.    236 行 - lib\services\performance_optimization_service.dart
+ 87.    230 行 - lib\services\data_optimization_service.dart
+ 88.    228 行 - lib\screens\helpers\home_page_backup_helper.dart
+ 89.    227 行 - lib\screens\helpers\home_page_stats_helper.dart
+ 90.    227 行 - lib\screens\mixins\backup_history_mixin.dart
+ 91.    225 行 - lib\screens\home\widgets\day_medication_records_widget.dart
+ 92.    224 行 - lib\screens\mixins\backup_restore_mixin.dart
+ 93.    223 行 - lib\utils\performance_monitor.dart
+ 94.    220 行 - lib\alarm\alarm_notification_manager.dart
+ 95.    217 行 - lib\services\memory_optimization_service.dart
+ 96.    216 行 - lib\services\storage_service.dart
+ 97.    215 行 - lib\screens\medication_home\controllers\medication_memo_controller.dart
+ 98.    213 行 - lib\screens\mixins\home_page_medication_mixin.dart
+ 99.    210 行 - lib\screens\mixins\backup_dialog_mixin.dart
+100.    205 行 - lib\screens\home\helpers\data_persistence_helper.dart
+101.    204 行 - lib\screens\medication_home\medication_home_page.dart
+102.    204 行 - lib\screens\medication_home\controllers\medication_home_controller.dart
+103.    203 行 - lib\services\alarm_service.dart
+104.    202 行 - lib\parts\main_widgets.dart
+105.    201 行 - lib\screens\home\handlers\memo_event_handler.dart
+106.    201 行 - lib\screens\medication_home\controllers\backup_controller.dart
+107.    201 行 - lib\widgets\trial_widgets.dart
+108.    195 行 - lib\main.dart
+109.    195 行 - lib\screens\helpers\calendar_operations.dart
+110.    192 行 - lib\screens\calendar_tab.dart
+111.    192 行 - lib\screens\home\widgets\dialogs\backup_history_dialog.dart
+112.    190 行 - lib\screens\home\widgets\medication_record_list.dart
+113.    190 行 - lib\screens\views\stats_view.dart
+114.    189 行 - lib\screens\helpers\ui_helpers.dart
+115.    181 行 - lib\services\in_app_purchase_service.dart
+116.    180 行 - lib\repositories\backup_repository.dart
+117.    179 行 - lib\core\alarm_optimization.dart
+118.    179 行 - lib\parts\main_models.dart
+119.    177 行 - lib\core\unified_data_repository.dart
+120.    176 行 - lib\parts\main_utils.dart
+121.    175 行 - lib\screens\home\controllers\medication_controller.dart
+122.    175 行 - lib\screens\home\widgets\day_memo_field_widget.dart
+123.    173 行 - lib\providers\medication_state.dart
+124.    172 行 - lib\screens\medication_home\repositories\preference_repository.dart
+125.    172 行 - lib\widgets\notification_settings_dialog.dart
+126.    167 行 - lib\services\medication_service.dart
+127.    166 行 - lib\models\alarm_model.dart
+128.    162 行 - lib\screens\medication_home\repositories\backup_repository.dart
+129.    161 行 - lib\screens\home\widgets\day_color_picker_dialog.dart
+130.    161 行 - lib\screens\medication_home\controllers\stats_controller.dart
+131.    160 行 - lib\utils\performance_utils.dart
+132.    159 行 - lib\utils\error_handler.dart
+133.    156 行 - lib\services\trial_service.dart
+134.    154 行 - lib\screens\helpers\ui_builders\medication_ui_builder.dart
+135.    151 行 - lib\screens\home\widgets\medication_stats_card.dart
+136.    149 行 - lib\utils\date_utils.dart
+137.    149 行 - lib\widgets\stats\adherence_chart_card.dart
+138.    148 行 - lib\core\data_persistence_mixin.dart
+139.    147 行 - lib\widgets\common_widgets.dart
+140.    146 行 - lib\features\calendar\widgets\calendar_widget.dart
+141.    146 行 - lib\utils\calendar_utils.dart
+142.    144 行 - lib\pages\alarm\alarm_page.dart
+143.    142 行 - lib\screens\helpers\ui_builders\calendar_ui_builder.dart
+144.    141 行 - lib\screens\home\controllers\alarm_controller.dart
+145.    139 行 - lib\alarm\alarm_ui_builder.dart
+146.    139 行 - lib\screens\home\widgets\dialogs\custom_adherence_dialog.dart
+147.    134 行 - lib\providers\calendar_state.dart
+148.    132 行 - lib\screens\home\persistence\snapshot_persistence.dart
+149.    132 行 - lib\services\data_manager.dart
+150.    131 行 - lib\pages\medicine\medicine_page.dart
+151.    131 行 - lib\widgets\alarm_list_item.dart
+152.    130 行 - lib\screens\medication_home\repositories\medication_repository.dart
+153.    129 行 - lib\core\lazy_data_loader.dart
+154.    128 行 - lib\utils\alarm_helpers.dart
+155.    127 行 - lib\providers\alarm_state.dart
+156.    125 行 - lib\screens\helpers\calculations\adherence_calculator.dart
+157.    124 行 - lib\screens\home\widgets\dialogs\backup_dialog.dart
+158.    123 行 - lib\alarm\alarm_settings_manager.dart
+159.    122 行 - lib\screens\medication_home\widgets\tabs\stats_tab_widget.dart
+160.    121 行 - lib\core\null_safety_helpers.dart
+161.    120 行 - lib\repositories\calendar_repository.dart
+162.    119 行 - lib\alarm\alarm_ui_helpers.dart
+163.    118 行 - lib\features\calendar\screens\calendar_screen.dart
+164.    116 行 - lib\screens\medication_home\controllers\calendar_controller.dart
+165.    114 行 - lib\features\calendar\controllers\calendar_controller.dart
+166.    112 行 - lib\utils\constants.dart
+167.    109 行 - lib\use_cases\backup\restore_backup_use_case.dart
+168.    109 行 - lib\widgets\trial_limit_dialog.dart
+169.    107 行 - lib\widgets\current_time_card.dart
+170.    106 行 - lib\screens\home\business\medication_calculator.dart
+171.    106 行 - lib\screens\home\widgets\memo_field.dart
+172.    105 行 - lib\services\purchase_service.dart
+173.    105 行 - lib\widgets\medication\medication_memo_checkbox.dart
+174.    103 行 - lib\screens\home\business\calendar_marker_manager.dart
+175.    103 行 - lib\screens\home\persistence\alarm_data_persistence.dart
+176.    103 行 - lib\screens\home\state\home_page_state.dart
+177.    102 行 - lib\screens\home\widgets\home_tab_bar_view.dart
+178.    101 行 - lib\screens\home\initialization\home_page_dependencies.dart
+179.    100 行 - lib\screens\helpers\calculations\medication_stats_calculator.dart
+180.    100 行 - lib\services\auto_backup_service.dart
+181.     96 行 - lib\services\audio_service.dart
+182.     96 行 - lib\utils\locale_helper.dart
+183.     93 行 - lib\utils\app_logger.dart
+184.     91 行 - lib\core\repository_initializer.dart
+185.     91 行 - lib\screens\medication_home\widgets\tabs\medicine_tab_widget.dart
+186.     91 行 - lib\widgets\medication_card.dart
+187.     91 行 - lib\widgets\common\medication_card.dart
+188.     89 行 - lib\screens\home\widgets\calendar_view.dart
+189.     88 行 - lib\screens\home\widgets\dialogs\warning_dialog.dart
+190.     88 行 - lib\screens\medication_home\repositories\calendar_repository.dart
+191.     87 行 - lib\repositories\alarm_repository.dart
+192.     87 行 - lib\screens\home\handlers\medication_event_handler.dart
+193.     86 行 - lib\utils\app_dimensions.dart
+194.     85 行 - lib\screens\home\widgets\dialogs\backup_preview_dialog.dart
+195.     85 行 - lib\screens\mixins\home_page_backup_mixin.dart
+196.     85 行 - lib\utils\app_utils.dart
+197.     83 行 - lib\screens\home\business\pagination_manager.dart
+198.     83 行 - lib\screens\medication_home\widgets\tabs\calendar_tab_widget.dart
+199.     82 行 - lib\pages\integrated_home_page.dart
+200.     79 行 - lib\screens\home\controllers\calendar_controller.dart
+201.     78 行 - lib\screens\medication_home\repositories\alarm_repository.dart
+202.     78 行 - lib\screens\tabs\alarm_tab.dart
+203.     77 行 - lib\services\data_repository.dart
+204.     76 行 - lib\providers\trial_provider.dart
+205.     73 行 - lib\screens\medication_alarm_app.dart
+206.     73 行 - lib\screens\medication_home\widgets\tabs\alarm_tab_widget.dart
+207.     71 行 - lib\models\medication_memo.g.dart
+208.     71 行 - lib\screens\home\widgets\home_app_bar_menu.dart
+209.     71 行 - lib\screens\medication_home\use_cases\backup\create_backup_use_case.dart
+210.     70 行 - lib\constants\app_dimensions.dart
+211.     70 行 - lib\services\app_preferences.dart
+212.     69 行 - lib\app\medication_alarm_app.dart
+213.     69 行 - lib\services\backup_utils.dart
+214.     69 行 - lib\use_cases\stats\calculate_adherence_use_case.dart
+215.     69 行 - lib\widgets\calendar\calendar_day_cell.dart
+216.     68 行 - lib\services\backup_history_service.dart
+217.     67 行 - lib\screens\helpers\home_page_alarm_helper.dart
+218.     67 行 - lib\screens\home\controllers\backup_controller.dart
+219.     67 行 - lib\screens\medication_home\use_cases\medication\add_medication_memo_use_case.dart
+220.     65 行 - lib\screens\home\handlers\calendar_event_handler.dart
+221.     65 行 - lib\screens\home\handlers\home_page_event_handler.dart
+222.     63 行 - lib\widgets\common\error_boundary.dart
+223.     62 行 - lib\firebase_options.dart
+224.     62 行 - lib\widgets\medication\medication_record_card.dart
+225.     61 行 - lib\screens\views\alarm_view.dart
+226.     61 行 - lib\widgets\alarm_stop_dialog.dart
+227.     61 行 - lib\widgets\weekday_selector.dart
+228.     61 行 - lib\widgets\common\weekday_selector.dart
+229.     60 行 - lib\widgets\common\error_dialog.dart
+230.     59 行 - lib\screens\medication_home\use_cases\medication\edit_medication_memo_use_case.dart
+231.     56 行 - lib\models\medication_memo.dart
+232.     55 行 - lib\main_new.dart
+233.     55 行 - lib\providers\medication_memo_provider.dart
+234.     55 行 - lib\use_cases\backup\create_backup_use_case.dart
+235.     53 行 - lib\screens\medication_home\use_cases\medication\mark_as_taken_use_case.dart
+236.     52 行 - lib\app\bootstrap.dart
+237.     51 行 - lib\core\result.dart
+238.     51 行 - lib\models\medication_state.dart
+239.     49 行 - lib\widgets\common\loading_overlay.dart
+240.     47 行 - lib\models\medicine_data.dart
+241.     47 行 - lib\screens\medication_home\use_cases\backup\restore_backup_use_case.dart
+242.     43 行 - lib\models\adapters\medication_memo_adapter.dart
+243.     43 行 - lib\screens\home\state\home_page_state_notifiers.dart
+244.     42 行 - lib\screens\medication_home\use_cases\stats\calculate_custom_adherence_use_case.dart
+245.     41 行 - lib\models\medication_memo_adapter.dart
+246.     39 行 - lib\config\storage_keys.dart
+247.     38 行 - lib\screens\medication_home\use_cases\stats\calculate_adherence_use_case.dart
+248.     38 行 - lib\use_cases\medication\add_medication_use_case.dart
+249.     38 行 - lib\use_cases\medication\edit_medication_use_case.dart
+250.     36 行 - lib\config\app_constants.dart
+251.     36 行 - lib\models\adapters\medicine_data_adapter.dart
+252.     35 行 - lib\utils\logger.dart
+253.     32 行 - lib\models\medication_info.dart
+254.     32 行 - lib\models\medicine_data_adapter.dart
+255.     32 行 - lib\screens\medication_home\use_cases\medication\delete_medication_memo_use_case.dart
+256.     30 行 - lib\constants\app_constants.dart
+257.     29 行 - lib\models\adapters\medication_info_adapter.dart
+258.     29 行 - lib\screens\helpers\state_management\home_page_state_manager.dart
+259.     28 行 - lib\models\notification_types.dart
+260.     27 行 - lib\use_cases\medication\delete_medication_use_case.dart
+261.     25 行 - lib\core\snapshot_service.dart
+262.     25 行 - lib\models\medication_info_adapter.dart
+263.     23 行 - lib\parts\main_app.dart
+264.     23 行 - lib\screens\helpers\home_page_utils_helper.dart
+265.     22 行 - lib\simple_alarm_app.dart
+266.     16 行 - lib\models\result.dart

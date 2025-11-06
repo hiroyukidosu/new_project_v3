@@ -267,7 +267,7 @@ class MedicationOperations {
 
   /// メモ追加可能かチェック（ヘルパー）
   bool canAddMemo(HomePageStateManager? stateManager) {
-    const maxMemos = 1000;
+    const maxMemos = 500;
     final memos = stateManager?.medicationMemos ?? [];
     return memos.length < maxMemos;
   }

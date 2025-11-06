@@ -158,7 +158,7 @@ mixin PurchaseMixin<T extends StatefulWidget> on State<T> {
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    // border: Border.all(color: Colors.blue.withOpacity(0.3)), // 線を削除
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,7 +208,7 @@ mixin PurchaseMixin<T extends StatefulWidget> on State<T> {
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  // border: Border.all(color: Colors.orange.withOpacity(0.3)), // 線を削除
                 ),
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +249,7 @@ mixin PurchaseMixin<T extends StatefulWidget> on State<T> {
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  // border: Border.all(color: Colors.green.withOpacity(0.3)), // 線を削除
                 ),
                 child: Column(
                   children: [
@@ -411,7 +411,7 @@ mixin PurchaseMixin<T extends StatefulWidget> on State<T> {
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                      // border: Border.all(color: Colors.green.withOpacity(0.3)), // 線を削除
                     ),
                     child: const Column(
                       children: [

@@ -59,4 +59,13 @@ class DefaultFirebaseOptions {
     projectId: 'hiroponapp',
     storageBucket: 'hiroponapp.firebasestorage.app',
   );
+  
+  // 追加パッケージ名用の設定（com.hirochaso.medicationcalendar）
+  static const FirebaseOptions android2 = FirebaseOptions(
+    apiKey: 'AIzaSyBM6Qt8oKxlaEVx4j6m5yv2t3rbQnnkoqg',
+    appId: '1:1074871455961:android:3ec0f5b69b07c4b8ceeec8',
+    messagingSenderId: '1074871455961',
+    projectId: 'hiroponapp',
+    storageBucket: 'hiroponapp.firebasestorage.app',
+  );
 }

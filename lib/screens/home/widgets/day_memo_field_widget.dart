@@ -42,14 +42,41 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
     _controller = TextEditingController(text: widget.initialMemoText);
     _focusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
+    
+    // memoTextNotifierの変更を監視
+    widget.memoTextNotifier.addListener(_onMemoTextChanged);
+  }
+
+  @override
+  void didUpdateWidget(DayMemoFieldWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 日付が変更された場合、initialMemoTextが更新されるので、コントローラーを更新
+    if (oldWidget.initialMemoText != widget.initialMemoText) {
+      if (_controller.text != widget.initialMemoText) {
+        _controller.text = widget.initialMemoText;
+      }
+    }
+    // memoTextNotifierが変更された場合、リスナーを更新
+    if (oldWidget.memoTextNotifier != widget.memoTextNotifier) {
+      oldWidget.memoTextNotifier.removeListener(_onMemoTextChanged);
+      widget.memoTextNotifier.addListener(_onMemoTextChanged);
+    }
   }
 
   @override
   void dispose() {
     _focusNode.removeListener(_onFocusChange);
+    widget.memoTextNotifier.removeListener(_onMemoTextChanged);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _onMemoTextChanged() {
+    // memoTextNotifierが変更されたとき、コントローラーを更新（外部からの変更を反映）
+    if (_controller.text != widget.memoTextNotifier.value) {
+      _controller.text = widget.memoTextNotifier.value;
+    }
   }
 
   void _onFocusChange() {

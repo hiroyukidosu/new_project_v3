@@ -65,6 +65,7 @@ class _MemoDialogState extends State<MemoDialog> {
   void initState() {
     super.initState();
     if (widget.initialMemo != null) {
+      // 編集時は名前フィールドに値を設定
       _nameController.text = widget.initialMemo!.name;
       _dosageController.text = widget.initialMemo!.dosage;
       _notesController.text = widget.initialMemo!.notes;
@@ -79,6 +80,9 @@ class _MemoDialogState extends State<MemoDialog> {
           _memoFocusNode.requestFocus();
         }
       });
+    } else {
+      // 新規追加時は名前フィールドは空のまま（非表示）
+      // 保存時に自動的に「メモ１」「メモ２」と付けられる
     }
   }
   
@@ -178,7 +182,8 @@ class _MemoDialogState extends State<MemoDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 名前（一番上に配置、常に表示） - コンパクト化
+                    // 名前（編集時のみ表示、新規追加時は非表示） - コンパクト化
+                    if (widget.initialMemo != null) ...[
                       TextField(
                         controller: _nameController,
                         decoration: const InputDecoration(
@@ -187,24 +192,26 @@ class _MemoDialogState extends State<MemoDialog> {
                           prefixIcon: Icon(Icons.label, size: 20), // アイコンサイズを削減
                           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // パディングを削減
                         ),
-                      onTap: () {
-                        setState(() {
-                          _isNameFocused = true;
-                          _isDosageFocused = false;
-                          _isNotesFocused = false;
-                        });
-                      },
-                      onChanged: (value) {
+                        onTap: () {
                           setState(() {
-                          _isNameFocused = value.isNotEmpty;
+                            _isNameFocused = true;
+                            _isDosageFocused = false;
+                            _isNotesFocused = false;
                           });
-                      },
-                      onSubmitted: (value) {
-                        setState(() {
-                          _isNameFocused = false;
-                        });
-                      },
-                    ),
+                        },
+                        onChanged: (value) {
+                          setState(() {
+                            _isNameFocused = value.isNotEmpty;
+                          });
+                        },
+                        onSubmitted: (value) {
+                          setState(() {
+                            _isNameFocused = false;
+                          });
+                        },
+                      ),
+                      SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を大幅削減
+                    ],
                     // 曜日選択を常に表示 - 間隔を削減
                     SizedBox(height: MediaQuery.of(context).size.height < 600 ? 4 : 6), // 間隔を大幅削減
                     // 服用スケジュール（曜日選択） - コンパクト化
