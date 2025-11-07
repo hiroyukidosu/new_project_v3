@@ -44,7 +44,7 @@ class HomePageInitializer {
     Function(String) onShowSnackBar,
     Future<void> Function() onSaveAllData,
     DateTime? lastOperationTime,
-    dynamic purchaseMixin, // PurchaseMixinを実装しているStateインスタンス
+    dynamic purchaseMixin, // PurchaseMixinを追加
   ) async {
     // 1. StateManagerの初期化
     final stateManager = HomePageStateManager(context);
@@ -86,15 +86,8 @@ class HomePageInitializer {
       },
     );
     
-    // 4. StateManagerの最小限の初期化（同期的に実行）
-    // 注意: データ読み込みは非同期で実行されるため、すぐに_dependenciesを返せる
-    // init()内でisInitialized = trueが設定されるため、同期的に実行する必要がある
-    try {
-      await stateManager.init();
-    } catch (e) {
-      debugPrint('⚠️ StateManager初期化エラー: $e（アプリは継続します）');
-      // エラー時もisInitializedをtrueにする（init()内で設定される）
-    }
+    // 4. StateManagerの非同期初期化
+    await stateManager.init();
     
     // 5. コントローラーの初期化（StateManager依存）
     final controllers = _initializeControllers(
@@ -278,15 +271,14 @@ class HomePageInitializer {
     bool Function() onMountedCheck,
     VoidCallback onStateChanged,
     Function(String) onShowSnackBar,
-    dynamic purchaseMixin, // PurchaseMixinを実装しているStateインスタンス
+    dynamic purchaseMixin, // PurchaseMixinを追加
   ) {
-    // PurchaseMixinをHomePageEventHandlerに設定
     return HomePageHandlers(
       main: HomePageEventHandler(
         context: context,
         uiHelpers: operations.ui,
         backupOperations: operations.backup,
-        purchaseMixin: purchaseMixin, // PurchaseMixinを実装しているStateインスタンス
+        purchaseMixin: purchaseMixin, // PurchaseMixinを設定
       ),
       calendar: CalendarEventHandler(
         persistence: medicationDataPersistence,

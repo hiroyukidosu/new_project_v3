@@ -13,7 +13,7 @@ class HomePageEventHandler {
   final BuildContext context;
   final UIHelpers? uiHelpers;
   final BackupOperations? backupOperations;
-  final PurchaseMixin? purchaseMixin;
+  PurchaseMixin? purchaseMixin;
 
   HomePageEventHandler({
     required this.context,
@@ -21,6 +21,11 @@ class HomePageEventHandler {
     this.backupOperations,
     this.purchaseMixin,
   });
+  
+  /// PurchaseMixinを設定（初期化後に呼び出し）
+  void setPurchaseMixin(PurchaseMixin mixin) {
+    purchaseMixin = mixin;
+  }
 
   /// トライアル状態表示
   Future<void> showTrialStatus() async {

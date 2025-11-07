@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import '../../models/medication_memo.dart';
 import '../../models/medication_info.dart';
 import '../../models/medicine_data.dart';
-import '../../../repositories/repository_manager.dart';
-import '../repositories/preference_repository.dart'; // PreferenceRepositoryは別途管理
+import '../repositories/medication_repository.dart';
+import '../repositories/alarm_repository.dart';
+import '../repositories/calendar_repository.dart';
+import '../repositories/preference_repository.dart';
+import '../repositories/backup_repository.dart';
 import '../controllers/medication_home_controller.dart';
 import '../controllers/calendar_controller.dart';
 import '../controllers/medication_memo_controller.dart';
@@ -40,20 +43,12 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   void initState() {
     super.initState();
 
-    // Repositories初期化（RepositoryManager経由でシングルトン取得）
-    final medicationRepo = RepositoryManager.medicationRepository;
-    final alarmRepo = RepositoryManager.alarmRepository;
-    final calendarRepo = RepositoryManager.calendarRepository;
-    final backupRepo = RepositoryManager.backupRepository;
-    
-    // PreferenceRepositoryは別途管理（既存のコードを維持）
+    // Repositories初期化
+    final medicationRepo = MedicationRepository();
+    final alarmRepo = AlarmRepository();
+    final calendarRepo = CalendarRepository();
     final preferenceRepo = PreferenceRepository();
-    
-    // リポジトリがnullの場合のエラーハンドリング
-    if (medicationRepo == null || alarmRepo == null || 
-        calendarRepo == null || backupRepo == null) {
-      throw Exception('リポジトリが初期化されていません。アプリを再起動してください。');
-    }
+    final backupRepo = BackupRepository();
 
     // Controllers初期化
     _mainController = MedicationHomeController(

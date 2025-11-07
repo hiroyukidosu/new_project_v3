@@ -18,6 +18,7 @@ class HomeTabBarView extends StatelessWidget {
   final void Function(MedicationMemo) onMarkAsTaken;
   final void Function(BuildContext, String, String) onShowMemoDetailDialog;
   final VoidCallback onShowWarningDialog;
+  final Future<void> Function()? onCalculateAdherenceStats;
 
   const HomeTabBarView({
     super.key,
@@ -28,6 +29,7 @@ class HomeTabBarView extends StatelessWidget {
     required this.onMarkAsTaken,
     required this.onShowMemoDetailDialog,
     required this.onShowWarningDialog,
+    this.onCalculateAdherenceStats,
   });
 
   @override
@@ -68,6 +70,7 @@ class HomeTabBarView extends StatelessWidget {
         onDeleteMemo: onDeleteMemo,
         onShowMemoDetailDialog: (name, notes) => onShowMemoDetailDialog(context, name, notes),
         onShowWarningDialog: onShowWarningDialog,
+        onCalculateAdherenceStats: onCalculateAdherenceStats,
       );
     }
     return const Center(child: CircularProgressIndicator());

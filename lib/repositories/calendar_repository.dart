@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../config/storage_keys.dart';
-import '../services/hive_lifecycle_service.dart';
 import '../utils/logger.dart';
 
 /// カレンダー関連データのリポジトリ（Hive完全移行版）
@@ -12,10 +11,13 @@ class CalendarRepository {
   /// リポジトリの初期化
   Future<void> initialize() async {
     try {
-      _dataBox = HiveLifecycleService.getBox<String>('calendar_data');
-      if (_dataBox == null) {
-        throw Exception('Hiveボックスが初期化されていません');
+      // Hiveボックスを直接開く
+      if (!Hive.isBoxOpen('calendar_data')) {
+        _dataBox = await Hive.openBox<String>('calendar_data');
+      } else {
+        _dataBox = Hive.box<String>('calendar_data');
       }
+      
       Logger.info('CalendarRepository初期化完了');
     } catch (e) {
       Logger.error('CalendarRepository初期化エラー', e);

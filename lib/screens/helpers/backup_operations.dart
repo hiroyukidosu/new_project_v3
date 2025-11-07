@@ -50,10 +50,10 @@ class BackupOperations {
     final result = await showDialog<String>(
       context: context,
       builder: (context) => BackupDialog(
-        hasUndoAvailable: () async => false, // 1つ前の状態に復元機能を削除
+        hasUndoAvailable: hasUndoAvailable,
         onCreate: () async => await createManualBackup(),
         onShowHistory: () async => await showBackupHistory(),
-        onUndo: () async {}, // 1つ前の状態に復元機能を削除（空実装）
+        onUndo: () async => await undoLastChange(),
         onRestoreLatest: () async {
           final prefs = await SharedPreferences.getInstance();
           final key = prefs.getString('last_full_backup_key');
@@ -117,18 +117,115 @@ class BackupOperations {
     }
   }
 
-  /// 1つ前の状態に復元（削除済み - 機能を削除）
-  /// この機能は削除されました
-  @Deprecated('この機能は削除されました')
+  /// 1つ前の状態に復元（最新スナップショットから）
   Future<void> undoLastChange() async {
-    // 機能削除: 1つ前の状態に復元機能は削除されました
-    if (onMountedCheck()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('この機能は削除されました'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+    try {
+      final snapshotData = await snapshotPersistence.restoreLastSnapshot();
+      
+      if (snapshotData == null) {
+        if (onMountedCheck()) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('復元できる履歴がありません'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // スナップショットからの復元
+      final restored = await HomePageBackupHelper.restoreDataAsync(snapshotData);
+      
+      // アラームをSharedPreferencesに保存
+      final prefs = await SharedPreferences.getInstance();
+      final restoredAlarmList = restored['restoredAlarmList'] as List<Map<String, dynamic>>;
+      await prefs.setInt('alarm_count', restoredAlarmList.length);
+      
+      for (int i = 0; i < restoredAlarmList.length; i++) {
+        final alarm = restoredAlarmList[i];
+        await prefs.setString('alarm_${i}_name', alarm['name']?.toString() ?? 'アラーム');
+        await prefs.setString('alarm_${i}_time', alarm['time']?.toString() ?? '00:00');
+        await prefs.setString('alarm_${i}_repeat', alarm['repeat']?.toString() ?? '一度だけ');
+        await prefs.setString('alarm_${i}_alarmType', alarm['alarmType']?.toString() ?? 'sound');
+        await prefs.setBool('alarm_${i}_enabled', alarm['enabled'] as bool? ?? true);
+        await prefs.setBool('alarm_${i}_isRepeatEnabled', alarm['isRepeatEnabled'] as bool? ?? false);
+        await prefs.setInt('alarm_${i}_volume', alarm['volume'] as int? ?? 80);
+        
+        final dynamic selectedDaysRaw = alarm['selectedDays'];
+        final List<bool> selectedDays = selectedDaysRaw is List
+            ? List<bool>.from(selectedDaysRaw.map((e) => e == true))
+            : <bool>[false, false, false, false, false, false, false];
+        for (int j = 0; j < 7; j++) {
+          await prefs.setBool('alarm_${i}_day_$j', j < selectedDays.length ? selectedDays[j] : false);
+        }
+      }
+      
+      // データ復元
+      final restoredMemos = restored['restoredMedicationMemos'] as List<MedicationMemo>? ?? [];
+      final restoredAddedMeds = restored['restoredAddedMedications'] as List<Map<String, dynamic>>? ?? [];
+      final restoredMedicationData = restored['restoredMedicationData'] as Map<String, Map<String, MedicationInfo>>? ?? {};
+      final restoredWeekdayStatus = restored['restoredWeekdayMedicationStatus'] as Map<String, Map<String, bool>>? ?? {};
+      final restoredDoseStatus = restored['restoredWeekdayMedicationDoseStatus'] as Map<String, Map<String, Map<int, bool>>>? ?? {};
+      final restoredMemoStatus = restored['restoredMedicationMemoStatus'] as Map<String, bool>? ?? {};
+      final restoredDayColorsRaw = restored['restoredDayColors'] as Map<String, dynamic>? ?? {};
+      final restoredDayColors = restoredDayColorsRaw.map((key, value) => MapEntry(key, value is Color ? value : Color(value as int)));
+      final restoredAdherenceRates = restored['restoredAdherenceRates'] as Map<String, double>? ?? {};
+      
+      if (onMountedCheck() && stateManager != null) {
+        stateManager!.focusedDay = stateManager!.selectedDay ?? DateTime.now();
+        stateManager!.medicationMemos = restoredMemos;
+        stateManager!.addedMedications = restoredAddedMeds;
+        stateManager!.medicationData = restoredMedicationData;
+        stateManager!.weekdayMedicationStatus = restoredWeekdayStatus;
+        stateManager!.weekdayMedicationDoseStatus = restoredDoseStatus;
+        stateManager!.medicationMemoStatus = restoredMemoStatus;
+        stateManager!.dayColors = restoredDayColors;
+        stateManager!.adherenceRates = restoredAdherenceRates;
+        
+        // メモフィールドを再同期
+        if (stateManager!.selectedDay != null) {
+          final dateStr = DateFormat('yyyy-MM-dd').format(stateManager!.selectedDay!);
+          SharedPreferences.getInstance().then((p) {
+            final memo = p.getString('memo_$dateStr');
+            stateManager!.memoController.text = memo ?? '';
+            stateManager!.notifiers.memoTextNotifier.value = memo ?? '';
+          });
+        }
+        stateManager!.notifiers.dayColorsNotifier.value = Map<String, Color>.from(stateManager!.dayColors);
+        
+        // アラームタブキーを更新
+        onAlarmTabKeyChanged(UniqueKey());
+        
+        // データ復元コールバックを呼び出し
+        backupHandler.onDataRestored(restored);
+        
+        // カレンダーと入力を再評価
+        await onUpdateMedicineInputsForSelectedDate();
+        await onLoadMemoForSelectedDate();
+        // 統計の再計算
+        await onCalculateAdherenceStats();
+        // 服用記録の表示を強制更新
+        onUpdateCalendarMarks();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ 1つ前の状態に復元しました'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ 復元エラー: $e');
+      if (onMountedCheck()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('復元に失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

@@ -99,25 +99,62 @@ mixin BackupCoreMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  // 1つ前の状態に復元（削除済み - 機能を削除）
-  /// この機能は削除されました
-  @Deprecated('この機能は削除されました')
+  // 1つ前の状態に復元（最新スナップショットから）
   Future<void> undoLastChange() async {
-    // 機能削除: 1つ前の状態に復元機能は削除されました
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('この機能は削除されました'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+    if (!mounted) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastKey = prefs.getString('last_snapshot_key');
+      if (lastKey == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('復元可能なスナップショットがありません'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      
+      final encryptedData = prefs.getString(lastKey);
+      if (encryptedData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('スナップショットデータが見つかりません'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      
+      final decryptedData = await decryptDataAsync(encryptedData);
+      final backupData = jsonDecode(decryptedData) as Map<String, dynamic>;
+      
+      await restoreDataAsync(backupData);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('1つ前の状態に復元しました'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('復元エラー: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  // 手動復元を実行（削除済み）
-  @Deprecated('この機能は削除されました')
+  // 手動復元を実行
   Future<void> performManualRestore() async {
-    // 機能削除
+    await undoLastChange();
   }
 
   // 手動バックアップ作成機能

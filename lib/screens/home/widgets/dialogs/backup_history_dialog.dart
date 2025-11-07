@@ -35,7 +35,7 @@ class BackupHistoryDialog extends StatelessWidget {
           return AlertDialog(
             title: const Row(
               children: [
-                Icon(Icons.history, color: Colors.indigo),
+                Icon(Icons.history, color: Colors.blue),
                 SizedBox(width: 8),
                 Text('バックアップ一覧'),
               ],
@@ -116,7 +116,7 @@ class BackupHistoryDialog extends StatelessWidget {
                           value: 'restore',
                           child: Row(
                             children: [
-                              Icon(Icons.restore, color: Colors.teal),
+                              Icon(Icons.restore, color: Colors.blue),
                               SizedBox(width: 8),
                               Text('復元'),
                             ],
@@ -126,7 +126,7 @@ class BackupHistoryDialog extends StatelessWidget {
                           value: 'preview',
                           child: Row(
                             children: [
-                              Icon(Icons.visibility, color: Colors.amber),
+                              Icon(Icons.visibility, color: Colors.green),
                               SizedBox(width: 8),
                               Text('プレビュー'),
                             ],

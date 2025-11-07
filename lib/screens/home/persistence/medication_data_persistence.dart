@@ -1,7 +1,4 @@
 // lib/screens/home/persistence/medication_data_persistence.dart
-// レビュー指摘の修正：データ整合性の改善とトランザクション的保存を追加
-
-import 'medication_dose_record.dart';
 
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -42,42 +39,24 @@ class MedicationDataPersistence {
   }
 
   Future<Box> _openAppDataBox() async {
-    // 既に開かれている場合は既存のBoxを返す
-    if (Hive.isBoxOpen(_appDataBox)) {
+    // medication_dataボックスを型指定なしで開く（Mapやintなど複雑なデータ構造を保存するため）
+    if (!Hive.isBoxOpen(_appDataBox)) {
+      return await Hive.openBox(_appDataBox);
+    } else {
+      // 既に開かれている場合は既存のBoxを返す
       return Hive.box(_appDataBox);
-    }
-    // 型指定なしで開く（既存のデータとの互換性のため）
-    return await Hive.openBox(_appDataBox);
-  }
-  
-  /// トランザクション的な保存（レビュー指摘の修正：データ整合性の改善）
-  Future<void> saveAtomically<T>(
-    String key,
-    T data,
-    Future<void> Function() validator,
-  ) async {
-    final box = await _openAppDataBox();
-    final backup = box.get(key);
-    
-    try {
-      await box.put(key, data);
-      await validator();
-      Logger.debug('✅ アトミック保存成功: $key');
-    } catch (e, stackTrace) {
-      // ロールバック
-      if (backup != null) {
-        await box.put(key, backup);
-        Logger.warning('ロールバック実行: $key');
-      }
-      Logger.error('アトミック保存エラー: $key', e);
-      Logger.error('スタックトレース', stackTrace);
-      rethrow;
     }
   }
 
   Future<void> _ensureMigratedToHiveMonthly() async {
     final box = await _openAppDataBox();
-    final version = box.get(_dataVersionKey, defaultValue: 1) as int;
+    // 型指定なしのBoxなので、intとして取得可能（型チェック付き）
+    final versionValue = box.get(_dataVersionKey);
+    final version = versionValue is int 
+        ? versionValue 
+        : (versionValue is String 
+            ? int.tryParse(versionValue) ?? 1 
+            : 1);
     if (version >= _currentVersion) return;
 
     try {
@@ -106,15 +85,9 @@ class MedicationDataPersistence {
             'updated_at': DateTime.now().toIso8601String(),
           });
           // store original per-date memo/dose map to keep fidelity
-          final monthData = monthly[monthKey];
-          if (monthData != null) {
-            final records = monthData['records'] as Map<String, dynamic>?;
-            if (records != null) {
-              records[dateStr] = memoMap.map((memoId, doseMap) =>
-                MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
-              );
-            }
-          }
+          (monthly[monthKey]!['records'] as Map<String, dynamic>)[dateStr] = memoMap.map((memoId, doseMap) =>
+            MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
+          );
         });
 
         for (final entry in monthly.entries) {
@@ -169,6 +142,7 @@ class MedicationDataPersistence {
         await prefs.remove('medication_memo_status_backup');
       }
 
+      // 型指定なしのBoxなので、intを直接保存可能
       await box.put(_dataVersionKey, _currentVersion);
       Logger.info('Hive monthly migration completed');
     } catch (e) {
@@ -177,42 +151,20 @@ class MedicationDataPersistence {
   }
 
   /// Hiveボックスからメモを読み込み
-  /// 優先順位: Hive → SharedPreferences（フォールバック）
   Future<List<MedicationMemo>> loadMedicationMemos() async {
     try {
-      // 1. Hiveから読み込み（優先）
+      // 1. Hiveから読み込み
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         final memos = box.values.toList();
         if (memos.isNotEmpty) {
-          Logger.info('✅ Hiveから読み込み成功: ${memos.length}件');
-          // Hiveにデータがある場合は、SharedPreferencesから復元しない
+          Logger.info('Hiveから読み込み成功: ${memos.length}件');
           return memos;
-        } else {
-          Logger.debug('⚠️ Hiveボックスが空です。SharedPreferencesから復元を試みます。');
         }
-      } else {
-        Logger.warning('⚠️ Hiveボックスが開いていません。SharedPreferencesから復元を試みます。');
       }
 
-      // 2. SharedPreferencesからバックアップ復元（フォールバック）
-      final memos = await _loadFromSharedPreferences();
-      if (memos.isNotEmpty) {
-        // SharedPreferencesから復元したデータをHiveに保存
-        try {
-          if (Hive.isBoxOpen('medication_memos')) {
-            final box = Hive.box<MedicationMemo>('medication_memos');
-            await box.clear();
-            for (final memo in memos) {
-              await box.put(memo.id, memo);
-            }
-            Logger.info('✅ SharedPreferencesから復元したデータをHiveに保存: ${memos.length}件');
-          }
-        } catch (e) {
-          Logger.warning('⚠️ Hiveへの復元データ保存に失敗: $e');
-        }
-      }
-      return memos;
+      // 2. SharedPreferencesからバックアップ復元
+      return await _loadFromSharedPreferences();
     } catch (e) {
       Logger.error('メモ読み込みエラー', e);
       return [];
@@ -417,41 +369,24 @@ class MedicationDataPersistence {
     try {
       await _ensureMigratedToHiveMonthly();
       final box = await _openAppDataBox();
-      
-      // 空の場合は何もしない
-      if (doseStatus.isEmpty) {
-        Logger.debug('服用回数別ステータスが空のため、保存をスキップします');
-        return;
-      }
-      
       // Group by month (YYYY-MM)
       final Map<String, Map<String, dynamic>> monthly = {};
       doseStatus.forEach((dateStr, memoMap) {
         // dateStr expected yyyy-MM-dd
         final parts = dateStr.split('-');
-        if (parts.length < 2) {
-          Logger.warning('不正な日付形式: $dateStr');
-          return;
-        }
+        if (parts.length < 2) return;
         final monthKey = '${_dosePrefix}_${parts[0]}-${parts[1]}';
         monthly.putIfAbsent(monthKey, () => {
           'month': '${parts[0]}-${parts[1]}',
           'records': <String, dynamic>{},
           'updated_at': DateTime.now().toIso8601String(),
         });
-        final monthData = monthly[monthKey];
-        if (monthData != null) {
-          final records = monthData['records'] as Map<String, dynamic>?;
-          if (records != null) {
-            records[dateStr] = memoMap.map((memoId, doseMap) =>
-              MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
-            );
-          }
-          monthData['updated_at'] = DateTime.now().toIso8601String();
-        }
+        (monthly[monthKey]!['records'] as Map<String, dynamic>)[dateStr] = memoMap.map((memoId, doseMap) =>
+          MapEntry(memoId, doseMap.map((k, v) => MapEntry(k.toString(), v)))
+        );
+        monthly[monthKey]!['updated_at'] = DateTime.now().toIso8601String();
       });
 
-      int savedCount = 0;
       for (final entry in monthly.entries) {
         // Merge with existing month to avoid overwriting other dates
         final existing = (box.get(entry.key) as Map?) ?? {
@@ -464,13 +399,11 @@ class MedicationDataPersistence {
         existing['records'] = existingRecords;
         existing['updated_at'] = DateTime.now().toIso8601String();
         await box.put(entry.key, existing);
-        savedCount += (entry.value['records'] as Map).length;
       }
 
-      Logger.info('服用回数別ステータス保存完了(Hive): ${doseStatus.length}日分、${savedCount}件のレコード');
-    } catch (e, stackTrace) {
+      Logger.debug('服用回数別ステータス保存完了(Hive)');
+    } catch (e) {
       Logger.error('服用回数別ステータス保存エラー', e);
-      Logger.error('服用回数別ステータス保存スタックトレース', stackTrace);
     }
   }
 
@@ -480,9 +413,6 @@ class MedicationDataPersistence {
       await _ensureMigratedToHiveMonthly();
       final box = await _openAppDataBox();
       final Map<String, Map<String, Map<int, bool>>> result = {};
-      int loadedDates = 0;
-      int loadedRecords = 0;
-      
       for (final key in box.keys) {
         if (key is String && _isMonthlyKey(key, _dosePrefix)) {
           final data = box.get(key);
@@ -494,18 +424,13 @@ class MedicationDataPersistence {
               result[dateStr] = memoMap.map((memoId, doseMap) =>
                 MapEntry(memoId.toString(), (doseMap as Map).map((k, v) => MapEntry(int.parse(k.toString()), v == true)))
               );
-              loadedDates++;
-              loadedRecords += memoMap.length;
             }
           }
         }
       }
-      
-      Logger.info('服用回数別ステータス読み込み完了: ${loadedDates}日分、${loadedRecords}件のレコード');
       return result;
-    } catch (e, stackTrace) {
+    } catch (e) {
       Logger.error('服用回数別ステータス読み込みエラー', e);
-      Logger.error('服用回数別ステータス読み込みスタックトレース', stackTrace);
       return {};
     }
   }

@@ -41,17 +41,6 @@ class DataSyncManager {
       // メモステータスを保存
       await _medicationPersistence.saveMedicationMemoStatus(medicationMemoStatus);
       
-      // 曜日別ステータスを保存
-      await _medicationPersistence.saveWeekdayMedicationStatus(weekdayMedicationStatus);
-      
-      // 服用回数別ステータスを保存（重要：チェック状態を保存）
-      if (weekdayMedicationDoseStatus.isNotEmpty) {
-        Logger.debug('服用回数別ステータス保存開始: ${weekdayMedicationDoseStatus.length}日分');
-        await _medicationPersistence.saveMedicationDoseStatus(weekdayMedicationDoseStatus);
-      } else {
-        Logger.debug('服用回数別ステータスが空のため、保存をスキップします');
-      }
-      
       // 追加薬品リストを保存
       await _saveMedicationList(addedMedications);
       
@@ -67,11 +56,9 @@ class DataSyncManager {
       // 選択日の服用データを保存
       if (selectedDay != null) {
         await _saveMedicationDataForDay(selectedDay, addedMedications);
-        // メモテキストを保存
-        await _saveMemoForDay(selectedDay, memoText);
       }
       
-      Logger.info('全データ保存完了（服用回数ステータス含む）');
+      Logger.info('全データ保存完了');
     } catch (e) {
       Logger.error('全データ保存エラー', e);
       rethrow;
@@ -323,36 +310,6 @@ class DataSyncManager {
     } catch (e) {
       Logger.error('統計読み込みエラー', e);
       return {};
-    }
-  }
-
-  /// 選択日のメモを保存
-  Future<void> _saveMemoForDay(DateTime day, String memoText) async {
-    try {
-      final dateStr = DateFormat('yyyy-MM-dd').format(day);
-      final prefs = await SharedPreferences.getInstance();
-      
-      // メモテキストをトリムして保存
-      final trimmedMemoText = memoText.trim();
-      
-      if (trimmedMemoText.isNotEmpty) {
-        await prefs.setString('memo_$dateStr', trimmedMemoText);
-        Logger.info('メモ保存完了: $dateStr, 長さ=${trimmedMemoText.length}文字');
-      } else {
-        // 空の場合は削除
-        await prefs.remove('memo_$dateStr');
-        Logger.debug('メモ削除完了: $dateStr');
-      }
-      
-      // 保存確認
-      final savedMemo = prefs.getString('memo_$dateStr');
-      if (trimmedMemoText.isNotEmpty && savedMemo != trimmedMemoText) {
-        Logger.warning('メモ保存の確認に失敗: 期待値=$trimmedMemoText, 実際の値=$savedMemo');
-      }
-    } catch (e, stackTrace) {
-      Logger.error('メモ保存エラー', e);
-      Logger.error('メモ保存スタックトレース', stackTrace);
-      rethrow;
     }
   }
 }

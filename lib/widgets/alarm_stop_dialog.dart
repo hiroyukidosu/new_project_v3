@@ -47,7 +47,25 @@ class _AlarmStopDialogState extends State<AlarmStopDialog> {
             style: TextStyle(fontSize: 16),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              widget.onStop();
+              if (mounted && Navigator.canPop(context)) {
+                Navigator.of(context).pop();
+              }
+            },
+            icon: const Icon(Icons.stop, color: Colors.white),
+            label: const Text(
+              'アラーム停止',
+              style: TextStyle(color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 12),
           const Text(
             'この通知は5秒後に自動的に消えます',
             style: TextStyle(fontSize: 12, color: Colors.grey),

@@ -2,7 +2,6 @@
 // アラーム管理のコアロジック
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/alarm_model.dart';
 import '../utils/alarm_helpers.dart';
@@ -48,15 +47,9 @@ class AlarmService {
       }
       
       try {
-        // 注意: alarmsは呼び出し元から渡される必要がある（startAlarmCheck()では空配列）
-        // 実際のアラームチェックはalarm_home_screen.dartのbuild()メソッドで実行される
-        // このタイマーは主にライフサイクル管理用
         await checkAlarms(isAlarmEnabled: true, alarms: []);
       } catch (e) {
-        // エラーログを記録（デバッグ用）
-        if (kDebugMode) {
-          debugPrint('アラームチェックエラー: $e');
-        }
+        // エラーログは不要
       }
     });
   }
@@ -182,36 +175,31 @@ class AlarmService {
   /// アラームを停止
   Future<void> stopAlarm(List<Alarm> alarms) async {
     try {
-      // 1. 音声とバイブレーションを即座に停止
       await AudioService.stopAlarm();
       
-      // 2. 通知自動キャンセルタイマーをキャンセル
+      // 通知自動キャンセルタイマーをキャンセル
       _notificationAutoCancelTimer?.cancel();
       _notificationAutoCancelTimer = null;
       
-      // 3. 特定の通知IDをキャンセル（現在表示中の通知）
+      // 現在の通知IDを明示的にキャンセル
       if (_currentNotificationId != null) {
         try {
           await NotificationService.cancelNotification(_currentNotificationId!);
         } catch (e) {
-          // 個別キャンセル失敗時は全キャンセルを試行
-          try {
-            await NotificationService.cancelAllNotifications();
-          } catch (e2) {
-            // エラーは無視
-          }
-        }
-        _currentNotificationId = null;
-      } else {
-        // 通知IDが不明な場合は全通知をキャンセル
-        try {
-          await NotificationService.cancelAllNotifications();
-        } catch (e) {
-          // エラーは無視
+          // 個別キャンセル失敗時は無視
         }
       }
       
-      // 4. 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
+      // すべての通知をキャンセル（念のため）
+      try {
+        await NotificationService.cancelAllNotifications();
+      } catch (e) {
+        // 全キャンセル失敗時は無視
+      }
+      
+      _currentNotificationId = null;
+      
+      // 現在鳴っているアラームのlastTriggeredを更新して重複実行を防ぐ
       final now = DateTime.now();
       final currentTime = AlarmHelpers.getCurrentTimeString();
       
@@ -225,19 +213,10 @@ class AlarmService {
         }
       }
       
-      // 5. 状態を更新
       if (isMounted()) {
         triggerStateUpdate();
       }
     } catch (e) {
-      // エラー時も可能な限り停止処理を試行
-      try {
-        await AudioService.stopAlarm();
-        await NotificationService.cancelAllNotifications();
-      } catch (e2) {
-        // エラーは無視
-      }
-      
       if (isMounted()) {
         triggerStateUpdate();
       }

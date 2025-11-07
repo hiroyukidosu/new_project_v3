@@ -125,46 +125,28 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   
   /// 服用回数のステータスを変更
   void _onDoseStatusChanged(String memoId, int doseIndex, bool isChecked) async {
-    if (_dependencies == null || !mounted) return;
+    if (_dependencies == null) return;
     
     final selectedDay = _dependencies!.stateManager.selectedDay;
     if (selectedDay == null) return;
     
     final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
     
-    try {
-      // 変更前スナップショット
-      await _dependencies!.operations.backup.saveSnapshotBeforeChange('服用回数変更_${memoId}_${doseIndex + 1}回目_$dateStr');
-      
-      if (!mounted) return;
-      setState(() {
-        _dependencies!.stateManager.weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
-        _dependencies!.stateManager.weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
-        _dependencies!.stateManager.weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
-        _dependencies!.stateManager.weekdayMedicationStatusChanged = true;
-      });
-      
-      // 保存処理を実行（明示的に保存）
-      // 重要: saveAllData()内で遵守率統計が再計算されるため、ここでは不要
-      debugPrint('服用回数変更保存開始: $dateStr, memoId: $memoId, doseIndex: $doseIndex, isChecked: $isChecked');
-      await _dependencies!.stateManager.saveAllData();
-      debugPrint('服用回数変更保存完了: $dateStr（遵守率統計はsaveAllData内で再計算済み）');
-      
-      // 保存後の状態を確認
-      final savedStatus = _dependencies!.stateManager.weekdayMedicationDoseStatus[dateStr]?[memoId]?[doseIndex];
-      debugPrint('保存後の状態確認: $dateStr, memoId: $memoId, doseIndex: $doseIndex, savedStatus: $savedStatus');
-    } catch (e, stackTrace) {
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('服用回数の変更に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      debugPrint('服用回数変更エラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
-    }
+    // 変更前スナップショット
+    await _dependencies!.operations.backup.saveSnapshotBeforeChange('服用回数変更_${memoId}_${doseIndex + 1}回目_$dateStr');
+    
+    setState(() {
+      _dependencies!.stateManager.weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
+      _dependencies!.stateManager.weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
+      _dependencies!.stateManager.weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+      _dependencies!.stateManager.weekdayMedicationStatusChanged = true;
+    });
+    
+    // データを保存
+    await _dependencies!.stateManager.saveAllData();
+    
+    // 統計を再計算（チェック状況が反映されるように）
+    await _calculateAdherenceStats();
   }
   
   @override
@@ -239,19 +221,7 @@ class _MedicationHomePageState extends State<MedicationHomePage>
   Future<void> _initializeAsync() async {
     try {
       // 日メモHive初期化＆SPからの一括移行（初回のみ）
-      // タイムアウト付きで実行し、完了しなくてもアプリを起動
-      try {
-        await DailyMemoService.initialize().timeout(
-          const Duration(seconds: 3),
-          onTimeout: () {
-            debugPrint('⚠️ DailyMemoService初期化タイムアウト（3秒）- スキップ');
-          },
-        );
-      } catch (e) {
-        debugPrint('⚠️ DailyMemoService初期化エラー: $e（アプリは継続します）');
-      }
-      
-      // HomePageInitializerの初期化（タイムアウト付き）
+      await DailyMemoService.initialize();
       final dependencies = await HomePageInitializer.initialize(
         context,
         this,
@@ -270,17 +240,8 @@ class _MedicationHomePageState extends State<MedicationHomePage>
         (message) => _showSnackBar(message),
         () async => await _saveAllData(),
         _lastOperationTime,
-        this, // PurchaseMixinを実装しているStateインスタンスを渡す
-      ).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          debugPrint('⚠️ HomePageInitializer初期化タイムアウト（5秒）- 再試行');
-          // タイムアウト時は例外をスローして、エラーハンドリングで処理
-          throw TimeoutException('HomePageInitializer初期化タイムアウト', const Duration(seconds: 5));
-        },
+        this, // PurchaseMixinを渡す（thisはPurchaseMixinを実装している）
       );
-      
-      // PurchaseMixinはHomePageEventHandlerのコンストラクタで設定済み
       
       if (mounted) {
         setState(() => _dependencies = dependencies);
@@ -355,10 +316,6 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     _saveDebounceTimer = null;
     _subscription?.cancel();
     _subscription = null;
-    
-    // スクロールコントローラーのリスナーを削除
-    _memoScrollController.removeListener(_memoScrollListener);
-    _memoScrollController.dispose();
     
     // 動的薬リストのリスナー解放
     final addedMeds = _dependencies?.stateManager.addedMedications ?? [];
@@ -488,28 +445,14 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     // 必要に応じて_dependencies経由でアクセス
   }
   
-  // スクロールリスナー関数（削除用に保存）
-  void _memoScrollListener() {
-    // nullチェックとhasClientsチェックを追加
-    if (!_memoScrollController.hasClients) return;
-    
-    try {
-      // maxScrollExtentが有効な値かチェック（0より大きい場合のみ）
-      final position = _memoScrollController.position;
-      if (position.maxScrollExtent <= 0) return;
-      
-      if (position.pixels >= position.maxScrollExtent * 0.8) {
-        _loadMoreMemos();
-      }
-    } catch (e) {
-      // スクロール位置の取得エラーは無視
-      debugPrint('スクロールリスナーエラー: $e');
-    }
-  }
-  
   // スクロール監視の初期化
   void _initializeScrollListener() {
-    _memoScrollController.addListener(_memoScrollListener);
+    _memoScrollController.addListener(() {
+      if (_memoScrollController.position.pixels >= 
+          _memoScrollController.position.maxScrollExtent * 0.8) {
+        _loadMoreMemos();
+      }
+    });
   }
   
   // メモ制限チェック（依存関係経由）
@@ -693,8 +636,10 @@ class _MedicationHomePageState extends State<MedicationHomePage>
     await _dependencies?.operations.backup.saveSnapshotBeforeChange(operationType);
   }
 
-  // ✅ 1つ前の状態に復元（削除済み）
-  // この機能は削除されました
+  // ✅ 1つ前の状態に復元（最新スナップショットから）
+  Future<void> _undoLastChange() async {
+    await _dependencies?.operations.backup.undoLastChange();
+  }
 
 
   // ✅ 手動バックアップ作成機能
@@ -796,11 +741,12 @@ class _MedicationHomePageState extends State<MedicationHomePage>
             : HomeTabBarView(
                 stateManager: _dependencies!.stateManager,
                 tabController: _dependencies!.tabController,
-                            onEditMemo: _editMemo,
-                            onDeleteMemo: _deleteMemo,
-                            onMarkAsTaken: _markAsTaken,
+                onEditMemo: _editMemo,
+                onDeleteMemo: _deleteMemo,
+                onMarkAsTaken: _markAsTaken,
                 onShowMemoDetailDialog: (context, name, notes) => _dependencies!.handlers.main.showMemoDetailDialog(name, notes),
                 onShowWarningDialog: () => _dependencies!.handlers.main.showWarningDialog(),
+                onCalculateAdherenceStats: _calculateAdherenceStats,
             ),
       // 注意: FloatingActionButtonは各View（特にMedicineView）で個別に処理
       floatingActionButton: null,

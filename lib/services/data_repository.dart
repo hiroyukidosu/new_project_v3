@@ -15,7 +15,13 @@ class DataRepository {
   // 初期化
   static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
-    _hiveBox = await Hive.openBox('medication_data');
+    // medication_dataボックスを型指定なしで開く（Mapやintなど複雑なデータ構造を保存するため）
+    if (!Hive.isBoxOpen('medication_data')) {
+      _hiveBox = await Hive.openBox('medication_data');
+    } else {
+      // 既に開かれている場合は既存のBoxを取得
+      _hiveBox = Hive.box('medication_data');
+    }
     Logger.info('DataRepository初期化完了');
   }
   

@@ -1,25 +1,41 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/medication_memo.dart';
 import '../config/storage_keys.dart';
-import '../services/hive_lifecycle_service.dart';
 import '../utils/logger.dart';
+import '../utils/performance_monitor.dart';
 
 /// メディケーションデータのリポジトリ（Hive完全移行版）
 class MedicationRepository {
   Box<MedicationMemo>? _memoBox;
-  Box? _dataBox; // 型指定なし（medication_data_persistence.dartとの互換性のため）
+  Box? _dataBox; // 型指定なし（Mapやintなど複雑なデータ構造を保存するため）
+  
+  // キャッシュ
+  List<MedicationMemo>? _cachedMemos;
+  DateTime? _lastLoadTime;
+  static const Duration _cacheValidDuration = Duration(seconds: 5);
   
   /// リポジトリの初期化
   Future<void> initialize() async {
     try {
-      // Hiveライフサイクルサービスからボックスを取得
-      _memoBox = HiveLifecycleService.getBox<MedicationMemo>('medication_memos');
-      // medication_dataは型指定なしで開かれているため、型指定なしで取得
-      _dataBox = HiveLifecycleService.getBoxUntyped('medication_data');
+      // Hiveボックスを直接開く（型の整合性を確保）
+      if (!Hive.isBoxOpen('medication_memos')) {
+        _memoBox = await Hive.openBox<MedicationMemo>('medication_memos');
+      } else {
+        _memoBox = Hive.box<MedicationMemo>('medication_memos');
+      }
+      
+      // medication_dataは型指定なしで開く（Mapやintなど複雑なデータ構造を保存するため）
+      if (!Hive.isBoxOpen('medication_data')) {
+        _dataBox = await Hive.openBox('medication_data');
+      } else {
+        // 既に開かれている場合は既存のBoxを取得
+        _dataBox = Hive.box('medication_data');
+      }
       
       if (_memoBox == null || _dataBox == null) {
-        throw Exception('Hiveボックスが初期化されていません');
+        throw Exception('Hiveボックスが正常に開かれませんでした');
       }
       
       Logger.info('MedicationRepository初期化完了');
@@ -29,19 +45,52 @@ class MedicationRepository {
     }
   }
   
-  /// メモの取得
-  Future<List<MedicationMemo>> getMemos() async {
+  /// メモの取得（キャッシュ付き、Isolate使用）
+  Future<List<MedicationMemo>> getMemos({bool forceRefresh = false}) async {
     try {
       if (_memoBox == null) {
         await initialize();
       }
-      final memos = _memoBox!.values.toList();
-      Logger.debug('メモ取得完了: ${memos.length}件');
+      
+      // キャッシュが有効なら返す
+      if (!forceRefresh && 
+          _cachedMemos != null && 
+          _lastLoadTime != null &&
+          DateTime.now().difference(_lastLoadTime!) < _cacheValidDuration) {
+        if (kDebugMode) {
+          Logger.debug('メモ取得（キャッシュ）: ${_cachedMemos!.length}件');
+        }
+        return _cachedMemos!;
+      }
+      
+      // Isolateで読み込み（大量データの場合に有効）
+      PerformanceMonitor.start('load_memos');
+      final memos = await compute(_loadMemosInIsolate, _memoBox!);
+      PerformanceMonitor.end('load_memos');
+      
+      // キャッシュを更新
+      _cachedMemos = memos;
+      _lastLoadTime = DateTime.now();
+      
+      if (kDebugMode) {
+        Logger.debug('メモ取得完了: ${memos.length}件');
+      }
       return memos;
     } catch (e) {
       Logger.error('メモ取得エラー', e);
       return [];
     }
+  }
+  
+  /// Isolateでメモを読み込む（静的メソッド）
+  static List<MedicationMemo> _loadMemosInIsolate(Box<MedicationMemo> box) {
+    return box.values.toList();
+  }
+  
+  /// キャッシュをクリア
+  void clearCache() {
+    _cachedMemos = null;
+    _lastLoadTime = null;
   }
   
   /// メモの保存
@@ -51,7 +100,13 @@ class MedicationRepository {
         await initialize();
       }
       await _memoBox!.put(memo.id, memo);
-      Logger.debug('メモ保存完了: ${memo.id}');
+      
+      // キャッシュを無効化
+      clearCache();
+      
+      if (kDebugMode) {
+        Logger.debug('メモ保存完了: ${memo.id}');
+      }
     } catch (e) {
       Logger.error('メモ保存エラー: ${memo.id}', e);
       rethrow;
@@ -65,7 +120,13 @@ class MedicationRepository {
         await initialize();
       }
       await _memoBox!.delete(id);
-      Logger.debug('メモ削除完了: $id');
+      
+      // キャッシュを無効化
+      clearCache();
+      
+      if (kDebugMode) {
+        Logger.debug('メモ削除完了: $id');
+      }
     } catch (e) {
       Logger.error('メモ削除エラー: $id', e);
       rethrow;
@@ -80,10 +141,14 @@ class MedicationRepository {
       }
       final statusValue = _dataBox!.get(StorageKeys.medicationMemoStatusKey);
       if (statusValue != null) {
-        // Stringまたは既にMapの場合を処理
-        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
-        final status = jsonDecode(statusJson) as Map<String, dynamic>;
-        return status.map((key, value) => MapEntry(key, value as bool));
+        // 型指定なしのBoxなので、Stringまたは既にMapの場合を処理
+        if (statusValue is String) {
+          final status = jsonDecode(statusValue) as Map<String, dynamic>;
+          return status.map((key, value) => MapEntry(key, value as bool));
+        } else if (statusValue is Map) {
+          // 既にMapの場合は直接使用
+          return statusValue.map((key, value) => MapEntry(key.toString(), value == true));
+        }
       }
       return {};
     } catch (e) {
@@ -114,9 +179,14 @@ class MedicationRepository {
       }
       final statusValue = _dataBox!.get(StorageKeys.weekdayMedicationStatusKey);
       if (statusValue != null) {
-        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
-        final status = jsonDecode(statusJson) as Map<String, dynamic>;
-        return status.map((key, value) => MapEntry(key, value as bool));
+        // 型指定なしのBoxなので、Stringまたは既にMapの場合を処理
+        if (statusValue is String) {
+          final status = jsonDecode(statusValue) as Map<String, dynamic>;
+          return status.map((key, value) => MapEntry(key, value as bool));
+        } else if (statusValue is Map) {
+          // 既にMapの場合は直接使用
+          return statusValue.map((key, value) => MapEntry(key.toString(), value == true));
+        }
       }
       return {};
     } catch (e) {
@@ -147,9 +217,14 @@ class MedicationRepository {
       }
       final medicationsValue = _dataBox!.get(StorageKeys.addedMedicationsKey);
       if (medicationsValue != null) {
-        final medicationsJson = medicationsValue is String ? medicationsValue : jsonEncode(medicationsValue);
-        final medications = jsonDecode(medicationsJson) as List<dynamic>;
-        return medications.cast<Map<String, dynamic>>();
+        // 型指定なしのBoxなので、Stringまたは既にListの場合を処理
+        if (medicationsValue is String) {
+          final medications = jsonDecode(medicationsValue) as List<dynamic>;
+          return medications.cast<Map<String, dynamic>>();
+        } else if (medicationsValue is List) {
+          // 既にListの場合は直接使用
+          return medicationsValue.cast<Map<String, dynamic>>();
+        }
       }
       return [];
     } catch (e) {
@@ -180,8 +255,13 @@ class MedicationRepository {
       }
       final statsValue = _dataBox!.get(StorageKeys.statisticsKey);
       if (statsValue != null) {
-        final statsJson = statsValue is String ? statsValue : jsonEncode(statsValue);
-        return jsonDecode(statsJson) as Map<String, dynamic>;
+        // 型指定なしのBoxなので、Stringまたは既にMapの場合を処理
+        if (statsValue is String) {
+          return jsonDecode(statsValue) as Map<String, dynamic>;
+        } else if (statsValue is Map) {
+          // 既にMapの場合は直接使用
+          return statsValue.map((key, value) => MapEntry(key.toString(), value));
+        }
       }
       return {};
     } catch (e) {
@@ -212,8 +292,13 @@ class MedicationRepository {
       }
       final statusValue = _dataBox!.get(StorageKeys.medicationDoseStatusKey);
       if (statusValue != null) {
-        final statusJson = statusValue is String ? statusValue : jsonEncode(statusValue);
-        return jsonDecode(statusJson) as Map<String, dynamic>;
+        // 型指定なしのBoxなので、Stringまたは既にMapの場合を処理
+        if (statusValue is String) {
+          return jsonDecode(statusValue) as Map<String, dynamic>;
+        } else if (statusValue is Map) {
+          // 既にMapの場合は直接使用
+          return statusValue.map((key, value) => MapEntry(key.toString(), value));
+        }
       }
       return {};
     } catch (e) {

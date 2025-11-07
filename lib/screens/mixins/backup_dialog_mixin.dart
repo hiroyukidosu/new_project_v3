@@ -140,7 +140,29 @@ mixin BackupDialogMixin<T extends StatefulWidget> on State<T>, BackupCoreMixin<T
                 ),
               ),
               const SizedBox(height: 8),
-              // 1つ前の状態に復元機能は削除されました
+              FutureBuilder<bool>(
+                future: hasUndoAvailable(),
+                builder: (context, snapshot) {
+                  final available = snapshot.data ?? false;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: available
+                          ? () async {
+                              Navigator.of(context).pop();
+                              await undoLastChange();
+                            }
+                          : null,
+                      icon: const Icon(Icons.undo),
+                      label: const Text('1つ前の状態に復元'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: available ? Colors.teal : Colors.grey,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,

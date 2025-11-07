@@ -165,20 +165,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   /// 通知タップ時の処理（コミット時の実装に合わせて）
-  void _onNotificationTapped(NotificationResponse response) async {
+  void _onNotificationTapped(NotificationResponse response) {
     if (!mounted || _disposed) return;
     
-    // 停止アクションまたは通知タップ時は確実にアラームを停止
-    if (response.actionId == 'stop' || response.actionId == null) {
-      await _stopAlarm();
-      
-      // 停止フラグもリセット（念のため）
-      try {
-        final prefs = await StorageService.getSharedPreferences();
-        await prefs.setBool('alarm_should_stop', false);
-      } catch (e) {
-        // エラーは無視
-      }
+    if (response.actionId == 'stop') {
+      _stopAlarm();
+    } else {
+      // 通知タップ時も停止処理を実行（コミット時の実装に合わせて）
+      _stopAlarm();
     }
   }
 
@@ -267,19 +261,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   void _editAlarm(int index, Alarm alarm) {
-    // 範囲チェックを追加
-    if (index < 0 || index >= _alarms.length) {
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('アラームの編集に失敗しました（無効なインデックス）'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-    
     showDialog(
       context: context,
       builder: (context) => AddAlarmDialog(
@@ -289,19 +270,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           try {
             final updatedAlarm = Alarm.fromMap(alarmMap);
             if (updatedAlarm.isValid()) {
-              if (!mounted) return;
-              // 再度範囲チェック（ダイアログ表示中にリストが変更された可能性）
-              if (index < 0 || index >= _alarms.length) {
-                if (mounted && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('アラームの編集に失敗しました（リストが変更されました）'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-                return;
-              }
               setState(() {
                 _alarms[index] = updatedAlarm;
               });
@@ -335,25 +303,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   Future<void> _deleteAlarm(int index) async {
-    // 範囲チェックを追加
-    if (index < 0 || index >= _alarms.length) {
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('アラームの削除に失敗しました（無効なインデックス）'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-    
     try {
-      final alarmName = _alarms[index].name;
-      await SnapshotService.saveBeforeChange('アラーム削除_$alarmName');
-      
-      if (!mounted) return;
+      await SnapshotService.saveBeforeChange('アラーム削除_${_alarms[index].name}');
       setState(() {
         _alarms.removeAt(index);
       });
@@ -368,18 +319,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ),
         );
       }
-    } catch (e, stackTrace) {
-      if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('アラームの削除に失敗しました: $e'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      debugPrint('アラーム削除エラー: $e');
-      debugPrint('スタックトレース: $stackTrace');
+    } catch (e) {
+      // エラーは無視（UIで既に通知済み）
     }
   }
 
@@ -425,26 +366,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   Future<void> _stopAlarm() async {
-    if (!mounted || _disposed) return;
-    
-    try {
-      // アラームサービスで停止処理を実行
-      await _alarmService?.stopAlarm(_alarms);
-      
-      // 状態を確実に更新
-      if (mounted && !_disposed) {
-        setState(() {
-          _isAlarmPlaying = false;
-        });
-      }
-    } catch (e) {
-      // エラー時も状態をリセット
-      if (mounted && !_disposed) {
-        setState(() {
-          _isAlarmPlaying = false;
-        });
-      }
-    }
+    await _alarmService?.stopAlarm(_alarms);
+    setState(() {
+      _isAlarmPlaying = false;
+    });
   }
 
   @override
@@ -488,14 +413,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               currentDate: _currentDate.isEmpty ? DateTime.now().toString().substring(0, 10) : _currentDate,
               isAlarmEnabled: _isAlarmEnabled,
               onAlarmEnabledChanged: (value) async {
-                // 無効化時は即座にアラームを停止
-                if (!value && _isAlarmPlaying) {
-                  await _stopAlarm();
-                }
-                
                 setState(() {
                   _isAlarmEnabled = value;
                 });
+                
+                if (!value && _isAlarmPlaying) {
+                  await _stopAlarm();
+                }
                 
                 await _saveSettings();
                 if (mounted && context.mounted) {
@@ -557,20 +481,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             try {
                               await SnapshotService.saveBeforeChange('アラーム切り替え_${alarm.name}');
                               
-                              // 無効化時は即座にアラームを停止（該当アラームが鳴っている場合）
-                              if (!value) {
-                                final now = DateTime.now();
-                                final currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-                                if (alarm.time == currentTime && _isAlarmPlaying) {
-                                  await _stopAlarm();
-                                }
-                              }
-                              
                               setState(() {
                                 _alarms[index] = alarm.copyWith(enabled: value);
                               });
                               
                               await _saveAlarms();
+                              
+                              if (!value && _isAlarmPlaying) {
+                                await _stopAlarm();
+                              }
                             } catch (e) {
                               setState(() {
                                 _alarms[index] = alarm.copyWith(enabled: value);

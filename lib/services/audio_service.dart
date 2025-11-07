@@ -65,31 +65,20 @@ class AudioService {
 
   /// アラームを停止
   static Future<void> stopAlarm() async {
-    // 1. バイブレーションタイマーを先に停止（即座にキャンセル）
     try {
+      // 音声を停止
+      await _audioPlayer.stop();
+      _isPlaying = false;
+    } catch (e) {
+      // エラーは無視
+    }
+    
+    try {
+      // バイブレーションタイマーを停止
       _vibrationTimer?.cancel();
       _vibrationTimer = null;
     } catch (e) {
       // エラーは無視
-    }
-    
-    // 2. バイブレーションを停止
-    try {
-      if (await Vibration.hasVibrator() == true) {
-        await Vibration.cancel();
-      }
-    } catch (e) {
-      // エラーは無視
-    }
-    
-    // 3. 音声を停止
-    try {
-      await _audioPlayer.stop();
-      await _audioPlayer.setReleaseMode(ReleaseMode.release); // ループを解除
-      _isPlaying = false;
-    } catch (e) {
-      // エラー時も状態をリセット
-      _isPlaying = false;
     }
   }
 

@@ -1,16 +1,13 @@
 // CalendarView
 // カレンダータブ - 完全独立化（StateManagerに直接依存）
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/medication_memo.dart';
 import '../../models/medication_info.dart';
 import '../home/state/home_page_state_manager.dart';
 import '../helpers/calculations/medication_stats_calculator.dart';
-import '../helpers/calendar_operations.dart';
 import '../home/widgets/day_memo_field_widget.dart';
 import '../home/widgets/day_medication_records_widget.dart';
 import '../home/widgets/day_color_picker_dialog.dart';
@@ -26,6 +23,7 @@ class CalendarView extends StatefulWidget {
   final void Function(String)? onDeleteMemo;
   final void Function(String, String)? onShowMemoDetailDialog;
   final void Function()? onShowWarningDialog;
+  final Future<void> Function()? onCalculateAdherenceStats;
 
   const CalendarView({
     super.key,
@@ -34,6 +32,7 @@ class CalendarView extends StatefulWidget {
     this.onDeleteMemo,
     this.onShowMemoDetailDialog,
     this.onShowWarningDialog,
+    this.onCalculateAdherenceStats,
   });
 
   @override
@@ -95,14 +94,6 @@ class _CalendarViewState extends State<CalendarView> {
       // データ読み込み（必要に応じて）
       if (!wasSelected && widget.stateManager.selectedDay != null) {
         await _loadDataForSelectedDay();
-        // メモ読み込み後にUIを更新
-        if (mounted) {
-          setState(() {});
-        }
-      } else if (wasSelected) {
-        // 選択解除時はメモをクリア
-        widget.stateManager.memoController.clear();
-        widget.stateManager.notifiers.memoTextNotifier.value = '';
       }
       
       // メモスナップショット保存フラグをリセット
@@ -118,24 +109,7 @@ class _CalendarViewState extends State<CalendarView> {
 
   /// 選択日のデータ読み込み
   Future<void> _loadDataForSelectedDay() async {
-    try {
-      final selectedDay = widget.stateManager.selectedDay;
-      if (selectedDay == null) return;
-      
-      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
-      final prefs = await SharedPreferences.getInstance();
-      final savedMemo = prefs.getString('memo_$dateStr');
-      
-      if (savedMemo != null && savedMemo.isNotEmpty) {
-        widget.stateManager.memoController.text = savedMemo;
-        widget.stateManager.notifiers.memoTextNotifier.value = savedMemo;
-      } else {
-        widget.stateManager.memoController.clear();
-        widget.stateManager.notifiers.memoTextNotifier.value = '';
-      }
-    } catch (e) {
-      debugPrint('選択日のメモ読み込みエラー: $e');
-    }
+    // StateManager.init()で既に読み込まれているため、必要に応じて追加処理を実装
   }
 
   /// 日付の色変更
@@ -488,36 +462,13 @@ class _CalendarViewState extends State<CalendarView> {
                               },
                               onMemoUnfocused: () {},
                               onMemoSaved: () async {
-                                // キーボードを閉じる
-                                FocusScope.of(context).unfocus();
-                                widget.stateManager.isMemoFocused = false;
-                                
-                                // メモテキストをStateManagerに同期
-                                final currentMemoText = widget.stateManager.notifiers.memoTextNotifier.value;
-                                widget.stateManager.memoController.text = currentMemoText;
-                                
-                                // saveAllData経由で保存（統一された保存方式）
                                 await widget.stateManager.saveAllData();
-                                
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('メモを保存しました'),
-                                      duration: Duration(seconds: 1),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                }
                               },
                               onMemoCleared: () async {
-                                // コントローラーとNotifierをクリア
                                 widget.stateManager.memoController.clear();
                                 widget.stateManager.notifiers.memoTextNotifier.value = '';
                                 widget.stateManager.isMemoFocused = false;
-                                
-                                // saveAllData経由で保存（空のメモを保存して削除）
                                 await widget.stateManager.saveAllData();
-                                
                                 if (mounted) {
                                   FocusScope.of(context).unfocus();
                                 }
@@ -807,13 +758,11 @@ class _CalendarViewState extends State<CalendarView> {
                             widget.stateManager.medicationMemoStatus[memoId] = checkedCount == memo.dosageFrequency;
                             
                             setState(() {});
-                            
-                            // データを保存（服用回数別ステータスを含む）
-                            // 重要: saveAllData()内で遵守率統計が再計算されるため、ここでは不要
                             await widget.stateManager.saveAllData();
                             
-                            if (kDebugMode) {
-                              debugPrint('✅ カレンダーページ: データ保存完了（遵守率統計はsaveAllData内で再計算済み）');
+                            // 統計を再計算（チェック状況が反映されるように）
+                            if (widget.onCalculateAdherenceStats != null) {
+                              await widget.onCalculateAdherenceStats!();
                             }
                           }
                         },
