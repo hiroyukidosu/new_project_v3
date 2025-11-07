@@ -392,9 +392,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          '服用時間のアラーム',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.access_time,
+              size: 24,
+            ),
+            SizedBox(width: 8),
+            Text(
+              '服用時間のアラーム',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
         backgroundColor: const Color(0xFF2196F3),
         foregroundColor: Colors.white,
