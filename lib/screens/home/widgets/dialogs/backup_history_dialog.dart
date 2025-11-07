@@ -121,7 +121,7 @@ class BackupHistoryDialog extends StatelessWidget {
                             }
                             break;
                           case 'delete':
-                            if (!isAuto) {
+                            if (isManual) {
                               await onDelete(backup['key'] as String, index);
                               if (context.mounted) {
                                 Navigator.of(context).pop();
