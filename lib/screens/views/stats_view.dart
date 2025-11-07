@@ -1156,6 +1156,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
     await showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => CustomAdherenceDialog(
         onCalculate: (rate, days) async {
           await _calculateCustomAdherence(days);
@@ -1181,12 +1182,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         return;
       }
 
-      // StateManagerのnullチェック
-      if (widget.stateManager.medicationData == null ||
-          widget.stateManager.medicationMemos == null ||
-          widget.stateManager.weekdayMedicationStatus == null ||
-          widget.stateManager.medicationMemoStatus == null ||
-          widget.stateManager.weekdayMedicationDoseStatus == null) {
+      // StateManagerの初期化チェック
+      if (!widget.stateManager.isInitialized) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1224,17 +1221,22 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         widget.stateManager.customDaysResult = days;
         widget.stateManager.notifiers.customAdherenceResultNotifier.value = normalizedRate;
 
-        Navigator.of(context).pop();
+        // ダイアログはCustomAdherenceDialog内で閉じられるため、ここでは閉じない
+        // Navigator.of(context).pop(); // 削除
 
         final statsController = widget.stateManager.statsScrollController;
         if (statsController.hasClients) {
           Future.delayed(const Duration(milliseconds: 300), () {
-            if (statsController.hasClients) {
-              statsController.animateTo(
-                statsController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeOut,
-              );
+            if (statsController.hasClients && mounted) {
+              try {
+                statsController.animateTo(
+                  statsController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOut,
+                );
+              } catch (e) {
+                debugPrint('❌ スクロールアニメーションエラー: $e');
+              }
             }
           });
         }
@@ -1251,6 +1253,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           ),
         );
       }
+      // エラーを再スローして、ダイアログ側でキャッチできるようにする
+      rethrow;
     }
   }
 }

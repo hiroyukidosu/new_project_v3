@@ -1,12 +1,13 @@
 // lib/screens/home/widgets/dialogs/custom_adherence_dialog.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 // import '../../../../helpers/calculations/adherence_calculator.dart'; // 実際の計算は親ウィジェットで行われる
 
 /// カスタム遵守率計算ダイアログ
 class CustomAdherenceDialog extends StatefulWidget {
-  final Function(double rate, int days) onCalculate;
+  final Future<void> Function(double rate, int days) onCalculate;
   final ScrollController? statsScrollController;
 
   const CustomAdherenceDialog({
@@ -118,18 +119,24 @@ class _CustomAdherenceDialogState extends State<CustomAdherenceDialog> {
       // 注意: AdherenceCalculatorは、実際のデータが必要なため、
       // ここではコールバック経由で計算を行う
       // 実際の計算は親ウィジェットで実行される
-      widget.onCalculate(0.0, days); // 親で計算されるため、仮の値
+      await widget.onCalculate(0.0, days); // 親で計算されるため、仮の値
       
+      // 計算が成功した場合のみダイアログを閉じる
       if (mounted) {
+        setState(() => _isCalculating = false);
         Navigator.of(context).pop();
       }
-    } catch (e) {
-      setState(() => _isCalculating = false);
+    } catch (e, stackTrace) {
+      debugPrint('❌ カスタム遵守率ダイアログ計算エラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+      // エラー時はダイアログを開いたままにする
       if (mounted) {
+        setState(() => _isCalculating = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('計算エラー: $e'),
+            content: Text('計算エラー: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
