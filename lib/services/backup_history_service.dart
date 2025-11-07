@@ -7,9 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// バックアップ履歴管理サービス
 class BackupHistoryService {
   static const String _historyKey = 'backup_history';
-  static const int _maxHistoryCount = 5;
+  static const int _maxHistoryCount = 10;
 
-  /// バックアップ履歴を更新（最大5件まで保持）
+  /// バックアップ履歴を更新（最大10件まで保持）
   static Future<void> updateBackupHistory(
     String backupName,
     String backupKey, {
@@ -26,7 +26,7 @@ class BackupHistoryService {
       'type': type,
     });
     
-    // 古い順に自動削除（最大5件まで保持）
+    // 古い順に自動削除（最大10件まで保持、10件を超えた場合は上書き）
     if (history.length > _maxHistoryCount) {
       // 古いバックアップデータを削除
       final oldBackup = history.removeAt(0);

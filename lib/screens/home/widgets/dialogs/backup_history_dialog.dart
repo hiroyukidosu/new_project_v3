@@ -66,13 +66,15 @@ class BackupHistoryDialog extends StatelessWidget {
               itemBuilder: (context, index) {
                 final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
                 final createdAt = DateTime.parse(backup['createdAt'] as String);
-                final isAuto = backup['type'] == 'auto';
+                final backupType = backup['type'] as String? ?? 'manual';
+                final isFull = backupType == 'full' || backupType == 'auto';
+                final isManual = backupType == 'manual';
 
-                // 各項目に異なる色を設定
-                final cardColor = isAuto 
+                // 各項目に異なる色を設定（手動：オレンジ、フル：緑）
+                final cardColor = isFull 
                     ? Colors.green.withOpacity(0.1)
                     : Colors.orange.withOpacity(0.1);
-                final borderColor = isAuto 
+                final borderColor = isFull 
                     ? Colors.green
                     : Colors.orange;
                 
@@ -85,14 +87,14 @@ class BackupHistoryDialog extends StatelessWidget {
                   ),
                   child: ListTile(
                     leading: Icon(
-                      isAuto ? Icons.schedule : Icons.backup,
-                      color: isAuto ? Colors.green : Colors.orange,
+                      isFull ? Icons.schedule : Icons.backup,
+                      color: isFull ? Colors.green : Colors.orange,
                     ),
                     title: Text(
                       backup['name'] as String,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: isAuto ? Colors.green.shade700 : Colors.orange.shade700,
+                        color: isFull ? Colors.green.shade700 : Colors.orange.shade700,
                       ),
                     ),
                     subtitle: Column(
@@ -100,10 +102,11 @@ class BackupHistoryDialog extends StatelessWidget {
                       children: [
                         Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
                         Text(
-                          '${backup['source']}バックアップ',
+                          isFull ? 'フルバックアップ' : '手動バックアップ',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isAuto ? Colors.green.shade600 : Colors.blue.shade600,
+                            fontWeight: FontWeight.w500,
+                            color: isFull ? Colors.green.shade600 : Colors.orange.shade600,
                           ),
                         ),
                       ],
@@ -151,7 +154,7 @@ class BackupHistoryDialog extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (!isAuto)
+                        if (isManual)
                           const PopupMenuItem(
                             value: 'delete',
                             child: Row(
@@ -184,24 +187,12 @@ class BackupHistoryDialog extends StatelessWidget {
     final history = await BackupHistoryService.getBackupHistory();
     final allBackups = <Map<String, dynamic>>[];
 
-    // 手動バックアップ履歴を追加
+    // バックアップ履歴を追加（手動とフルバックアップを含む）
     for (final backup in history) {
       allBackups.add({
         ...backup,
-        'type': 'manual',
-        'source': '履歴',
-      });
-    }
-
-    // 自動バックアップを追加
-    final autoBackupKey = await BackupHistoryService.getLastAutoBackupKey();
-    if (autoBackupKey != null) {
-      allBackups.add({
-        'name': '自動バックアップ（最新）',
-        'key': autoBackupKey,
-        'createdAt': DateTime.now().toIso8601String(),
-        'type': 'auto',
-        'source': '自動',
+        'type': backup['type'] ?? 'manual', // 既存のtypeを保持（'manual'または'full'）
+        'source': backup['type'] == 'full' ? 'フル' : '手動',
       });
     }
 

@@ -7,13 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class BackupDialog extends StatelessWidget {
   final VoidCallback onCreate;
   final VoidCallback onShowHistory;
-  final Future<void> Function() onRestoreLatest;
 
   const BackupDialog({
     super.key,
     required this.onCreate,
     required this.onShowHistory,
-    required this.onRestoreLatest,
   });
 
   @override
@@ -57,27 +55,7 @@ class BackupDialog extends StatelessWidget {
               icon: const Icon(Icons.history),
               label: const Text('保存履歴を見る'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                final key = prefs.getString('last_full_backup_key');
-                Navigator.of(context).pop(key != null ? 'restore:$key' : null);
-                if (key != null) {
-                  await onRestoreLatest();
-                }
-              },
-              icon: const Icon(Icons.restore),
-              label: const Text('フルバックアップを復元'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
               ),
             ),

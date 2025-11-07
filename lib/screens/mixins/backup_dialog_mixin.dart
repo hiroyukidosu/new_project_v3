@@ -163,36 +163,6 @@ mixin BackupDialogMixin<T extends StatefulWidget> on State<T>, BackupCoreMixin<T
                   );
                 },
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    final prefs = await SharedPreferences.getInstance();
-                    // 最新フルバックアップを参照
-                    final key = prefs.getString('last_full_backup_key');
-                    if (key != null) {
-                      await restoreBackup(key);
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('フルバックアップが見つかりません'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.restore_page),
-                  label: const Text('フルバックアップを復元'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
             ],
             ),
           ),

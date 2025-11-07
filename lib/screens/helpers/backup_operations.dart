@@ -52,20 +52,6 @@ class BackupOperations {
       builder: (context) => BackupDialog(
         onCreate: () async => await createManualBackup(),
         onShowHistory: () async => await showBackupHistory(),
-        onRestoreLatest: () async {
-          final prefs = await SharedPreferences.getInstance();
-          final key = prefs.getString('last_full_backup_key');
-          if (key != null) {
-            await restoreBackup(key);
-          } else if (onMountedCheck()) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('フルバックアップが見つかりません'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        },
       ),
     );
     if (result != null && result.startsWith('restore:')) {
