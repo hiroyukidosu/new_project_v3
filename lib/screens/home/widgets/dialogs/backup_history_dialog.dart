@@ -68,14 +68,33 @@ class BackupHistoryDialog extends StatelessWidget {
                 final createdAt = DateTime.parse(backup['createdAt'] as String);
                 final isAuto = backup['type'] == 'auto';
 
+                // 各項目に異なる色を設定
+                final cardColor = isAuto 
+                    ? Colors.green.withOpacity(0.1)
+                    : Colors.orange.withOpacity(0.1);
+                final borderColor = isAuto 
+                    ? Colors.green
+                    : Colors.orange;
+                
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4),
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: borderColor, width: 1),
+                  ),
                   child: ListTile(
                     leading: Icon(
                       isAuto ? Icons.schedule : Icons.backup,
                       color: isAuto ? Colors.green : Colors.orange,
                     ),
-                    title: Text(backup['name'] as String),
+                    title: Text(
+                      backup['name'] as String,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isAuto ? Colors.green.shade700 : Colors.orange.shade700,
+                      ),
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -84,7 +103,7 @@ class BackupHistoryDialog extends StatelessWidget {
                           '${backup['source']}バックアップ',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isAuto ? Colors.green : Colors.blue,
+                            color: isAuto ? Colors.green.shade600 : Colors.blue.shade600,
                           ),
                         ),
                       ],

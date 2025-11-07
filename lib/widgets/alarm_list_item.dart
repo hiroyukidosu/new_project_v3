@@ -59,6 +59,7 @@ class AlarmListItem extends StatelessWidget {
                           '${alarm.time} (${AlarmHelpers.getRepeatDisplayText(alarm)})',
                           style: const TextStyle(
                             fontSize: 14,
+                            fontWeight: FontWeight.bold,
                             color: Colors.grey,
                           ),
                         ),

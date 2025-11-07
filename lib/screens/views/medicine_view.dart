@@ -101,7 +101,7 @@ class MedicineView extends StatelessWidget {
                           const Text(
                             '服用メモ',
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
                           ),

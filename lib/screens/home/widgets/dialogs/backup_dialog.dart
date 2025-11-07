@@ -5,18 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// バックアップメインダイアログ
 class BackupDialog extends StatelessWidget {
-  final Future<bool> Function() hasUndoAvailable;
   final VoidCallback onCreate;
   final VoidCallback onShowHistory;
-  final VoidCallback onUndo;
   final Future<void> Function() onRestoreLatest;
 
   const BackupDialog({
     super.key,
-    required this.hasUndoAvailable,
     required this.onCreate,
     required this.onShowHistory,
-    required this.onUndo,
     required this.onRestoreLatest,
   });
 
@@ -65,30 +61,6 @@ class BackupDialog extends StatelessWidget {
                 foregroundColor: Colors.white,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          FutureBuilder<bool>(
-            future: hasUndoAvailable(),
-            builder: (context, snapshot) {
-              final available = snapshot.data ?? false;
-              return SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: available
-                      ? () {
-                          Navigator.of(context).pop('undo');
-                          onUndo();
-                        }
-                      : null,
-                  icon: const Icon(Icons.undo),
-                  label: const Text('1つ前の状態に復元'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: available ? Colors.purple : Colors.grey,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              );
-            },
           ),
           const SizedBox(height: 8),
           SizedBox(

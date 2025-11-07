@@ -50,10 +50,8 @@ class BackupOperations {
     final result = await showDialog<String>(
       context: context,
       builder: (context) => BackupDialog(
-        hasUndoAvailable: hasUndoAvailable,
         onCreate: () async => await createManualBackup(),
         onShowHistory: () async => await showBackupHistory(),
-        onUndo: () async => await undoLastChange(),
         onRestoreLatest: () async {
           final prefs = await SharedPreferences.getInstance();
           final key = prefs.getString('last_full_backup_key');

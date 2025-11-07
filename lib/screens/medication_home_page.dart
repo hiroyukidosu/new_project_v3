@@ -600,7 +600,10 @@ class _MedicationHomePageState extends State<MedicationHomePage> with TickerProv
                 return Card(
                   child: ListTile(
                     title: Text(alarm['name'] ?? 'アラーム'),
-                    subtitle: Text(alarm['time'] ?? ''),
+                    subtitle: Text(
+                      alarm['time'] ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     trailing: Switch(
                       value: alarm['enabled'] ?? false,
                       onChanged: (value) {
