@@ -27,7 +27,15 @@ class BackupDialog extends StatelessWidget {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('手動保存 - 任意タイミングで保存', textAlign: TextAlign.center),
+          Text(
+            '手動保存 - 任意タイミングで保存',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
