@@ -99,7 +99,7 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -109,18 +109,18 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(7),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.blue.withOpacity(0.3),
-                          blurRadius: 4,
+                          blurRadius: 3,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
                     child: const Icon(
                       Icons.edit_note,
-                      size: 18,
+                      size: 16,
                       color: Colors.white,
                     ),
                   ),
@@ -158,8 +158,14 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                   widget.memoTextNotifier.value = value;
                   widget.onMemoChanged(value);
                 },
-                onSubmitted: (_) => widget.onMemoSaved(),
-                onEditingComplete: widget.onMemoSaved,
+                onSubmitted: (_) {
+                  widget.onMemoSaved();
+                  FocusScope.of(context).unfocus();
+                },
+                onEditingComplete: () {
+                  widget.onMemoSaved();
+                  FocusScope.of(context).unfocus();
+                },
               ),
               if (widget.isMemoFocused) ...[
                 const SizedBox(height: 8),
@@ -167,7 +173,10 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: widget.onMemoSaved,
+                      onPressed: () {
+                        widget.onMemoSaved();
+                        FocusScope.of(context).unfocus();
+                      },
                       icon: const Icon(Icons.save, size: 16),
                       label: const Text('保存', style: TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
