@@ -462,7 +462,31 @@ class _CalendarViewState extends State<CalendarView> {
                               },
                               onMemoUnfocused: () {},
                               onMemoSaved: () async {
-                                await widget.stateManager.saveAllData();
+                                if (mounted) {
+                                  await widget.stateManager.saveAllData();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(
+                                        children: [
+                                          const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '${DateFormat('yyyy年M月d日', 'ja_JP').format(selectedDay!)}のメモを保存しました',
+                                              style: const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      backgroundColor: Colors.green,
+                                      duration: const Duration(seconds: 2),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  );
+                                }
                               },
                               onMemoCleared: () async {
                                 widget.stateManager.memoController.clear();

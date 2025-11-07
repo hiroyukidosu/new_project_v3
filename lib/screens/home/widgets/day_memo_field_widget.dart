@@ -99,7 +99,7 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(5),
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -109,7 +109,7 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(7),
+                      borderRadius: BorderRadius.circular(6),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.blue.withOpacity(0.3),
@@ -120,7 +120,7 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                     ),
                     child: const Icon(
                       Icons.edit_note,
-                      size: 16,
+                      size: 14,
                       color: Colors.white,
                     ),
                   ),
