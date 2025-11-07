@@ -186,7 +186,7 @@ mixin BackupDialogMixin<T extends StatefulWidget> on State<T>, BackupCoreMixin<T
                     }
                   },
                   icon: const Icon(Icons.restore_page),
-                  label: const Text('フルバックアップを復元（最新）'),
+                  label: const Text('フルバックアップを復元'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purple,
                     foregroundColor: Colors.white,

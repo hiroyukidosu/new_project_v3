@@ -57,7 +57,7 @@ class BackupDialog extends StatelessWidget {
               icon: const Icon(Icons.history),
               label: const Text('保存履歴を見る'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: Colors.purple,
                 foregroundColor: Colors.white,
               ),
             ),
@@ -75,7 +75,7 @@ class BackupDialog extends StatelessWidget {
                 }
               },
               icon: const Icon(Icons.restore),
-              label: const Text('最新フルバックアップを復元'),
+              label: const Text('フルバックアップを復元'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
