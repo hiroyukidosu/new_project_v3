@@ -232,6 +232,7 @@ class HomePageStateManager {
       await _loadMedicationData();
       await _loadDayColors();
       await _loadStatistics();
+      await _loadWeekdayMedicationStatus();
       await _loadMedicationDoseStatus();
       await _loadAppSettings();
       
@@ -293,6 +294,37 @@ class HomePageStateManager {
   Future<void> _loadStatistics() async {
     adherenceRates = await HomePageDataHelper.loadStatistics();
     notifiers.adherenceRatesNotifier.value = Map<String, double>.from(adherenceRates);
+  }
+
+  /// 曜日別服用状態読み込み
+  Future<void> _loadWeekdayMedicationStatus() async {
+    try {
+      // 月別キー形式から日付文字列キー形式に変換
+      final monthlyData = await medicationDataPersistence.loadWeekdayMedicationStatus();
+      weekdayMedicationStatus = {};
+      
+      // 月別データを日付文字列キー形式に変換
+      // monthlyData: Map<月別キー, Map<日付文字列, Map<メモID, bool>>>
+      for (final monthlyEntry in monthlyData.entries) {
+        // monthlyEntry.key は "weekday_status_YYYY-MM" 形式（月別キー）
+        // monthlyEntry.value は Map<日付文字列, Map<メモID, bool>>
+        final weekdaysData = monthlyEntry.value;
+        
+        for (final dateEntry in weekdaysData.entries) {
+          final dateStr = dateEntry.key;
+          final memoStatusMap = dateEntry.value; // Map<メモID, bool>
+          
+          weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
+          weekdayMedicationStatus[dateStr]!.addAll(memoStatusMap);
+        }
+      }
+      
+      debugPrint('✅ 曜日別服用状態読み込み完了: ${weekdayMedicationStatus.length}件の日付データ');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 曜日別服用状態読み込みエラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+      weekdayMedicationStatus = {};
+    }
   }
 
   /// 服用回数別状態読み込み

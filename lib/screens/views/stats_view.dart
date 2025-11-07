@@ -29,6 +29,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  
+  // 薬品別使用状況のデータを保持
+  Map<String, int> _medicationUsageData = {};
+  final ValueNotifier<Map<String, int>> _medicationUsageNotifier = ValueNotifier<Map<String, int>>({});
 
   @override
   void initState() {
@@ -64,6 +68,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   void dispose() {
     _fadeController.dispose();
     _slideController.dispose();
+    _medicationUsageNotifier.dispose();
     super.dispose();
   }
 
@@ -84,6 +89,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     
     try {
       await _updateAdherenceStats();
+      await _updateMedicationUsageData(); // 薬品別使用状況も初期化時に計算
       _hasCalculatedInitialStats = true;
       if (mounted) {
         setState(() {
@@ -92,6 +98,57 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       }
     } catch (e) {
       debugPrint('❌ 初期統計計算エラー: $e');
+    }
+  }
+
+  /// 薬品別使用状況のデータを更新（遵守率グラフと同じタイミングで実行）
+  Future<void> _updateMedicationUsageData() async {
+    if (!mounted) return;
+    
+    try {
+      // StateManagerが初期化されていることを確認
+      if (!widget.stateManager.isInitialized) {
+        debugPrint('⚠️ StateManagerが初期化されていないため、薬品別使用状況を計算できません');
+        return;
+      }
+
+      final medicationData = widget.stateManager.medicationData;
+      final medicationMemos = widget.stateManager.medicationMemos;
+      final weekdayStatus = widget.stateManager.weekdayMedicationStatus;
+
+      Map<String, int> medicationCount = {};
+
+      // 動的薬リストの統計（既存データから計算）
+      for (final dayData in medicationData.values) {
+        for (final timeSlot in dayData.values) {
+          if (timeSlot.medicine.isNotEmpty) {
+            medicationCount[timeSlot.medicine] = (medicationCount[timeSlot.medicine] ?? 0) + 1;
+          }
+        }
+      }
+
+      // 服用メモのチェック状態を統計に反映（既存データから計算）
+      // 初期表示時から既存のチェック状態を反映
+      for (final entry in weekdayStatus.entries) {
+        for (final memo in medicationMemos) {
+          if (entry.value[memo.id] == true) {
+            medicationCount[memo.name] = (medicationCount[memo.name] ?? 0) + 1;
+          }
+        }
+      }
+
+      // データを更新（空でも更新して初期表示を確実にする）
+      _medicationUsageData = medicationCount;
+      if (mounted) {
+        _medicationUsageNotifier.value = Map<String, int>.from(medicationCount);
+        // データが更新されたことをログに出力
+        if (medicationCount.isNotEmpty) {
+          debugPrint('✅ 薬品別使用状況更新: ${medicationCount.length}種類の薬品');
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ 薬品別使用状況更新エラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
     }
   }
 
@@ -121,6 +178,9 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
       widget.stateManager.adherenceRates = stats;
       widget.stateManager.notifiers.adherenceRatesNotifier.value = stats;
+      
+      // 遵守率更新時に薬品別使用状況も更新
+      await _updateMedicationUsageData();
     } catch (e) {
       debugPrint('❌ 遵守率統計更新エラー: $e');
     }
@@ -134,9 +194,14 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       );
     }
     
-    // 初期統計が未計算の場合は計算
+    // 初期統計が未計算の場合は計算（薬品別使用状況も含む）
     if (!_hasCalculatedInitialStats) {
       _calculateInitialStats();
+    }
+    
+    // 薬品別使用状況が空の場合は即座に計算（初期表示時）
+    if (_medicationUsageData.isEmpty && widget.stateManager.isInitialized) {
+      _updateMedicationUsageData();
     }
 
     return FadeTransition(
@@ -181,12 +246,27 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 24),
                 
-                // 薬品別使用状況グラフ（初期表示時から反映）
-                ValueListenableBuilder<Map<String, double>>(
-                  valueListenable: widget.stateManager.notifiers.adherenceRatesNotifier,
-                  builder: (context, rates, _) {
-                    // データが更新されたときに再描画
-                    return _buildMedicationUsageChart();
+                // 薬品別使用状況グラフ（遵守率グラフと同じタイミングで更新・初期表示時から反映）
+                Builder(
+                  builder: (context) {
+                    // 遵守率グラフと同じNotifierを監視して、同じタイミングで更新
+                    return ValueListenableBuilder<Map<String, double>>(
+                      valueListenable: widget.stateManager.notifiers.adherenceRatesNotifier,
+                      builder: (context, rates, _) {
+                        // 遵守率が更新されたときに薬品別使用状況も計算
+                        // 初期表示時にも確実に反映される
+                        if (mounted) {
+                          _updateMedicationUsageData();
+                        }
+                        // 現在のデータで表示
+                        return ValueListenableBuilder<Map<String, int>>(
+                          valueListenable: _medicationUsageNotifier,
+                          builder: (context, medicationCount, _) {
+                            return _buildMedicationUsageChart(medicationCount);
+                          },
+                        );
+                      },
+                    );
                   },
                 ),
               ],
@@ -749,33 +829,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildMedicationUsageChart() {
-    // 初期表示時から反映されるように、データを直接取得
-    final medicationData = widget.stateManager.medicationData;
-    final medicationMemos = widget.stateManager.medicationMemos;
-    final weekdayStatus = widget.stateManager.weekdayMedicationStatus;
-
-    Map<String, int> medicationCount = {};
-
-    // 動的薬リストの統計（既存データから計算）
-    for (final dayData in medicationData.values) {
-      for (final timeSlot in dayData.values) {
-        if (timeSlot.medicine.isNotEmpty) {
-          medicationCount[timeSlot.medicine] = (medicationCount[timeSlot.medicine] ?? 0) + 1;
-        }
-      }
-    }
-
-    // 服用メモのチェック状態を統計に反映（既存データから計算）
-    // 初期表示時から既存のチェック状態を反映
-    for (final entry in weekdayStatus.entries) {
-      for (final memo in medicationMemos) {
-        if (entry.value[memo.id] == true) {
-          medicationCount[memo.name] = (medicationCount[memo.name] ?? 0) + 1;
-        }
-      }
-    }
-
+  Widget _buildMedicationUsageChart(Map<String, int> medicationCount) {
+    // 引数で受け取ったデータを使用（初期表示時から反映される）
     if (medicationCount.isEmpty) {
       return _buildEmptyCard(
         icon: Icons.medication,

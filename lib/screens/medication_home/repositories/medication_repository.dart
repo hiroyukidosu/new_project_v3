@@ -75,10 +75,11 @@ class MedicationRepository {
   }
 
   /// 曜日別メモの状態を読み込み
-  Future<Result<Map<String, Map<String, bool>>>> loadWeekdayStatus() async {
+  /// 戻り値: Map<月別キー, Map<日付文字列, Map<メモID, bool>>>
+  Future<Result<Map<String, Map<String, Map<String, bool>>>>> loadWeekdayStatus() async {
     try {
       final status = await _persistence.loadWeekdayMedicationStatus();
-      Logger.debug('曜日別メモ状態読み込み成功: ${status.length}件');
+      Logger.debug('曜日別メモ状態読み込み成功: ${status.length}件の月データ');
       return Success(status);
     } catch (e, stackTrace) {
       Logger.error('曜日別メモ状態読み込みエラー', e, stackTrace);

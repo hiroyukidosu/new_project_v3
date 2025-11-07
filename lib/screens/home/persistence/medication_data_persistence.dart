@@ -340,18 +340,32 @@ class MedicationDataPersistence {
   }
 
   /// 曜日別服用ステータスを読み込み
-  Future<Map<String, Map<String, bool>>> loadWeekdayMedicationStatus() async {
+  /// 戻り値: Map<月別キー, Map<日付文字列, Map<メモID, bool>>>
+  Future<Map<String, Map<String, Map<String, bool>>>> loadWeekdayMedicationStatus() async {
     try {
       await _ensureMigratedToHiveMonthly();
       final box = await _openAppDataBox();
-      final Map<String, Map<String, bool>> result = {};
+      final Map<String, Map<String, Map<String, bool>>> result = {};
       for (final key in box.keys) {
         if (key is String && _isMonthlyKey(key, _weekdayPrefix)) {
           final data = box.get(key);
           if (data is Map && data['weekdays'] is Map) {
-            result[key] = Map<String, bool>.from(
-              (data['weekdays'] as Map).map((k, v) => MapEntry(k.toString(), v == true))
-            );
+            final weekdays = data['weekdays'] as Map;
+            final monthData = <String, Map<String, bool>>{};
+            
+            // weekdaysは Map<日付文字列, Map<メモID, bool>> 形式
+            for (final dateEntry in weekdays.entries) {
+              final dateStr = dateEntry.key.toString();
+              final memoStatus = dateEntry.value;
+              
+              if (memoStatus is Map) {
+                monthData[dateStr] = Map<String, bool>.from(
+                  memoStatus.map((k, v) => MapEntry(k.toString(), v == true))
+                );
+              }
+            }
+            
+            result[key] = monthData;
           }
         }
       }
