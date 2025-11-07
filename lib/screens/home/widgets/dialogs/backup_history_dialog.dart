@@ -66,17 +66,10 @@ class BackupHistoryDialog extends StatelessWidget {
               itemBuilder: (context, index) {
                 final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
                 final createdAt = DateTime.parse(backup['createdAt'] as String);
-                final backupType = backup['type'] as String? ?? 'manual';
-                final isFull = backupType == 'full' || backupType == 'auto';
-                final isManual = backupType == 'manual';
 
-                // 各項目に異なる色を設定（手動：オレンジ、フル：緑）
-                final cardColor = isFull 
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.orange.withOpacity(0.1);
-                final borderColor = isFull 
-                    ? Colors.green
-                    : Colors.orange;
+                // すべて手動バックアップとして表示（オレンジ色）
+                final cardColor = Colors.orange.withOpacity(0.1);
+                final borderColor = Colors.orange;
                 
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4),
@@ -86,27 +79,27 @@ class BackupHistoryDialog extends StatelessWidget {
                     side: BorderSide(color: borderColor, width: 1),
                   ),
                   child: ListTile(
-                    leading: Icon(
-                      isFull ? Icons.schedule : Icons.backup,
-                      color: isFull ? Colors.green : Colors.orange,
+                    leading: const Icon(
+                      Icons.backup,
+                      color: Colors.orange,
                     ),
                     title: Text(
                       backup['name'] as String,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: isFull ? Colors.green.shade700 : Colors.orange.shade700,
+                        color: Colors.orange.shade700,
                       ),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
-                        Text(
-                          isFull ? 'フルバックアップ' : '手動バックアップ',
+                        const Text(
+                          '手動バックアップ',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: isFull ? Colors.green.shade600 : Colors.orange.shade600,
+                            color: Colors.orange,
                           ),
                         ),
                       ],
@@ -121,11 +114,10 @@ class BackupHistoryDialog extends StatelessWidget {
                             }
                             break;
                           case 'delete':
-                            if (isManual) {
-                              await onDelete(backup['key'] as String, index);
-                              if (context.mounted) {
-                                Navigator.of(context).pop();
-                              }
+                            // すべて手動バックアップとして扱うため、削除可能
+                            await onDelete(backup['key'] as String, index);
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
                             }
                             break;
                           case 'preview':
@@ -187,12 +179,12 @@ class BackupHistoryDialog extends StatelessWidget {
     final history = await BackupHistoryService.getBackupHistory();
     final allBackups = <Map<String, dynamic>>[];
 
-    // バックアップ履歴を追加（手動とフルバックアップを含む）
+    // バックアップ履歴を追加（すべて手動バックアップとして扱う）
     for (final backup in history) {
       allBackups.add({
         ...backup,
-        'type': backup['type'] ?? 'manual', // 既存のtypeを保持（'manual'または'full'）
-        'source': backup['type'] == 'full' ? 'フル' : '手動',
+        'type': 'manual', // すべて手動バックアップとして扱う
+        'source': '手動',
       });
     }
 
