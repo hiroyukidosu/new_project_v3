@@ -146,17 +146,16 @@ class BackupHistoryDialog extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (isManual)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text('削除'),
-                              ],
-                            ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('削除'),
+                            ],
                           ),
+                        ),
                       ],
                     ),
                   ),
