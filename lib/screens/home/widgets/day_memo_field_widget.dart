@@ -125,13 +125,17 @@ class _DayMemoFieldWidgetState extends State<DayMemoFieldWidget> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    '${DateFormat('yyyy年M月d日', 'ja_JP').format(widget.selectedDay!)}のメモ',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                      letterSpacing: 0.3,
+                  Expanded(
+                    child: Text(
+                      '${DateFormat('yyyy年M月d日', 'ja_JP').format(widget.selectedDay!)}のメモ',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade700,
+                        letterSpacing: 0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
