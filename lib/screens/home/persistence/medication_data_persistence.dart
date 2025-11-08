@@ -1,6 +1,8 @@
 // lib/screens/home/persistence/medication_data_persistence.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../models/medication_memo.dart';
@@ -145,8 +147,15 @@ class MedicationDataPersistence {
       // 型指定なしのBoxなので、intを直接保存可能
       await box.put(_dataVersionKey, _currentVersion);
       Logger.info('Hive monthly migration completed');
-    } catch (e) {
+    } catch (e, stackTrace) {
       Logger.error('Hive monthly migration failed', e);
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('Hive monthly migration failed: _ensureMigratedToHiveMonthly');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 
@@ -165,8 +174,15 @@ class MedicationDataPersistence {
 
       // 2. SharedPreferencesからバックアップ復元
       return await _loadFromSharedPreferences();
-    } catch (e) {
+    } catch (e, stackTrace) {
       Logger.error('メモ読み込みエラー', e);
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('メモ読み込みエラー: loadMedicationMemos');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       return [];
     }
   }

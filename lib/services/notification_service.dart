@@ -2,6 +2,8 @@
 // 通知関連サービス
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,8 +24,14 @@ void notificationActionHandler(NotificationResponse response) async {
       }
       // すべての通知をキャンセル（念のため）
       await notifications.cancelAll();
-    } catch (e) {
-      // 通知キャンセルエラーは無視
+    } catch (e, stackTrace) {
+      // Crashlyticsに記録（非致命的）
+      try {
+        FirebaseCrashlytics.instance.log('通知キャンセルエラー: cancelAllNotifications');
+        FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 }
@@ -88,15 +96,27 @@ class NotificationService {
             if (response.id != null) {
               try {
                 await _notifications.cancel(response.id!);
-              } catch (e) {
-                // 通知キャンセルエラーは無視
+              } catch (e, stackTrace) {
+                // Crashlyticsに記録（非致命的）
+                try {
+                  FirebaseCrashlytics.instance.log('通知キャンセルエラー: onDidReceiveNotificationResponse');
+                  FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+                } catch (_) {
+                  // Crashlytics記録失敗時は無視
+                }
               }
             }
             // すべての通知をキャンセル（念のため）
             try {
               await _notifications.cancelAll();
-            } catch (e) {
-              // 全キャンセルエラーは無視
+            } catch (e, stackTrace) {
+              // Crashlyticsに記録（非致命的）
+              try {
+                FirebaseCrashlytics.instance.log('通知全キャンセルエラー: onDidReceiveNotificationResponse');
+                FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+              } catch (_) {
+                // Crashlytics記録失敗時は無視
+              }
             }
             // フォアグラウンドでもコールバックを呼び出してアラームを停止（コミットbb37ef5の実装に合わせて）
             try {
@@ -105,8 +125,14 @@ class NotificationService {
               } else {
                 onNotificationTapped(response);
               }
-            } catch (e) {
-              // コールバックエラーは無視
+            } catch (e, stackTrace) {
+              // Crashlyticsに記録
+              try {
+                FirebaseCrashlytics.instance.log('通知コールバックエラー: onDidReceiveNotificationResponse');
+                FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+              } catch (_) {
+                // Crashlytics記録失敗時は無視
+              }
             }
             return;
           }
@@ -114,8 +140,14 @@ class NotificationService {
           if (response.id != null) {
             try {
               await _notifications.cancel(response.id!);
-            } catch (e) {
-              // 通知キャンセルエラーは無視
+            } catch (e, stackTrace) {
+              // Crashlyticsに記録（非致命的）
+              try {
+                FirebaseCrashlytics.instance.log('通知キャンセルエラー: onDidReceiveNotificationResponse (other)');
+                FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+              } catch (_) {
+                // Crashlytics記録失敗時は無視
+              }
             }
           }
           // コールバックを呼び出す
@@ -125,11 +157,23 @@ class NotificationService {
             } else {
               onNotificationTapped(response);
             }
-          } catch (e) {
-            // コールバックエラーは無視
+          } catch (e, stackTrace) {
+            // Crashlyticsに記録
+            try {
+              FirebaseCrashlytics.instance.log('通知コールバックエラー: onDidReceiveNotificationResponse (other)');
+              FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+            } catch (_) {
+              // Crashlytics記録失敗時は無視
+            }
           }
-        } catch (e) {
-          // 全体のエラーハンドリング（予期しないエラーを捕捉）
+        } catch (e, stackTrace) {
+          // Crashlyticsに記録（全体のエラーハンドリング）
+          try {
+            FirebaseCrashlytics.instance.log('通知サービス全体エラー: onDidReceiveNotificationResponse');
+            FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+          } catch (_) {
+            // Crashlytics記録失敗時は無視
+          }
         }
       },
       onDidReceiveBackgroundNotificationResponse: notificationActionHandler,
@@ -145,8 +189,14 @@ class NotificationService {
   static Future<void> _requestPermissions() async {
     try {
       await Permission.notification.request();
-    } catch (e) {
-      // エラーは無視
+    } catch (e, stackTrace) {
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('通知権限リクエストエラー: _requestPermissions');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 

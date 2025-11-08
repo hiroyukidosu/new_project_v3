@@ -2,6 +2,8 @@
 // アラーム管理のコアロジック
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:async';
 import '../models/alarm_model.dart';
 import '../utils/alarm_helpers.dart';
@@ -48,8 +50,14 @@ class AlarmService {
       
       try {
         await checkAlarms(isAlarmEnabled: true, alarms: []);
-      } catch (e) {
-        // エラーログは不要
+      } catch (e, stackTrace) {
+        // Crashlyticsに記録
+        try {
+          await FirebaseCrashlytics.instance.log('アラームチェックエラー: startAlarmCheck');
+          await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+        } catch (_) {
+          // Crashlytics記録失敗時は無視
+        }
       }
     });
   }
@@ -135,8 +143,14 @@ class AlarmService {
             await NotificationService.cancelNotification(_currentNotificationId!);
             _currentNotificationId = null;
           }
-        } catch (e) {
-          // エラーは無視（通知キャンセル失敗は致命的ではない）
+        } catch (e, stackTrace) {
+          // Crashlyticsに記録（非致命的）
+          try {
+            FirebaseCrashlytics.instance.log('通知自動キャンセルエラー');
+            FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+          } catch (_) {
+            // Crashlytics記録失敗時は無視
+          }
         }
       });
       
@@ -166,7 +180,14 @@ class AlarmService {
 
       // アラーム停止ダイアログ
       onAlarmStopDialog();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('アラーム発火エラー: triggerAlarm');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       if (!isMounted()) return;
       triggerStateUpdate();
     }
@@ -185,16 +206,28 @@ class AlarmService {
       if (_currentNotificationId != null) {
         try {
           await NotificationService.cancelNotification(_currentNotificationId!);
-        } catch (e) {
-          // 個別キャンセル失敗時は無視
+        } catch (e, stackTrace) {
+          // Crashlyticsに記録（非致命的）
+          try {
+            FirebaseCrashlytics.instance.log('通知個別キャンセルエラー');
+            FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+          } catch (_) {
+            // Crashlytics記録失敗時は無視
+          }
         }
       }
       
       // すべての通知をキャンセル（念のため）
       try {
         await NotificationService.cancelAllNotifications();
-      } catch (e) {
-        // 全キャンセル失敗時は無視
+      } catch (e, stackTrace) {
+        // Crashlyticsに記録（非致命的）
+        try {
+          FirebaseCrashlytics.instance.log('通知全キャンセルエラー');
+          FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+        } catch (_) {
+          // Crashlytics記録失敗時は無視
+        }
       }
       
       _currentNotificationId = null;
@@ -216,7 +249,14 @@ class AlarmService {
       if (isMounted()) {
         triggerStateUpdate();
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('アラーム停止エラー: stopAlarm');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       if (isMounted()) {
         triggerStateUpdate();
       }

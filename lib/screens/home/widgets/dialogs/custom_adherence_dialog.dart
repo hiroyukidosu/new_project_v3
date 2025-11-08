@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:intl/intl.dart';
 // import '../../../../helpers/calculations/adherence_calculator.dart'; // 実際の計算は親ウィジェットで行われる
 
@@ -129,6 +130,13 @@ class _CustomAdherenceDialogState extends State<CustomAdherenceDialog> {
     } catch (e, stackTrace) {
       debugPrint('❌ カスタム遵守率ダイアログ計算エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('カスタム遵守率ダイアログ計算エラー: CustomAdherenceDialog');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       // エラー時はダイアログを開いたままにする
       if (mounted) {
         setState(() => _isCalculating = false);

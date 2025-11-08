@@ -133,13 +133,29 @@ void _initializeNonCritical() {
 
 /// 早期に必要な同期/準同期初期化（エラーハンドラ、Firebase/Crashlyticsなど）
 Future<void> _initializeAppSyncEarly() async {
-  // Flutter フレームワークのエラーハンドラ
+  // Flutter フレームワークのエラーハンドラ（オーバーフローエラーも含む）
   FlutterError.onError = (FlutterErrorDetails errorDetails) {
+    // オーバーフローエラーの検出
+    final isOverflowError = errorDetails.exception.toString().contains('RenderFlex') ||
+        errorDetails.exception.toString().contains('overflowed') ||
+        errorDetails.exception.toString().contains('Overflow');
+    
+    // エラーの詳細情報をログに記録
+    if (isOverflowError) {
+      FirebaseCrashlytics.instance.log('UI Overflow Error: ${errorDetails.exception}');
+      FirebaseCrashlytics.instance.log('Stack: ${errorDetails.stack}');
+      FirebaseCrashlytics.instance.log('Context: ${errorDetails.context}');
+    }
+    
     // release でのみ Crashlytics 送信（開発ノイズ回避）
     if (kReleaseMode) {
       FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
     } else {
       FlutterError.dumpErrorToConsole(errorDetails);
+      // デバッグモードでもオーバーフローエラーは記録
+      if (isOverflowError) {
+        FirebaseCrashlytics.instance.log('Overflow Error (Debug): ${errorDetails.exception}');
+      }
     }
   };
 

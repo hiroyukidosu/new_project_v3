@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/medication_memo.dart';
 import '../config/storage_keys.dart';
@@ -39,8 +40,15 @@ class MedicationRepository {
       }
       
       Logger.info('MedicationRepository初期化完了');
-    } catch (e) {
+    } catch (e, stackTrace) {
       Logger.error('MedicationRepository初期化エラー', e);
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('MedicationRepository初期化エラー');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       rethrow;
     }
   }
