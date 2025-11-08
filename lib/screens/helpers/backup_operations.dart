@@ -256,7 +256,26 @@ class BackupOperations {
     );
     
     if (result != null && result.isNotEmpty) {
-      await backupHandler.performBackup(result, context);
+      try {
+        await backupHandler.performBackup(result, context);
+      } catch (e, stackTrace) {
+        debugPrint('❌ 手動バックアップ作成エラー: $e');
+        // Crashlyticsに記録
+        try {
+          await FirebaseCrashlytics.instance.log('手動バックアップ作成エラー: createManualBackup');
+          await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+        } catch (_) {
+          // Crashlytics記録失敗時は無視
+        }
+        if (onMountedCheck()) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('バックアップ作成に失敗しました: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -441,41 +460,6 @@ class BackupOperations {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('復元に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  /// 手動バックアップ作成
-  Future<void> createManualBackup() async {
-    if (!onMountedCheck()) return;
-    
-    try {
-      final backupKey = await backupHandler.createBackup();
-      if (onMountedCheck()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ バックアップを作成しました'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
-      debugPrint('❌ 手動バックアップ作成エラー: $e');
-      // Crashlyticsに記録
-      try {
-        await FirebaseCrashlytics.instance.log('手動バックアップ作成エラー: createManualBackup');
-        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
-      } catch (_) {
-        // Crashlytics記録失敗時は無視
-      }
-      if (onMountedCheck()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('バックアップ作成に失敗しました: $e'),
             backgroundColor: Colors.red,
           ),
         );
