@@ -2,7 +2,9 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../../models/medication_memo.dart';
 import '../../../models/medicine_data.dart';
 import '../../../models/medication_info.dart';
@@ -214,8 +216,15 @@ class HomePageStateManager {
   Future<void> _loadSavedData() async {
     try {
       await _loadAllData();
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('データ読み込みエラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('データ読み込みエラー: _loadSavedData');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 
@@ -237,8 +246,15 @@ class HomePageStateManager {
       await _loadAppSettings();
       
       debugPrint('全データ読み込み完了');
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('全データ読み込みエラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('全データ読み込みエラー: _loadAllData');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 

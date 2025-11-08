@@ -2,8 +2,10 @@
 // バックアップ関連の操作を集約
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../models/medication_memo.dart';
 import '../../models/medication_info.dart';
 import '../../models/medicine_data.dart';
@@ -200,8 +202,15 @@ class BackupOperations {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 復元エラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('バックアップ復元エラー: restoreBackup');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       if (onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -418,25 +427,56 @@ class BackupOperations {
             ),
           );
         }
-      } else {
-        if (onMountedCheck()) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ 復元可能なスナップショットが見つかりません'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 手動復元エラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('手動復元エラー: performManualRestore');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       if (onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ 復元エラー: $e'),
+            content: Text('復元に失敗しました: $e'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 手動バックアップ作成
+  Future<void> createManualBackup() async {
+    if (!onMountedCheck()) return;
+    
+    try {
+      final backupKey = await backupHandler.createBackup();
+      if (onMountedCheck()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ バックアップを作成しました'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ 手動バックアップ作成エラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('手動バックアップ作成エラー: createManualBackup');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
+      if (onMountedCheck()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('バックアップ作成に失敗しました: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }

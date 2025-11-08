@@ -2,7 +2,9 @@
 // 統計タブ - プロフェッショナルなデザイン
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:math' as math;
 import '../home/state/home_page_state_manager.dart';
 import '../helpers/calculations/adherence_calculator.dart';
@@ -96,8 +98,15 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           // 薬品別使用状況も初期表示時に反映されるように強制再描画
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 初期統計計算エラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('初期統計計算エラー: _calculateInitialStats');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 
@@ -149,6 +158,13 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     } catch (e, stackTrace) {
       debugPrint('❌ 薬品別使用状況更新エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('薬品別使用状況更新エラー: _updateMedicationUsageData');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 
@@ -181,8 +197,15 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       
       // 遵守率更新時に薬品別使用状況も更新
       await _updateMedicationUsageData();
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ 遵守率統計更新エラー: $e');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('遵守率統計更新エラー: _updateAdherenceStats');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
     }
   }
 
@@ -1234,8 +1257,15 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                   duration: const Duration(milliseconds: 500),
                   curve: Curves.easeOut,
                 );
-              } catch (e) {
+              } catch (e, stackTrace) {
                 debugPrint('❌ スクロールアニメーションエラー: $e');
+                // Crashlyticsに記録（非致命的）
+                try {
+                  FirebaseCrashlytics.instance.log('スクロールアニメーションエラー');
+                  FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+                } catch (_) {
+                  // Crashlytics記録失敗時は無視
+                }
               }
             }
           });
@@ -1244,6 +1274,13 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     } catch (e, stackTrace) {
       debugPrint('❌ カスタム遵守率計算エラー: $e');
       debugPrint('スタックトレース: $stackTrace');
+      // Crashlyticsに記録
+      try {
+        await FirebaseCrashlytics.instance.log('カスタム遵守率計算エラー: _calculateCustomAdherence');
+        await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      } catch (_) {
+        // Crashlytics記録失敗時は無視
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
