@@ -12,11 +12,13 @@ class AlarmController {
   final HomePageStateManager stateManager;
   final SnapshotPersistence snapshotPersistence;
   final VoidCallback onStateChanged;
+  final Future<void> Function()? onStopAlarm;
 
   AlarmController({
     required this.stateManager,
     required this.snapshotPersistence,
     required this.onStateChanged,
+    this.onStopAlarm,
   });
 
   /// アラーム追加
@@ -83,7 +85,8 @@ class AlarmController {
       final alarmList = stateManager.alarmList;
       if (index >= 0 && index < alarmList.length) {
         final alarm = alarmList[index];
-        final newEnabled = !(alarm['enabled'] as bool? ?? true);
+        final wasEnabled = alarm['enabled'] as bool? ?? true;
+        final newEnabled = !wasEnabled;
 
         await snapshotPersistence.saveSnapshotBeforeChange(
           'アラーム切替_${alarm['name']}_${newEnabled ? '有効' : '無効'}',
@@ -93,6 +96,12 @@ class AlarmController {
         alarm['enabled'] = newEnabled;
         stateManager.alarmList = List.from(alarmList);
         await HomePageAlarmHelper.saveAlarmData(stateManager.alarmList);
+        
+        // アラームが無効になった場合、再生中のアラームを停止
+        if (!newEnabled && wasEnabled && onStopAlarm != null) {
+          await onStopAlarm!();
+        }
+        
         onStateChanged();
       }
     } catch (e) {

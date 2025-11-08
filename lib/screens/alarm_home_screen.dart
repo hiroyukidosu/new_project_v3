@@ -429,8 +429,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   _isAlarmEnabled = value;
                 });
                 
-                if (!value && _isAlarmPlaying) {
-                  await _stopAlarm();
+                // アラームが無効になった場合、再生中のアラームを必ず停止
+                if (!value) {
+                  if (_isAlarmPlaying) {
+                    await _stopAlarm();
+                  }
+                  // 再生中でなくても、念のため停止処理を実行
+                  await _alarmService?.stopAlarm(_alarms);
                 }
                 
                 await _saveSettings();
@@ -493,14 +498,27 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             try {
                               await SnapshotService.saveBeforeChange('アラーム切り替え_${alarm.name}');
                               
+                              // 変更前の状態を保存
+                              final wasEnabled = alarm.enabled;
+                              
                               setState(() {
                                 _alarms[index] = alarm.copyWith(enabled: value);
                               });
                               
                               await _saveAlarms();
                               
-                              if (!value && _isAlarmPlaying) {
-                                await _stopAlarm();
+                              // アラームが無効になった場合、再生中のアラームを必ず停止
+                              if (!value && wasEnabled) {
+                                // このアラームが現在鳴っているかチェック
+                                final currentTime = DateTime.now();
+                                final currentTimeString = '${currentTime.hour.toString().padLeft(2, '0')}:${currentTime.minute.toString().padLeft(2, '0')}';
+                                final isCurrentAlarm = alarm.time == currentTimeString;
+                                
+                                if (isCurrentAlarm || _isAlarmPlaying) {
+                                  await _stopAlarm();
+                                }
+                                // 念のため、アラームサービスにも停止を指示
+                                await _alarmService?.stopAlarm(_alarms);
                               }
                             } catch (e) {
                               setState(() {
