@@ -54,7 +54,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBM6Qt8oKxlaEVx4j6m5yv2t3rbQnnkoqg',
-    appId: '1:1074871455961:android:9ca0a1957f3cee98ceeec8',
+    appId: '1:1074871455961:android:3ec0f5b69b07c4b8ceeec8',
     messagingSenderId: '1074871455961',
     projectId: 'hiroponapp',
     storageBucket: 'hiroponapp.firebasestorage.app',
