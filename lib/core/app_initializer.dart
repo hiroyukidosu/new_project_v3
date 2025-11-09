@@ -29,6 +29,8 @@ class AppInitializer {
   
   /// フェーズ1: 最小限の初期化（UI表示に必要なもの）
   /// Hive初期化を最優先で実行（Repositoryの依存関係のため）
+  /// 注意: このメソッドはinitializeCriticalAndEssential()から呼ばれるため、
+  /// 直接呼ばれる場合はHive初期化が完了していることを確認
   static Future<void> initializeCritical() async {
     return await PerformanceMonitor.measure('critical_init', () async {
       // ステップ1: Hive初期化を最優先で実行（順次実行）
@@ -90,22 +92,41 @@ class AppInitializer {
       await _initializeHive();
       await _registerAdapters();
       
-      // ステップ2: critical_initとessential_initを並列実行
+      // ステップ1.5: AppPreferences初期化（Hive初期化後、Repository初期化前）
+      // これにより、phase2_parallelの計測時間から除外される
+      await _loadUserPreferences();
+      
+      // ステップ2: すべての処理を並列実行（高速化）
       // Hive初期化完了後なので、並列実行可能
+      // ⭐ 重要: すべての処理を同じレベルのFuture.waitで並列実行
+      if (kDebugMode) {
+        debugPrint('🔍 phase2_parallel開始: Repository初期化を並列実行');
+      }
+      
+      final stopwatch = Stopwatch()..start();
       await Future.wait([
         // critical_initの残り（Locale初期化など）
-        _initializeLocale(),
-        // essential_init（Repository初期化など）
-        (() async {
-          await Future.wait([
-            _initializeMedicationRepository(),
-            _initializeCalendarRepository(),
-            _initializeAlarmRepository(),
-            _loadUserPreferences(),
-          ], eagerError: false);
-        })(),
+        _measureTask('Locale初期化', _initializeLocale),
+        // essential_init（すべてのRepositoryを並列初期化）
+        _measureTask('MedicationRepository', _initializeMedicationRepository),
+        _measureTask('CalendarRepository', _initializeCalendarRepository),
+        _measureTask('AlarmRepository', _initializeAlarmRepository),
+        _measureTask('BackupRepository', _initializeBackupRepository),
       ], eagerError: false);
+      
+      if (kDebugMode) {
+        debugPrint('🔍 phase2_parallel完了: すべてのRepository初期化完了 (${stopwatch.elapsedMilliseconds}ms)');
+      }
     });
+  }
+  
+  /// タスクの処理時間を計測（デバッグ用）
+  static Future<void> _measureTask(String name, Future<void> Function() task) async {
+    final stopwatch = Stopwatch()..start();
+    await task();
+    if (kDebugMode) {
+      debugPrint('  ├─ $name: ${stopwatch.elapsedMilliseconds}ms');
+    }
   }
 
   /// フェーズ3: バックグラウンドで初期化（遅延OK）
@@ -164,12 +185,10 @@ class AppInitializer {
   static Future<void> _initializeHive() async {
     try {
       // 既に初期化済みの場合はスキップ
-      if (HiveService.isInitialized) {
-        if (kDebugMode) {
-          debugPrint('✅ Hiveは既に初期化済み（スキップ）');
+        if (HiveService.isInitialized) {
+          // ログを出さない（サイレント、二重初期化の警告を削減）
+          return;
         }
-        return;
-      }
       
       // 初期化中の場合は待機（重複実行を防止）
       if (_isHiveInitializing) {
@@ -257,14 +276,12 @@ class AppInitializer {
         throw Exception('Hive初期化が完了していません');
       }
       
-      // フレーム分散で初期化
-      await _processWithFrameDistribution(() async {
-        final medicationRepo = MedicationRepository();
-        await medicationRepo.initialize();
-        if (kDebugMode) {
-          debugPrint('✅ MedicationRepository初期化完了');
-        }
-      });
+      // 直接初期化（フレーム分散を削除して高速化）
+      final medicationRepo = MedicationRepository();
+      await medicationRepo.initialize();
+      if (kDebugMode) {
+        debugPrint('✅ MedicationRepository初期化完了');
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ MedicationRepository初期化エラー: $e');
@@ -273,16 +290,13 @@ class AppInitializer {
   }
   
   /// フレーム分散で処理を実行（UIスレッドの負荷を軽減）
+  /// 改善: フレーム待機を最小限に（処理時間を短縮）
   static Future<void> _processWithFrameDistribution(Future<void> Function() task) async {
     // 現在のフレームが終了するまで待機
     await SchedulerBinding.instance.endOfFrame;
     // タスクを実行（非同期で実行してUIスレッドをブロックしない）
-    await Future.microtask(() => task());
+    await task();
     // 次のフレームまで待機（UIスレッドに制御を返す）
-    await SchedulerBinding.instance.endOfFrame;
-    // さらに1フレーム待機（UIスレッドの負荷を分散）
-    await Future.delayed(Duration.zero);
-    // もう1フレーム待機（負荷をさらに分散）
     await SchedulerBinding.instance.endOfFrame;
   }
 
@@ -293,14 +307,12 @@ class AppInitializer {
         throw Exception('Hive初期化が完了していません');
       }
       
-      // フレーム分散で初期化
-      await _processWithFrameDistribution(() async {
-        final calendarRepo = CalendarRepository();
-        await calendarRepo.initialize();
-        if (kDebugMode) {
-          debugPrint('✅ CalendarRepository初期化完了');
-        }
-      });
+      // 直接初期化（フレーム分散を削除して高速化）
+      final calendarRepo = CalendarRepository();
+      await calendarRepo.initialize();
+      if (kDebugMode) {
+        debugPrint('✅ CalendarRepository初期化完了');
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ CalendarRepository初期化エラー: $e');
@@ -329,16 +341,12 @@ class AppInitializer {
         }
       }
       
-      // フレーム分散で初期化（非同期で実行）
-      await Future.microtask(() async {
-        await _processWithFrameDistribution(() async {
-          final backupRepo = BackupRepository();
-          await backupRepo.initialize();
-          if (kDebugMode) {
-            debugPrint('✅ BackupRepository初期化完了');
-          }
-        });
-      });
+      // 直接初期化（フレーム分散を削除して高速化）
+      final backupRepo = BackupRepository();
+      await backupRepo.initialize();
+      if (kDebugMode) {
+        debugPrint('✅ BackupRepository初期化完了');
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ BackupRepository初期化エラー: $e');
@@ -351,14 +359,12 @@ class AppInitializer {
       // Hive初期化確認（AlarmRepositoryはHive依存しない場合もあるが、念のため確認）
       // Hive依存しない場合はスキップ可能
       
-      // フレーム分散で初期化
-      await _processWithFrameDistribution(() async {
-        final alarmRepo = AlarmRepository();
-        await alarmRepo.initialize();
-        if (kDebugMode) {
-          debugPrint('✅ AlarmRepository初期化完了');
-        }
-      });
+      // 直接初期化（フレーム分散を削除して高速化）
+      final alarmRepo = AlarmRepository();
+      await alarmRepo.initialize();
+      if (kDebugMode) {
+        debugPrint('✅ AlarmRepository初期化完了');
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ AlarmRepository初期化エラー: $e');

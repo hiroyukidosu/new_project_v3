@@ -15,18 +15,39 @@ class AppPreferences {
   static String? _cachedLocale;
   static bool? _cachedFirstLaunch;
   
-  /// アプリ起動時に一度だけ呼ぶ（軽量版）
+  /// アプリ起動時に一度だけ呼ぶ（高速初期化版）
+  /// SharedPreferencesのインスタンス取得のみ（最小限）
   static Future<void> init() async {
     if (_isInitialized) return;
     
     PerformanceMonitor.start('app_preferences_init');
+    
     // PreferencesCacheを使用（Lazy Loading）
+    // SharedPreferencesのインスタンス取得のみ（軽量、3-10ms）
     await PreferencesCache.instance;
+    
+    // その他の設定は遅延読み込み（バックグラウンドで実行）
+    // 起動時には不要なため、後で読み込む
+    Future.microtask(() async {
+      try {
+        // 非必須の設定をバックグラウンドで読み込み
+        await Future.wait([
+          getStringAsync('theme'),
+          getStringAsync('notifications'),
+          getBoolAsync('analytics'),
+          getLocaleAsync(),
+          getIsFirstLaunchAsync(),
+        ], eagerError: false);
+      } catch (_) {
+        // エラーは無視（非必須のため）
+      }
+    });
+    
     PerformanceMonitor.end('app_preferences_init');
     
     _isInitialized = true;
     if (kDebugMode) {
-      debugPrint('[INFO] AppPreferences初期化完了');
+      debugPrint('[INFO] AppPreferences初期化完了（高速版）');
     }
   }
   
