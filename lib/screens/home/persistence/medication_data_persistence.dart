@@ -159,13 +159,31 @@ class MedicationDataPersistence {
     }
   }
 
-  /// Hiveボックスからメモを読み込み
+  /// Hiveボックスからメモを読み込み（フレーム分散対応）
   Future<List<MedicationMemo>> loadMedicationMemos() async {
     try {
       // 1. Hiveから読み込み
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
-        final memos = box.values.toList();
+        
+        // フレーム分散で読み込み（大量データの場合に有効）
+        final allValues = box.values;
+        final memos = <MedicationMemo>[];
+        
+        // バッチ処理でフレーム分散
+        const batchSize = 50;
+        int count = 0;
+        
+        for (final memo in allValues) {
+          memos.add(memo);
+          count++;
+          
+          // 一定数ごとにUIスレッドに制御を返す
+          if (count % batchSize == 0) {
+            await Future.delayed(Duration.zero);
+          }
+        }
+        
         if (memos.isNotEmpty) {
           Logger.info('Hiveから読み込み成功: ${memos.length}件');
           return memos;

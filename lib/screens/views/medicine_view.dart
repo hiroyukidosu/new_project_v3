@@ -84,15 +84,37 @@ class MedicineView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.green.shade400,
+                      Colors.green.shade600,
+                    ],
+                  ),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.medication, color: Colors.blue),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.medication, color: Colors.white, size: 24),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -103,21 +125,29 @@ class MedicineView extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
                           if (totalPages > 1)
                             Text(
                               'ページ ${currentPage + 1} / $totalPages',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey,
+                                color: Colors.white.withOpacity(0.9),
                               ),
                             ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.blue),
+                      icon: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(Icons.add_circle, color: Colors.white, size: 24),
+                      ),
                       onPressed: () => _addMemo(context),
                       tooltip: 'メモを追加',
                     ),
@@ -216,7 +246,7 @@ class MedicineView extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addMemo(context),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.green.shade600,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -373,7 +403,33 @@ class MedicineView extends StatelessWidget {
                       ),
                       if (memo.dosageFrequency >= 6) ...[
                         const SizedBox(width: 8),
-                        const Icon(Icons.warning, size: 16, color: Colors.orange),
+                        GestureDetector(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Row(
+                                  children: [
+                                    Icon(Icons.warning, color: Colors.orange, size: 24),
+                                    SizedBox(width: 8),
+                                    Text('服用回数が多い'),
+                                  ],
+                                ),
+                                content: const Text(
+                                  '服用回数が多いため医師の指示に従ってください',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    child: const Text('了解'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          child: const Icon(Icons.warning, size: 16, color: Colors.orange),
+                        ),
                       ],
                     ],
                   ),

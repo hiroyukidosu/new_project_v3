@@ -26,7 +26,7 @@ class CurrentTimeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
@@ -40,20 +40,20 @@ class CurrentTimeCard extends StatelessWidget {
           Text(
             currentTime,
             style: const TextStyle(
-              fontSize: 48,
+              fontSize: 36,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             currentDate,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               color: Colors.white70,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           // アラーム有効/無効トグル
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -61,13 +61,13 @@ class CurrentTimeCard extends StatelessWidget {
               Icon(
                 isAlarmEnabled ? Icons.alarm : Icons.alarm_off,
                 color: Colors.white,
-                size: 24,
+                size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 isAlarmEnabled ? 'アラーム有効' : 'アラーム無効',
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                 ),
@@ -85,17 +85,17 @@ class CurrentTimeCard extends StatelessWidget {
           ),
           // アラーム停止ボタン（再生中の場合のみ表示）
           if (isAlarmPlaying) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: onStopAlarm,
-              icon: const Icon(Icons.stop, color: Colors.white),
+              icon: const Icon(Icons.stop, color: Colors.white, size: 18),
               label: const Text(
                 'アラーム停止',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Colors.white, fontSize: 14),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
             ),
           ],

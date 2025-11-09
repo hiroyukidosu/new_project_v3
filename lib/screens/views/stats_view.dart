@@ -345,7 +345,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '服薬状況の詳細な分析',
+                        '服用状況',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey.shade600,
@@ -370,9 +370,9 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
         final periods = ['7日', '30日', '90日'];
         final colors = [
-          [Colors.blue.shade400, Colors.blue.shade600],
-          [Colors.green.shade400, Colors.green.shade600],
-          [Colors.orange.shade400, Colors.orange.shade600],
+          [Colors.blue.shade600, Colors.blue.shade800],      // 鮮やかな青
+          [Colors.green.shade600, Colors.green.shade800],    // 鮮やかな緑
+          [Colors.red.shade600, Colors.red.shade800],         // 鮮やかな赤
         ];
         final icons = [
           Icons.calendar_today,

@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../models/medication_memo.dart';
@@ -9,6 +10,7 @@ import '../../../models/medication_info.dart';
 import '../../../models/medicine_data.dart';
 import '../../../services/medication_service.dart';
 import '../../../services/app_preferences.dart';
+import '../../../services/daily_memo_service.dart';
 import '../../../utils/logger.dart';
 import 'medication_data_persistence.dart';
 import 'alarm_data_persistence.dart';
@@ -17,12 +19,22 @@ import 'alarm_data_persistence.dart';
 class DataSyncManager {
   final MedicationDataPersistence _medicationPersistence;
   final AlarmDataPersistence _alarmPersistence;
+  // 初期化中のデータ保存を抑制するフラグ
+  static bool _isInitializing = true;
 
   DataSyncManager({
     required MedicationDataPersistence medicationPersistence,
     required AlarmDataPersistence alarmPersistence,
   })  : _medicationPersistence = medicationPersistence,
         _alarmPersistence = alarmPersistence;
+
+  /// 初期化完了を通知（初期化後のデータ保存を有効化）
+  static void completeInitialization() {
+    _isInitializing = false;
+    if (kDebugMode) {
+      debugPrint('✅ 初期化完了、データ保存を有効化');
+    }
+  }
 
   /// すべてのデータを保存
   Future<void> saveAllData({
@@ -37,6 +49,14 @@ class DataSyncManager {
     required String memoText,
     required Map<String, double> adherenceRates,
   }) async {
+    // 初期化中は保存をスキップ（重複実行を防止）
+    if (_isInitializing) {
+      if (kDebugMode) {
+        debugPrint('ℹ️ 初期化中のため保存をスキップ');
+      }
+      return;
+    }
+    
     try {
       // メモステータスを保存
       await _medicationPersistence.saveMedicationMemoStatus(medicationMemoStatus);
@@ -56,6 +76,11 @@ class DataSyncManager {
       // 選択日の服用データを保存
       if (selectedDay != null) {
         await _saveMedicationDataForDay(selectedDay, addedMedications);
+        
+        // メモを保存（DailyMemoServiceを使用）
+        final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
+        await DailyMemoService.setMemo(dateStr, memoText);
+        Logger.info('メモ保存完了: $dateStr');
       }
       
       Logger.info('全データ保存完了');

@@ -12,6 +12,7 @@ import '../home/widgets/day_memo_field_widget.dart';
 import '../home/widgets/day_medication_records_widget.dart';
 import '../home/widgets/day_color_picker_dialog.dart';
 import '../../services/trial_service.dart';
+import '../../services/daily_memo_service.dart';
 import '../../widgets/trial_limit_dialog.dart';
 import '../home/widgets/medication_item_widgets.dart';
 
@@ -109,7 +110,25 @@ class _CalendarViewState extends State<CalendarView> {
 
   /// 選択日のデータ読み込み
   Future<void> _loadDataForSelectedDay() async {
-    // StateManager.init()で既に読み込まれているため、必要に応じて追加処理を実装
+    try {
+      final selectedDay = widget.stateManager.selectedDay;
+      if (selectedDay != null) {
+        // 日付ベースでメモを読み込む
+        final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
+        final savedMemo = await DailyMemoService.getMemo(dateStr);
+        
+        // メモをStateManagerに反映
+        if (savedMemo.isNotEmpty) {
+          widget.stateManager.memoController.text = savedMemo;
+          widget.stateManager.notifiers.memoTextNotifier.value = savedMemo;
+        } else {
+          widget.stateManager.memoController.clear();
+          widget.stateManager.notifiers.memoTextNotifier.value = '';
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 選択日メモ読み込みエラー: $e');
+    }
   }
 
   /// 日付の色変更
@@ -463,29 +482,59 @@ class _CalendarViewState extends State<CalendarView> {
                               onMemoUnfocused: () {},
                               onMemoSaved: () async {
                                 if (mounted) {
-                                  await widget.stateManager.saveAllData();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Row(
-                                        children: [
-                                          const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              '${DateFormat('yyyy年M月d日', 'ja_JP').format(selectedDay!)}のメモを保存しました',
-                                              style: const TextStyle(fontSize: 14),
+                                  try {
+                                    // メモテキストを確実に保存（日付ベース）
+                                    // selectedDayは正規化された日付なので、そのまま使用
+                                    final selectedDayForSave = widget.stateManager.selectedDay ?? selectedDay;
+                                    final dateStr = DateFormat('yyyy-MM-dd').format(selectedDayForSave);
+                                    final memoText = widget.stateManager.memoController.text;
+                                    
+                                    // DailyMemoServiceに直接保存（日付ベース）
+                                    await DailyMemoService.setMemo(dateStr, memoText);
+                                    
+                                    // その他のデータも保存
+                                    await widget.stateManager.saveAllData();
+                                    
+                                    // フォーカス状態を解除（レイアウト再計算を防ぐため、少し待ってから）
+                                    await Future.delayed(const Duration(milliseconds: 150));
+                                    
+                                    if (mounted) {
+                                      widget.stateManager.isMemoFocused = false;
+                                      
+                                      // スナックバーを表示（レイアウトが安定してから）
+                                      await Future.delayed(const Duration(milliseconds: 100));
+                                      
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                                const SizedBox(width: 8),
+                                                Flexible(
+                                                  child: Text(
+                                                    '${DateFormat('yyyy年M月d日', 'ja_JP').format(selectedDay!)}のメモを保存しました',
+                                                    style: const TextStyle(fontSize: 14),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: Colors.green,
+                                            duration: const Duration(seconds: 2),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                      backgroundColor: Colors.green,
-                                      duration: const Duration(seconds: 2),
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                  );
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    debugPrint('❌ メモ保存エラー: $e');
+                                  }
                                 }
                               },
                               onMemoCleared: () async {

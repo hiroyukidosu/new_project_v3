@@ -12,6 +12,9 @@ class InAppPurchaseService {
   
   static final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   static StreamSubscription<List<PurchaseDetails>>? _subscription;
+  // 購入履歴復元の重複実行を防ぐフラグ
+  static bool _isRestoringPurchases = false;
+  static bool _hasRestoredPurchases = false;
   
   // 製品情報を取得
   static Future<ProductDetails?> getProductDetails() async {
@@ -151,6 +154,24 @@ class InAppPurchaseService {
   
   // 購入履歴を復元
   static Future<void> restorePurchases() async {
+    // 重複実行を防止
+    if (_isRestoringPurchases) {
+      if (kDebugMode) {
+        debugPrint('ℹ️ 購入履歴復元は既に実行中（スキップ）');
+      }
+      return;
+    }
+    
+    // 既に復元済みの場合はスキップ（オプション）
+    if (_hasRestoredPurchases) {
+      if (kDebugMode) {
+        debugPrint('ℹ️ 購入履歴は既に復元済み（スキップ）');
+      }
+      return;
+    }
+    
+    _isRestoringPurchases = true;
+    
     try {
       // アプリ内課金が利用可能か確認
       final bool isAvailable = await _inAppPurchase.isAvailable();
@@ -160,7 +181,7 @@ class InAppPurchaseService {
       }
       
       if (kDebugMode) {
-        debugPrint('購入履歴の復元を開始します');
+        debugPrint('🔄 購入履歴の復元を開始します');
       }
       await _inAppPurchase.restorePurchases();
       
@@ -186,8 +207,15 @@ class InAppPurchaseService {
           }
         }
       });
+      
+      _hasRestoredPurchases = true;
+      if (kDebugMode) {
+        debugPrint('✅ 購入履歴復元完了');
+      }
     } catch (e) {
       debugPrint('購入履歴復元エラー: $e');
+    } finally {
+      _isRestoringPurchases = false;
     }
   }
   

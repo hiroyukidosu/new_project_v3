@@ -415,7 +415,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisSize: MainAxisSize.max,
           children: [
@@ -452,7 +452,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               isAlarmPlaying: _isAlarmPlaying,
             ),
             
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             
             // アラーム一覧
             Expanded(

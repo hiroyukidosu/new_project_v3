@@ -10,6 +10,7 @@ import '../../models/medication_memo.dart';
 import '../../models/medication_info.dart';
 import '../../services/app_preferences.dart';
 import '../../services/medication_service.dart';
+import '../../services/daily_memo_service.dart';
 import '../home/state/home_page_state_manager.dart';
 import '../home/helpers/data_persistence_helper.dart';
 import '../home/persistence/medication_data_persistence.dart';
@@ -201,32 +202,34 @@ class DataOperations {
   /// メモ読み込み
   Future<void> loadMemo() async {
     final selectedDay = stateManager?.selectedDay;
-    if (selectedDay != null && stateManager != null && stateManager!.isInitialized) {
+    final manager = stateManager;
+    if (selectedDay != null && manager != null && manager.isInitialized) {
       final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
-      final prefs = await SharedPreferences.getInstance();
-      final memo = prefs.getString('memo_$dateStr');
-      if (memo != null && stateManager != null) {
-        stateManager?.memoController.text = memo;
+      // DailyMemoServiceを使用してHiveから読み込む
+      final memo = await DailyMemoService.getMemo(dateStr);
+      if (memo.isNotEmpty) {
+        manager.memoController.text = memo;
+        manager.notifiers.memoTextNotifier.value = memo;
       }
     }
   }
 
-  /// 選択日付のメモ読み込み
+  /// 選択日付のメモ読み込み（日付ベース）
   Future<void> loadMemoForSelectedDate() async {
     try {
       final selectedDay = stateManager?.selectedDay;
-      if (selectedDay != null && stateManager != null) {
+      final manager = stateManager;
+      if (selectedDay != null && manager != null) {
+        // 日付ベースでメモを読み込む（yyyy-MM-dd形式）
         final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
-        final prefs = await SharedPreferences.getInstance();
-        final savedMemo = prefs.getString('memo_$dateStr');
-        if (stateManager != null) {
-          if (savedMemo != null) {
-            stateManager?.memoController.text = savedMemo;
-            stateManager?.notifiers.memoTextNotifier.value = savedMemo;
-          } else {
-            stateManager?.memoController.clear();
-            stateManager?.notifiers.memoTextNotifier.value = '';
-          }
+        // DailyMemoServiceを使用してHiveから読み込む（日付ベース）
+        final savedMemo = await DailyMemoService.getMemo(dateStr);
+        if (savedMemo.isNotEmpty) {
+          manager.memoController.text = savedMemo;
+          manager.notifiers.memoTextNotifier.value = savedMemo;
+        } else {
+          manager.memoController.clear();
+          manager.notifiers.memoTextNotifier.value = '';
         }
       }
     } catch (e) {

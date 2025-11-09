@@ -45,4 +45,48 @@ class PerformanceMonitor {
     _timers.clear();
     _counters.clear();
   }
+
+  /// タスクの実行時間を計測（改善版）
+  static Future<T> measure<T>(
+    String label,
+    Future<T> Function() task,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      final result = await task();
+      stopwatch.stop();
+      if (kDebugMode) {
+        debugPrint('⏱️ [$label] ${stopwatch.elapsedMilliseconds}ms');
+      }
+      return result;
+    } catch (e) {
+      stopwatch.stop();
+      if (kDebugMode) {
+        debugPrint('❌ [$label] Failed after ${stopwatch.elapsedMilliseconds}ms: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// 同期的なタスクの実行時間を計測
+  static T measureSync<T>(
+    String label,
+    T Function() task,
+  ) {
+    final stopwatch = Stopwatch()..start();
+    try {
+      final result = task();
+      stopwatch.stop();
+      if (kDebugMode) {
+        debugPrint('⏱️ [$label] ${stopwatch.elapsedMilliseconds}ms');
+      }
+      return result;
+    } catch (e) {
+      stopwatch.stop();
+      if (kDebugMode) {
+        debugPrint('❌ [$label] Failed after ${stopwatch.elapsedMilliseconds}ms: $e');
+      }
+      rethrow;
+    }
+  }
 }

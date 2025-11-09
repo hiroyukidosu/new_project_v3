@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../../models/medication_memo.dart';
 import '../../../models/medicine_data.dart';
 import '../../../models/medication_info.dart';
+import '../../../services/daily_memo_service.dart';
 import '../persistence/medication_data_persistence.dart';
 import '../persistence/alarm_data_persistence.dart';
 import '../persistence/snapshot_persistence.dart';
@@ -200,16 +201,28 @@ class HomePageStateManager {
     notifiers.selectedDayNotifier.value = selectedDay;
     notifiers.focusedDayNotifier.value = focusedDay;
 
-    // データ読み込み（非同期）
+    // データ読み込み（非同期、メインスレッドをブロックしない）
+    // クリティカルなデータのみ先に読み込み
     await _loadSavedData();
-    await _loadMedicationMemosWithRetry();
-    paginationManager.setAllMemos(medicationMemos);
+    
+    // メモ読み込みはバックグラウンドで実行（UIをブロックしない）
+    Future.microtask(() async {
+      try {
+        await _loadMedicationMemosWithRetry();
+        paginationManager.setAllMemos(medicationMemos);
+      } catch (e) {
+        debugPrint('❌ メモ読み込みエラー（バックグラウンド）: $e');
+      }
+    });
 
     if (selectedDates.isEmpty) {
       selectedDates.add(_normalizeDate(DateTime.now()));
     }
 
     isInitialized = true;
+    
+    // 初期化完了を通知（データ保存を有効化）
+    DataSyncManager.completeInitialization();
   }
 
   /// データ読み込み
@@ -228,24 +241,40 @@ class HomePageStateManager {
     }
   }
 
-  /// 全データ読み込み
+  /// 全データ読み込み（フレーム分散対応）
   Future<void> _loadAllData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      await _loadMemoStatus();
-      await _loadMedicationList();
-      await _loadAlarmData();
-      await _loadCalendarMarks();
-      await _loadUserPreferences();
-      await _loadMedicationData();
-      await _loadDayColors();
-      await _loadStatistics();
-      await _loadWeekdayMedicationStatus();
-      await _loadMedicationDoseStatus();
-      await _loadAppSettings();
+      // クリティカルなデータのみ先に読み込み（UI表示に必要）
+      await Future.wait([
+        _loadMemoStatus(),
+        _loadMedicationList(),
+        _loadAlarmData(),
+        _loadCalendarMarks(),
+        _loadUserPreferences(),
+      ], eagerError: false);
       
-      debugPrint('全データ読み込み完了');
+      // 非クリティカルなデータはバックグラウンドで読み込み
+      Future.microtask(() async {
+        try {
+          await Future.wait([
+            _loadMedicationData(),
+            _loadDayColors(),
+            _loadStatistics(),
+            _loadWeekdayMedicationStatus(),
+            _loadMedicationDoseStatus(),
+            _loadAppSettings(),
+          ], eagerError: false);
+          
+          // 選択日のメモを読み込む
+          await _loadSelectedDayMemo();
+          
+          debugPrint('全データ読み込み完了');
+        } catch (e) {
+          debugPrint('非クリティカルデータ読み込みエラー: $e');
+        }
+      });
     } catch (e, stackTrace) {
       debugPrint('全データ読み込みエラー: $e');
       // Crashlyticsに記録
@@ -351,6 +380,26 @@ class HomePageStateManager {
   /// アプリ設定読み込み
   Future<void> _loadAppSettings() async {
     // 実装は簡略化
+  }
+
+  /// 選択日のメモ読み込み（日付ベース）
+  Future<void> _loadSelectedDayMemo() async {
+    try {
+      if (selectedDay != null) {
+        // 日付ベースでメモを読み込む（yyyy-MM-dd形式）
+        final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay!);
+        final savedMemo = await DailyMemoService.getMemo(dateStr);
+        if (savedMemo.isNotEmpty) {
+          memoController.text = savedMemo;
+          notifiers.memoTextNotifier.value = savedMemo;
+        } else {
+          memoController.clear();
+          notifiers.memoTextNotifier.value = '';
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 選択日メモ読み込みエラー: $e');
+    }
   }
 
   /// 服用メモ読み込み（リトライ付き）
