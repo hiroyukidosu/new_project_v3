@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import '../core/app_initializer.dart';
 import '../utils/performance_monitor.dart';
 import '../screens/medication_alarm_app.dart';
@@ -111,21 +112,24 @@ class _OptimizedSplashScreenState extends State<OptimizedSplashScreen> {
       builder: (context, snapshot) {
         // クリティカルな初期化が完了したらメインアプリに遷移
         if (_isCriticalDone || snapshot.connectionState == ConnectionState.done) {
-          // スプラッシュ画面を少し長めに表示（フリーズ感の解消）
-          // 最低500msは表示してから遷移
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Future.delayed(const Duration(milliseconds: 500), () {
+              // ネイティブスプラッシュスクリーンを削除（初期化完了後）
+              FlutterNativeSplash.remove();
+              
+              // スプラッシュ画面を少し長めに表示（フリーズ感の解消）
+              // 最低500msは表示してから遷移
+              WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => const MedicationAlarmApp(),
-                    ),
-                  );
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => const MedicationAlarmApp(),
+                        ),
+                      );
+                    }
+                  });
                 }
               });
-            }
-          });
         }
 
         // スプラッシュ画面を表示

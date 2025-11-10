@@ -104,14 +104,23 @@ class AppInitializer {
       }
       
       final stopwatch = Stopwatch()..start();
+      
+      // 並列処理をグループ化してCPU負荷を分散（Daveyエラー軽減）
+      // グループ1: 軽量な初期化と主要Repository
+      // グループ2: その他のRepository
       await Future.wait([
-        // critical_initの残り（Locale初期化など）
-        _measureTask('Locale初期化', _initializeLocale),
-        // essential_init（すべてのRepositoryを並列初期化）
-        _measureTask('MedicationRepository', _initializeMedicationRepository),
-        _measureTask('CalendarRepository', _initializeCalendarRepository),
-        _measureTask('AlarmRepository', _initializeAlarmRepository),
-        _measureTask('BackupRepository', _initializeBackupRepository),
+        // グループ1: Locale + 主要Repository（並列実行）
+        Future.wait([
+          _measureTask('Locale初期化', _initializeLocale),
+          _measureTask('MedicationRepository', _initializeMedicationRepository),
+          _measureTask('CalendarRepository', _initializeCalendarRepository),
+        ], eagerError: false),
+        
+        // グループ2: その他のRepository（並列実行）
+        Future.wait([
+          _measureTask('AlarmRepository', _initializeAlarmRepository),
+          _measureTask('BackupRepository', _initializeBackupRepository),
+        ], eagerError: false),
       ], eagerError: false);
       
       if (kDebugMode) {

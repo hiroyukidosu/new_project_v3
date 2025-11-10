@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'firebase_options.dart';
 import 'utils/locale_helper.dart';
 import 'utils/performance_monitor.dart';
@@ -22,7 +23,10 @@ import 'screens/medication_alarm_app.dart';
 void main() {
   // Zone Mismatchを回避: すべての初期化とrunAppを同じZone内で実行
   runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+    final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+    
+    // ネイティブスプラッシュスクリーンを保持（フレームスキップを隠す）
+    FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
     
     // 画面向きを固定（軽量処理のみ）
     SystemChrome.setPreferredOrientations([
