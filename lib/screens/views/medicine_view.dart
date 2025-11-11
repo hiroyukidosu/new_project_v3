@@ -12,7 +12,7 @@ import '../../widgets/trial_limit_dialog.dart';
 
 /// 服用メモビュー
 /// StateManagerに完全依存し、コールバック関数は親から受け取る
-class MedicineView extends StatelessWidget {
+class MedicineView extends StatefulWidget {
   final HomePageStateManager stateManager;
   final void Function(MedicationMemo)? onEditMemo;
   final void Function(String)? onDeleteMemo;
@@ -25,6 +25,32 @@ class MedicineView extends StatelessWidget {
     this.onDeleteMemo,
     this.onMarkAsTaken,
   });
+
+  @override
+  State<MedicineView> createState() => _MedicineViewState();
+}
+
+class _MedicineViewState extends State<MedicineView> {
+  @override
+  void initState() {
+    super.initState();
+    // メモリストの変更を監視
+    widget.stateManager.notifiers.medicationMemosNotifier.addListener(_onMemosChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.stateManager.notifiers.medicationMemosNotifier.removeListener(_onMemosChanged);
+    super.dispose();
+  }
+
+  void _onMemosChanged() {
+    if (mounted) {
+      setState(() {
+        // メモリストが変更されたので画面を更新
+      });
+    }
+  }
 
   /// メモ追加
   Future<void> _addMemo(BuildContext context) async {
@@ -39,36 +65,64 @@ class MedicineView extends StatelessWidget {
     }
 
     if (!context.mounted) return;
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => MemoDialog(
-        existingMemos: stateManager.medicationMemos,
+        existingMemos: widget.stateManager.medicationMemos,
         onMemoAdded: (memo) async {
-          await stateManager.memoEventHandler.addMemo(
+          await widget.stateManager.memoEventHandler.addMemo(
             memo,
-            stateManager.medicationMemos,
+            widget.stateManager.medicationMemos,
             500, // maxMemos
-            () async => await stateManager.saveAllData(),
+            () async => await widget.stateManager.saveAllData(),
           );
+          // メモ追加後に画面を更新
+          if (mounted) {
+            setState(() {
+              // 状態を更新して画面を再構築
+            });
+          }
           if (context.mounted) {
             Navigator.of(context).pop();
           }
         },
       ),
     );
+    // ダイアログが閉じられた後も画面を更新
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!stateManager.isInitialized) {
+    if (!widget.stateManager.isInitialized) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final memos = stateManager.paginationManager.displayedMemos;
-    final hasMore = stateManager.paginationManager.hasMore;
-    final currentPage = stateManager.paginationManager.currentPage;
-    final totalMemos = stateManager.medicationMemos.length;
-    final totalPages = (totalMemos / stateManager.paginationManager.pageSize).ceil();
+    // ValueListenableBuilderでメモリストの変更を監視
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.stateManager.notifiers.medicationMemosNotifier,
+      builder: (context, _, __) {
+        final memos = widget.stateManager.paginationManager.displayedMemos;
+        final hasMore = widget.stateManager.paginationManager.hasMore;
+        final currentPage = widget.stateManager.paginationManager.currentPage;
+        final totalMemos = widget.stateManager.medicationMemos.length;
+        final totalPages = (totalMemos / widget.stateManager.paginationManager.pageSize).ceil();
+        
+        return _buildContent(context, memos, hasMore, currentPage, totalMemos, totalPages);
+      },
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    List<MedicationMemo> memos,
+    bool hasMore,
+    int currentPage,
+    int totalMemos,
+    int totalPages,
+  ) {
 
     return Scaffold(
       body: Padding(
@@ -184,7 +238,7 @@ class MedicineView extends StatelessWidget {
                       ),
                     )
                   : ListView.builder(
-                      controller: stateManager.medicationHistoryScrollController,
+                      controller: widget.stateManager.medicationHistoryScrollController,
                       padding: const EdgeInsets.all(8),
                       itemCount: memos.length + (hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
@@ -194,7 +248,10 @@ class MedicineView extends StatelessWidget {
                             child: Center(
                               child: ElevatedButton(
                                 onPressed: () {
-                                  stateManager.paginationManager.loadNextPage();
+                                  widget.stateManager.paginationManager.loadNextPage();
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
                                 },
                                 child: const Text('次のページを読み込む'),
                               ),
@@ -224,7 +281,10 @@ class MedicineView extends StatelessWidget {
                         icon: const Icon(Icons.chevron_left),
                         onPressed: currentPage > 0
                             ? () {
-                                stateManager.paginationManager.goToPage(currentPage - 1);
+                                widget.stateManager.paginationManager.goToPage(currentPage - 1);
+                                if (mounted) {
+                                  setState(() {});
+                                }
                               }
                             : null,
                       ),
@@ -233,7 +293,10 @@ class MedicineView extends StatelessWidget {
                         icon: const Icon(Icons.chevron_right),
                         onPressed: hasMore
                             ? () {
-                                stateManager.paginationManager.loadNextPage();
+                                widget.stateManager.paginationManager.loadNextPage();
+                                if (mounted) {
+                                  setState(() {});
+                                }
                               }
                             : null,
                       ),
@@ -334,13 +397,13 @@ class MedicineView extends StatelessWidget {
                     }
                     switch (value) {
                       case 'taken':
-                        if (onMarkAsTaken != null) onMarkAsTaken!(memo);
+                        if (widget.onMarkAsTaken != null) widget.onMarkAsTaken!(memo);
                         break;
                       case 'edit':
-                        if (onEditMemo != null) onEditMemo!(memo);
+                        if (widget.onEditMemo != null) widget.onEditMemo!(memo);
                         break;
                       case 'delete':
-                        if (onDeleteMemo != null) onDeleteMemo!(memo.id);
+                        if (widget.onDeleteMemo != null) widget.onDeleteMemo!(memo.id);
                         break;
                     }
                   },

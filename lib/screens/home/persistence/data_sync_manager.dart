@@ -61,6 +61,12 @@ class DataSyncManager {
       // メモステータスを保存
       await _medicationPersistence.saveMedicationMemoStatus(medicationMemoStatus);
       
+      // 曜日別服用ステータスを保存
+      await _medicationPersistence.saveWeekdayMedicationStatus(weekdayMedicationStatus);
+      
+      // 服用回数別ステータスを保存（重要: カレンダーページのチェック状態を保存）
+      await _medicationPersistence.saveMedicationDoseStatus(weekdayMedicationDoseStatus);
+      
       // 追加薬品リストを保存
       await _saveMedicationList(addedMedications);
       
@@ -83,7 +89,7 @@ class DataSyncManager {
         Logger.info('メモ保存完了: $dateStr');
       }
       
-      Logger.info('全データ保存完了');
+      Logger.info('全データ保存完了（服用状況を含む）');
     } catch (e) {
       Logger.error('全データ保存エラー', e);
       rethrow;

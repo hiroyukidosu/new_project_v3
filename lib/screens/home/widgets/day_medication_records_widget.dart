@@ -58,7 +58,10 @@ class DayMedicationRecordsWidget extends StatelessWidget {
     }
 
     final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay!);
-    final weekday = selectedDay!.weekday % 7;
+    // 重要: DateTime.weekdayは1=月曜日, 2=火曜日, ..., 7=日曜日
+    // selectedWeekdaysは0=月曜日, 1=火曜日, ..., 6=日曜日
+    // 変換: (weekday - 1) % 7 で 0-6 の範囲に変換
+    final weekday = (selectedDay!.weekday - 1) % 7;
     final dayMemos = medicationMemos.where((memo) {
       return memo.selectedWeekdays.isNotEmpty && memo.selectedWeekdays.contains(weekday);
     }).toList();

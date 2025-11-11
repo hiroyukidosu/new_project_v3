@@ -28,6 +28,9 @@ class HomePageStateNotifiers {
   /// カスタム遵守率結果のNotifier
   final ValueNotifier<double?> customAdherenceResultNotifier = ValueNotifier<double?>(null);
   
+  /// メモリストのNotifier
+  final ValueNotifier<int> medicationMemosNotifier = ValueNotifier<int>(0);
+  
   /// すべてのNotifierを破棄
   void dispose() {
     memoTextNotifier.dispose();
@@ -38,6 +41,7 @@ class HomePageStateNotifiers {
     currentTabIndexNotifier.dispose();
     adherenceRatesNotifier.dispose();
     customAdherenceResultNotifier.dispose();
+    medicationMemosNotifier.dispose();
   }
 }
 

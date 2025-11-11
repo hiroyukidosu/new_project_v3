@@ -9,8 +9,13 @@ class Logger {
     if (_shouldLog()) debugPrint('[INFO] $message');
   }
   
-  static void error(String message, [dynamic error]) {
-    if (_shouldLog()) debugPrint('[ERROR] $message: $error');
+  static void error(String message, [dynamic error, StackTrace? stackTrace]) {
+    if (_shouldLog()) {
+      debugPrint('[ERROR] $message: $error');
+      if (stackTrace != null && kDebugMode) {
+        debugPrint('[ERROR] StackTrace: $stackTrace');
+      }
+    }
   }
   
   static void warning(String message) {

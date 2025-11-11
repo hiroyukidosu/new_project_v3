@@ -9,6 +9,7 @@ import '../../../models/medication_memo.dart';
 import '../../../models/medicine_data.dart';
 import '../../../models/medication_info.dart';
 import '../../../services/daily_memo_service.dart';
+import '../../../utils/logger.dart';
 import '../persistence/medication_data_persistence.dart';
 import '../persistence/alarm_data_persistence.dart';
 import '../persistence/snapshot_persistence.dart';
@@ -21,6 +22,7 @@ import '../business/pagination_manager.dart';
 import 'home_page_state_notifiers.dart';
 import '../../helpers/home_page_data_helper.dart';
 import '../../helpers/home_page_alarm_helper.dart';
+import '../../helpers/calculations/adherence_calculator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ホームページの状態を集中管理するクラス
@@ -132,13 +134,19 @@ class HomePageStateManager {
 
     medicationEventHandler = MedicationEventHandler(
       persistence: medicationDataPersistence,
-      onStatusUpdate: (memoId, isChecked) => medicationMemoStatus[memoId] = isChecked,
+      onStatusUpdate: (memoId, isChecked) {
+        medicationMemoStatus[memoId] = isChecked;
+        // 状態変更後に自動保存（デバウンス付き）
+        _debouncedSave();
+      },
       onDoseStatusUpdate: (memoId, doseIndex, isChecked) {
         if (selectedDay != null) {
           final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay!);
           weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
           weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
           weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
+          // 状態変更後に自動保存（デバウンス付き）
+          _debouncedSave();
         }
       },
     );
@@ -149,6 +157,8 @@ class HomePageStateManager {
       onMemoAdded: (memo) {
         medicationMemos.add(memo);
         paginationManager.setAllMemos(medicationMemos);
+        // Notifierを更新して画面に通知（リストの長さを変更して通知）
+        notifiers.medicationMemosNotifier.value = medicationMemos.length;
       },
       onMemoUpdated: (memo) {
         final index = medicationMemos.indexWhere((m) => m.id == memo.id);
@@ -156,6 +166,8 @@ class HomePageStateManager {
           medicationMemos[index] = memo;
         }
         paginationManager.setAllMemos(medicationMemos);
+        // Notifierを更新して画面に通知（リストの長さを変更して通知）
+        notifiers.medicationMemosNotifier.value = medicationMemos.length;
       },
       onMemoDeleted: (memoId) {
         medicationMemos.removeWhere((memo) => memo.id == memoId);
@@ -165,6 +177,8 @@ class HomePageStateManager {
         for (final dateStr in weekdayMedicationDoseStatus.keys) {
           weekdayMedicationDoseStatus[dateStr]?.remove(memoId);
         }
+        // Notifierを更新して画面に通知（リストの長さを変更して通知）
+        notifiers.medicationMemosNotifier.value = medicationMemos.length;
       },
       onShowSnackBar: (message) {
         // SnackBar表示は呼び出し側で実装
@@ -374,7 +388,15 @@ class HomePageStateManager {
 
   /// 服用回数別状態読み込み
   Future<void> _loadMedicationDoseStatus() async {
-    weekdayMedicationDoseStatus = await medicationDataPersistence.loadMedicationDoseStatus() ?? {};
+    try {
+      final loadedStatus = await medicationDataPersistence.loadMedicationDoseStatus();
+      weekdayMedicationDoseStatus = loadedStatus ?? {};
+      debugPrint('✅ 服用回数別状態読み込み完了: ${weekdayMedicationDoseStatus.length}件の日付データ');
+    } catch (e, stackTrace) {
+      debugPrint('❌ 服用回数別状態読み込みエラー: $e');
+      debugPrint('スタックトレース: $stackTrace');
+      weekdayMedicationDoseStatus = {};
+    }
   }
 
   /// アプリ設定読み込み
@@ -409,6 +431,9 @@ class HomePageStateManager {
         debugPrint('🔄 服用メモ読み込み試行 $attempt/$maxRetries');
         
         medicationMemos = await medicationDataPersistence.loadMedicationMemos();
+        paginationManager.setAllMemos(medicationMemos);
+        // Notifierを更新して画面に通知（リストの長さを変更して通知）
+        notifiers.medicationMemosNotifier.value = medicationMemos.length;
         
         // 初回読み込み時に古いメモをアーカイブ（バックグラウンドで実行）
         if (attempt == 1) {
@@ -420,6 +445,8 @@ class HomePageStateManager {
                 // アーカイブ後、メモリストを再読み込み
                 medicationMemos = await medicationDataPersistence.loadMedicationMemos();
                 paginationManager.setAllMemos(medicationMemos);
+                // Notifierを更新して画面に通知（リストの長さを変更して通知）
+                notifiers.medicationMemosNotifier.value = medicationMemos.length;
               }
             } catch (e) {
               debugPrint('⚠️ アーカイブ処理エラー: $e');
@@ -442,6 +469,98 @@ class HomePageStateManager {
         } else {
           await Future.delayed(Duration(milliseconds: 500 * attempt));
         }
+      }
+    }
+  }
+
+  /// デバウンス付き保存（服用状況変更時の自動保存用）
+  void _debouncedSave() {
+    saveDebounceTimer?.cancel();
+    saveDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      final stopwatch = Stopwatch()..start();
+      // まずデータを保存
+      await saveAllData();
+      // 服用状況変更後に遵守率を再計算（最新の状態を反映）
+      // 注意: saveAllData()の後に呼ぶことで、最新のweekdayMedicationDoseStatusが反映される
+      await updateAdherenceRates();
+      stopwatch.stop();
+      if (kDebugMode) {
+        debugPrint('✅ デバウンス保存完了: 遵守率も更新済み (処理時間: ${stopwatch.elapsedMilliseconds}ms)');
+      }
+    });
+  }
+
+  /// 遵守率を更新（服用状況変更時に呼ばれる）
+  Future<void> updateAdherenceRates() async {
+    try {
+      final stats = <String, double>{};
+      // 最新の状態を取得（参照ではなく、現在の値を取得）
+      final medicationData = Map<String, Map<String, MedicationInfo>>.from(this.medicationData);
+      final medicationMemos = List<MedicationMemo>.from(this.medicationMemos);
+      final weekdayStatus = Map<String, Map<String, bool>>.from(this.weekdayMedicationStatus);
+      final memoStatus = Map<String, bool>.from(this.medicationMemoStatus);
+      // 重要: weekdayMedicationDoseStatusは深いコピーを作成（最新の状態を確実に取得）
+      final doseStatus = <String, Map<String, Map<int, bool>>>{};
+      for (final dateEntry in this.weekdayMedicationDoseStatus.entries) {
+        final dateMap = <String, Map<int, bool>>{};
+        for (final memoEntry in dateEntry.value.entries) {
+          dateMap[memoEntry.key] = Map<int, bool>.from(memoEntry.value);
+        }
+        doseStatus[dateEntry.key] = dateMap;
+      }
+
+      if (kDebugMode) {
+        debugPrint('🔄 遵守率再計算開始: 服用回数別ステータス=${doseStatus.length}件の日付');
+        // デバッグ: 服用回数別ステータスの内容を確認（最大5件）
+        for (final dateEntry in doseStatus.entries.take(5)) {
+          debugPrint('  📅 日付: ${dateEntry.key}, メモ数: ${dateEntry.value.length}');
+          for (final memoEntry in dateEntry.value.entries) {
+            final checkedCount = memoEntry.value.values.where((checked) => checked).length;
+            if (checkedCount > 0) {
+              debugPrint('    💊 メモID: ${memoEntry.key}, チェック済み: $checkedCount回');
+            }
+          }
+        }
+      }
+
+      final stopwatch = Stopwatch()..start();
+      for (final period in [7, 30, 90]) {
+        final rate = AdherenceCalculator.calculateCustomAdherence(
+          days: period,
+          medicationData: medicationData,
+          medicationMemos: medicationMemos,
+          weekdayMedicationStatus: weekdayStatus,
+          medicationMemoStatus: memoStatus,
+          getMedicationMemoCheckedCountForDate: (memoId, dateStr) {
+            // 最新のweekdayMedicationDoseStatusを参照（カレンダーページのチェック状態を反映）
+            final doseStatusForDate = doseStatus[dateStr]?[memoId];
+            if (doseStatusForDate == null) {
+              // データが存在しない場合は0を返す（チェックされていない）
+              return 0;
+            }
+            // チェック済みの服用回数をカウント
+            final checkedCount = doseStatusForDate.values.where((isChecked) => isChecked).length;
+            return checkedCount;
+          },
+        );
+        stats['${period}日'] = rate;
+        if (kDebugMode) {
+          debugPrint('📈 ${period}日間の遵守率: ${rate.toStringAsFixed(2)}%');
+        }
+      }
+      stopwatch.stop();
+
+      adherenceRates = stats;
+      notifiers.adherenceRatesNotifier.value = stats;
+      if (kDebugMode) {
+        debugPrint('✅ 遵守率更新完了: ${stats.toString()} (計算時間: ${stopwatch.elapsedMilliseconds}ms)');
+      }
+    } catch (e, stackTrace) {
+      // エラーは常にログに出力（本番環境でも重要）
+      Logger.error('遵守率更新エラー', e, stackTrace: stackTrace);
+      if (kDebugMode) {
+        debugPrint('❌ 遵守率更新エラー: $e');
+        debugPrint('スタックトレース: $stackTrace');
       }
     }
   }
@@ -474,6 +593,7 @@ class HomePageStateManager {
         memoText: memoController.text,
         adherenceRates: adherenceRates,
       );
+      debugPrint('✅ 全データ保存完了（服用状況を含む）');
     } catch (e) {
       debugPrint('データ保存エラー: $e');
     }

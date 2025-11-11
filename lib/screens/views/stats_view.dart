@@ -10,6 +10,7 @@ import '../home/state/home_page_state_manager.dart';
 import '../helpers/calculations/adherence_calculator.dart';
 import '../helpers/home_page_stats_helper.dart';
 import '../home/widgets/dialogs/custom_adherence_dialog.dart';
+import '../../../models/medication_memo.dart';
 
 /// 統計ビュー
 /// StateManagerに完全依存
@@ -110,7 +111,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     }
   }
 
-  /// 薬品別使用状況のデータを更新（遵守率グラフと同じタイミングで実行）
+  /// 薬品別使用状況のデータを更新（服用状況を正しく反映）
   Future<void> _updateMedicationUsageData() async {
     if (!mounted) return;
     
@@ -123,25 +124,46 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
       final medicationData = widget.stateManager.medicationData;
       final medicationMemos = widget.stateManager.medicationMemos;
-      final weekdayStatus = widget.stateManager.weekdayMedicationStatus;
+      final doseStatus = widget.stateManager.weekdayMedicationDoseStatus; // 服用回数別ステータスを使用
 
       Map<String, int> medicationCount = {};
 
       // 動的薬リストの統計（既存データから計算）
       for (final dayData in medicationData.values) {
         for (final timeSlot in dayData.values) {
-          if (timeSlot.medicine.isNotEmpty) {
+          if (timeSlot.medicine.isNotEmpty && timeSlot.checked) {
             medicationCount[timeSlot.medicine] = (medicationCount[timeSlot.medicine] ?? 0) + 1;
           }
         }
       }
 
-      // 服用メモのチェック状態を統計に反映（既存データから計算）
-      // 初期表示時から既存のチェック状態を反映
-      for (final entry in weekdayStatus.entries) {
-        for (final memo in medicationMemos) {
-          if (entry.value[memo.id] == true) {
-            medicationCount[memo.name] = (medicationCount[memo.name] ?? 0) + 1;
+      // 服用メモのチェック状態を統計に反映（weekdayMedicationDoseStatusから計算）
+      // 各日付の服用回数別ステータスを確認して、チェック済みの回数をカウント
+      for (final dateEntry in doseStatus.entries) {
+        final dateStr = dateEntry.key;
+        final memoMap = dateEntry.value;
+        
+        for (final memoEntry in memoMap.entries) {
+          final memoId = memoEntry.key;
+          final doseMap = memoEntry.value;
+          
+          // チェック済みの服用回数をカウント
+          final checkedCount = doseMap.values.where((isChecked) => isChecked).length;
+          
+          if (checkedCount > 0) {
+            // メモを検索
+            final memo = medicationMemos.firstWhere(
+              (m) => m.id == memoId,
+              orElse: () => MedicationMemo(
+                id: memoId,
+                name: '不明',
+                type: '薬品',
+                createdAt: DateTime.now(),
+              ),
+            );
+            
+            // チェック済みの回数を加算（1日あたりの服用回数ではなく、実際にチェックされた回数）
+            medicationCount[memo.name] = (medicationCount[memo.name] ?? 0) + checkedCount;
           }
         }
       }
@@ -150,9 +172,9 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       _medicationUsageData = medicationCount;
       if (mounted) {
         _medicationUsageNotifier.value = Map<String, int>.from(medicationCount);
-        // データが更新されたことをログに出力
-        if (medicationCount.isNotEmpty) {
-          debugPrint('✅ 薬品別使用状況更新: ${medicationCount.length}種類の薬品');
+        // データが更新されたことをログに出力（デバッグモードのみ、重複を避ける）
+        if (kDebugMode && medicationCount.isNotEmpty) {
+          debugPrint('✅ 薬品別使用状況更新: ${medicationCount.length}種類の薬品（服用状況反映済み）');
         }
       }
     } catch (e, stackTrace) {
@@ -170,30 +192,9 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
   Future<void> _updateAdherenceStats() async {
     try {
-      final stats = <String, double>{};
-      final medicationData = widget.stateManager.medicationData;
-      final medicationMemos = widget.stateManager.medicationMemos;
-      final weekdayStatus = widget.stateManager.weekdayMedicationStatus;
-      final memoStatus = widget.stateManager.medicationMemoStatus;
-
-      for (final period in [7, 30, 90]) {
-        final rate = AdherenceCalculator.calculateCustomAdherence(
-          days: period,
-          medicationData: medicationData,
-          medicationMemos: medicationMemos,
-          weekdayMedicationStatus: weekdayStatus,
-          medicationMemoStatus: memoStatus,
-          getMedicationMemoCheckedCountForDate: (memoId, dateStr) {
-            final doseStatus = widget.stateManager.weekdayMedicationDoseStatus[dateStr]?[memoId];
-            if (doseStatus == null) return 0;
-            return doseStatus.values.where((isChecked) => isChecked).length;
-          },
-        );
-        stats['${period}日'] = rate;
-      }
-
-      widget.stateManager.adherenceRates = stats;
-      widget.stateManager.notifiers.adherenceRatesNotifier.value = stats;
+      // StateManagerのupdateAdherenceRates()を使用（統一的な計算）
+      // これにより、カレンダーページのチェックが正しく反映される
+      await widget.stateManager.updateAdherenceRates();
       
       // 遵守率更新時に薬品別使用状況も更新
       await _updateMedicationUsageData();
@@ -345,7 +346,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '服用状況',
+                        '服用状況の詳細',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey.shade600,
@@ -1226,9 +1227,14 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         medicationMemoStatus: widget.stateManager.medicationMemoStatus,
         getMedicationMemoCheckedCountForDate: (memoId, dateStr) {
           try {
+            // 最新のweekdayMedicationDoseStatusを参照（カレンダーページのチェック状態を反映）
             final doseStatus = widget.stateManager.weekdayMedicationDoseStatus[dateStr]?[memoId];
-            if (doseStatus == null) return 0;
-            return doseStatus.values.where((isChecked) => isChecked).length;
+            if (doseStatus == null) {
+              return 0;
+            }
+            // チェック済みの服用回数をカウント
+            final checkedCount = doseStatus.values.where((isChecked) => isChecked).length;
+            return checkedCount;
           } catch (e) {
             debugPrint('❌ メモチェック回数取得エラー: $e');
             return 0;

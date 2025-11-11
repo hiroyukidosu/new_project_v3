@@ -816,27 +816,35 @@ class _CalendarViewState extends State<CalendarView> {
                         onDoseStatusChanged: (memoId, doseIndex, isChecked) async {
                           if (selectedDay != null) {
                             final dateStr = DateFormat('yyyy-MM-dd').format(selectedDay);
+                            
+                            // スナップショット保存
                             await widget.stateManager.snapshotPersistence.saveSnapshotBeforeChange(
                               '服用回数チェック_${widget.stateManager.medicationMemos.firstWhere((m) => m.id == memoId).name}_${doseIndex + 1}回目_$dateStr',
                               () => widget.stateManager.backupHandler.createBackupData('変更前_服用回数チェック'),
                             );
-                            widget.stateManager.weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
-                            widget.stateManager.weekdayMedicationDoseStatus.putIfAbsent(dateStr, () => {});
-                            widget.stateManager.weekdayMedicationDoseStatus[dateStr]!.putIfAbsent(memoId, () => {});
-                            widget.stateManager.weekdayMedicationDoseStatus[dateStr]![memoId]![doseIndex] = isChecked;
                             
+                            // 状態を更新（重要: medicationEventHandler経由で更新することで、onDoseStatusUpdateコールバックが呼ばれ、_debouncedSaveが実行される）
+                            // onDoseStatusUpdateコールバック内でweekdayMedicationDoseStatusが更新される
+                            await widget.stateManager.medicationEventHandler.onDosageChecked(
+                              memoId,
+                              doseIndex,
+                              isChecked,
+                              dateStr,
+                              widget.stateManager.weekdayMedicationDoseStatus, // 全体の状態を渡す
+                            );
+                            
+                            // メモの完全チェック状態を更新（onDoseStatusUpdateで更新された後の状態を使用）
                             final memo = widget.stateManager.medicationMemos.firstWhere((m) => m.id == memoId);
                             final checkedCount = widget.stateManager.weekdayMedicationDoseStatus[dateStr]?[memoId]?.values.where((checked) => checked).length ?? 0;
+                            widget.stateManager.weekdayMedicationStatus.putIfAbsent(dateStr, () => {});
                             widget.stateManager.weekdayMedicationStatus[dateStr]![memoId] = checkedCount == memo.dosageFrequency;
                             widget.stateManager.medicationMemoStatus[memoId] = checkedCount == memo.dosageFrequency;
                             
                             setState(() {});
-                            await widget.stateManager.saveAllData();
                             
                             // 統計を再計算（チェック状況が反映されるように）
-                            if (widget.onCalculateAdherenceStats != null) {
-                              await widget.onCalculateAdherenceStats!();
-                            }
+                            // _debouncedSave内でupdateAdherenceRatesが呼ばれるが、即座に反映させるためここでも呼ぶ
+                            await widget.stateManager.updateAdherenceRates();
                           }
                         },
                         onEditMemo: widget.onEditMemo ?? (memo) {},

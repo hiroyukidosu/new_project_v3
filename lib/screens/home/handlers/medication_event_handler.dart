@@ -32,20 +32,34 @@ class MedicationEventHandler {
   }
 
   /// 服用回数のチェック状態を変更
-  Future<void> onDosageChecked(String memoId, int doseIndex, bool isChecked, String dateStr) async {
+  Future<void> onDosageChecked(
+    String memoId, 
+    int doseIndex, 
+    bool isChecked, 
+    String dateStr,
+    Map<String, Map<String, Map<int, bool>>>? fullDoseStatus,
+  ) async {
     try {
       Logger.debug('服用回数チェック状態変更: $memoId, 回数=$doseIndex, 日付=$dateStr');
       
       // 状態を更新
       onDoseStatusUpdate(memoId, doseIndex, isChecked);
       
-      // 永続化
-      final doseStatus = <String, Map<String, Map<int, bool>>>{
-        dateStr: {
-          memoId: {doseIndex: isChecked}
-        }
-      };
-      await _persistence.saveMedicationDoseStatus(doseStatus);
+      // 永続化（全体の状態を保存）
+      if (fullDoseStatus != null) {
+        // 全体の状態を保存（既存のデータとマージされる）
+        await _persistence.saveMedicationDoseStatus(fullDoseStatus);
+        Logger.debug('服用回数別ステータス保存完了（全体）: ${fullDoseStatus.length}件の日付');
+      } else {
+        // 全体の状態が提供されない場合は、単一の日付のみ保存
+        final doseStatus = <String, Map<String, Map<int, bool>>>{
+          dateStr: {
+            memoId: {doseIndex: isChecked}
+          }
+        };
+        await _persistence.saveMedicationDoseStatus(doseStatus);
+        Logger.debug('服用回数別ステータス保存完了（単一日付）: $dateStr');
+      }
     } catch (e) {
       Logger.error('服用回数チェック状態変更エラー', e);
     }

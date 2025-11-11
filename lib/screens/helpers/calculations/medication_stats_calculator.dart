@@ -12,7 +12,10 @@ class MedicationStatsCalculator {
     required int Function(String, String) getMedicationMemoCheckedCountForDate,
   }) {
     final dateStr = DateFormat('yyyy-MM-dd').format(day);
-    final weekday = day.weekday % 7;
+    // 重要: DateTime.weekdayは1=月曜日, 2=火曜日, ..., 7=日曜日
+    // selectedWeekdaysは0=月曜日, 1=火曜日, ..., 6=日曜日
+    // 変換: (weekday - 1) % 7 で 0-6 の範囲に変換
+    final weekday = (day.weekday - 1) % 7;
     
     int totalMedications = 0;
     int takenMedications = 0;

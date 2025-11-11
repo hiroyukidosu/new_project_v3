@@ -746,7 +746,12 @@ class _MedicationHomePageState extends State<MedicationHomePage>
                 onMarkAsTaken: _markAsTaken,
                 onShowMemoDetailDialog: (context, name, notes) => _dependencies!.handlers.main.showMemoDetailDialog(name, notes),
                 onShowWarningDialog: () => _dependencies!.handlers.main.showWarningDialog(),
-                onCalculateAdherenceStats: _calculateAdherenceStats,
+                onCalculateAdherenceStats: () async {
+                  // 遵守率を再計算（服用状況変更時に呼ばれる）
+                  if (_dependencies != null) {
+                    await _dependencies!.stateManager.updateAdherenceRates();
+                  }
+                },
             ),
       // 注意: FloatingActionButtonは各View（特にMedicineView）で個別に処理
       floatingActionButton: null,
