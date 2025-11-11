@@ -67,96 +67,115 @@ class BackupHistoryDialog extends StatelessWidget {
                 final backup = allBackups[allBackups.length - 1 - index]; // 新しい順に表示
                 final createdAt = DateTime.parse(backup['createdAt'] as String);
 
-                // すべて手動バックアップとして表示（オレンジ色）
-                final cardColor = Colors.orange.withOpacity(0.1);
-                final borderColor = Colors.orange;
+                // すべて手動バックアップとして表示（見やすい色に変更）
+                final cardColor = Colors.blue.shade50; // 薄い青
+                final textColor = Colors.blue.shade800; // 濃い青のテキスト
                 
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   color: cardColor,
+                  elevation: 2,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: borderColor, width: 1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.backup,
-                      color: Colors.orange,
-                    ),
-                    title: Text(
-                      backup['name'] as String,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange.shade700,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.backup,
+                              color: Colors.blue.shade700,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  backup['name'] as String,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  DateFormat('yyyy年MM月dd日 HH:mm').format(createdAt),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            onSelected: (value) async {
+                              switch (value) {
+                                case 'restore':
+                                  await onRestore(backup['key'] as String);
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop();
+                                  }
+                                  break;
+                                case 'delete':
+                                  // すべて手動バックアップとして扱うため、削除可能
+                                  await onDelete(backup['key'] as String, index);
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop();
+                                  }
+                                  break;
+                                case 'preview':
+                                  await onPreview(backup['key'] as String);
+                                  break;
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'restore',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.restore, color: Colors.blue),
+                                    SizedBox(width: 8),
+                                    Text('復元'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'preview',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility, color: Colors.green),
+                                    SizedBox(width: 8),
+                                    Text('プレビュー'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('削除'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
-                        const Text(
-                          '手動バックアップ',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) async {
-                        switch (value) {
-                          case 'restore':
-                            await onRestore(backup['key'] as String);
-                            if (context.mounted) {
-                              Navigator.of(context).pop();
-                            }
-                            break;
-                          case 'delete':
-                            // すべて手動バックアップとして扱うため、削除可能
-                            await onDelete(backup['key'] as String, index);
-                            if (context.mounted) {
-                              Navigator.of(context).pop();
-                            }
-                            break;
-                          case 'preview':
-                            await onPreview(backup['key'] as String);
-                            break;
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'restore',
-                          child: Row(
-                            children: [
-                              Icon(Icons.restore, color: Colors.blue),
-                              SizedBox(width: 8),
-                              Text('復元'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'preview',
-                          child: Row(
-                            children: [
-                              Icon(Icons.visibility, color: Colors.green),
-                              SizedBox(width: 8),
-                              Text('プレビュー'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('削除'),
-                            ],
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 );

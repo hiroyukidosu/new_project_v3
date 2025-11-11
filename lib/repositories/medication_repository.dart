@@ -91,22 +91,23 @@ class MedicationRepository {
   }
   
   /// Isolateでメモを読み込む（静的メソッド）
-  /// 最近30日分のみ読み込んでパフォーマンスを最適化
+  /// 最近2年分のみ読み込んでパフォーマンスを最適化（10年運用対応）
   static List<MedicationMemo> _loadMemosInIsolate(Box<MedicationMemo> box) {
-    final cutoffDate = DateTime.now().subtract(const Duration(days: 30));
+    // 2年分のみ読み込む（10年運用時のパフォーマンス最適化）
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 365 * 2));
+    
     return box.values
         .where((memo) {
-          // 日付フィールドがある場合は最近30日分のみ
-          // 日付フィールドがない場合は全て読み込む（後方互換性）
+          // createdAtでフィルタリング（2年以内のメモのみ）
           try {
-            // MedicationMemoにdateフィールドがあるかチェック
-            // 実際のモデル構造に応じて調整が必要
-            return true; // 一旦全て読み込む（後で最適化）
+            return memo.createdAt.isAfter(cutoffDate);
           } catch (_) {
-            return true;
+            // エラー時は安全のため除外
+            return false;
           }
         })
-        .toList();
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt)); // 新しい順にソート
   }
   
   /// 最近30日分のメモのみ取得（軽量版）

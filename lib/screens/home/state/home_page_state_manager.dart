@@ -402,13 +402,30 @@ class HomePageStateManager {
     }
   }
 
-  /// 服用メモ読み込み（リトライ付き）
+  /// 服用メモ読み込み（リトライ付き、アーカイブ処理も含む）
   Future<void> _loadMedicationMemosWithRetry({int maxRetries = 3}) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         debugPrint('🔄 服用メモ読み込み試行 $attempt/$maxRetries');
         
         medicationMemos = await medicationDataPersistence.loadMedicationMemos();
+        
+        // 初回読み込み時に古いメモをアーカイブ（バックグラウンドで実行）
+        if (attempt == 1) {
+          Future.microtask(() async {
+            try {
+              final archivedCount = await medicationDataPersistence.archiveOldMemos(keepYears: 2);
+              if (archivedCount > 0) {
+                debugPrint('✅ 古いメモをアーカイブ: ${archivedCount}件（バックグラウンド）');
+                // アーカイブ後、メモリストを再読み込み
+                medicationMemos = await medicationDataPersistence.loadMedicationMemos();
+                paginationManager.setAllMemos(medicationMemos);
+              }
+            } catch (e) {
+              debugPrint('⚠️ アーカイブ処理エラー: $e');
+            }
+          });
+        }
         
         if (medicationMemos.isNotEmpty || attempt == maxRetries) {
           debugPrint('✅ 服用メモ読み込み成功: ${medicationMemos.length}件（試行$attempt回目）');
@@ -429,9 +446,22 @@ class HomePageStateManager {
     }
   }
 
-  /// 全データ保存
+  /// 全データ保存（アーカイブ処理も含む）
   Future<void> saveAllData() async {
     try {
+      // 古いメモをアーカイブ（2年以上前のメモを自動アーカイブ）
+      try {
+        final archivedCount = await medicationDataPersistence.archiveOldMemos(keepYears: 2);
+        if (archivedCount > 0) {
+          debugPrint('✅ 古いメモをアーカイブ: ${archivedCount}件');
+          // アーカイブ後、メモリストを再読み込み
+          medicationMemos = await medicationDataPersistence.loadMedicationMemos();
+          paginationManager.setAllMemos(medicationMemos);
+        }
+      } catch (e) {
+        debugPrint('⚠️ アーカイブ処理エラー: $e');
+        // アーカイブエラーは無視して続行
+      }
       await dataSyncManager.saveAllData(
         medicationMemos: medicationMemos,
         medicationMemoStatus: medicationMemoStatus,

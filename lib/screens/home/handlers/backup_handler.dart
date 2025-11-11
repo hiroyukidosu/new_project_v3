@@ -16,12 +16,22 @@ class BackupHandler {
   final Function(String) onShowSnackBar;
   final bool Function() onMountedCheck;
   final Future<Map<String, dynamic>> Function(String) createBackupData;
+  final Function(UniqueKey)? onAlarmTabKeyChanged;
+  final Future<void> Function()? onUpdateMedicineInputsForSelectedDate;
+  final Future<void> Function()? onLoadMemoForSelectedDate;
+  final Future<void> Function()? onCalculateAdherenceStats;
+  final void Function()? onUpdateCalendarMarks;
 
   BackupHandler({
     required this.onDataRestored,
     required this.onShowSnackBar,
     required this.onMountedCheck,
     required this.createBackupData,
+    this.onAlarmTabKeyChanged,
+    this.onUpdateMedicineInputsForSelectedDate,
+    this.onLoadMemoForSelectedDate,
+    this.onCalculateAdherenceStats,
+    this.onUpdateCalendarMarks,
   });
 
   /// 手動バックアップを作成
@@ -232,14 +242,33 @@ class BackupHandler {
         }
       }
 
-      // 親に復元データを通知
-      onDataRestored(restored);
+      // 親に復元データを通知（StateManagerに反映）
+      await onDataRestored(restored);
+      
+      // 復元後のUI更新（コールバックが設定されている場合）
+      if (onMountedCheck()) {
+        // アラームタブキーを更新（再構築のため）
+        onAlarmTabKeyChanged?.call(UniqueKey());
+        
+        // カレンダーと入力を再評価
+        await onUpdateMedicineInputsForSelectedDate?.call();
+        
+        // メモを再読み込み
+        await onLoadMemoForSelectedDate?.call();
+        
+        // 統計の再計算
+        await onCalculateAdherenceStats?.call();
+        
+        // 服用記録の表示を強制更新
+        onUpdateCalendarMarks?.call();
+      }
 
       if (context != null && onMountedCheck()) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('バックアップを復元しました'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
       }

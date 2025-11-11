@@ -3,6 +3,8 @@ import '../../repositories/backup_repository.dart';
 import '../../repositories/medication_repository.dart';
 import '../../repositories/calendar_repository.dart';
 import '../../repositories/alarm_repository.dart';
+import '../../services/daily_memo_service.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 /// バックアップ作成のUseCase
 class CreateBackupUseCase {
@@ -26,6 +28,24 @@ class CreateBackupUseCase {
         return const Error('バックアップ名を入力してください');
       }
       
+      // DailyMemoServiceの全メモを取得
+      final dailyMemos = <String, String>{};
+      try {
+        await DailyMemoService.initialize();
+        if (Hive.isBoxOpen('daily_memos')) {
+          final memoBox = Hive.box<String>('daily_memos');
+          for (final key in memoBox.keys) {
+            final memo = memoBox.get(key as String);
+            if (memo != null && memo.isNotEmpty) {
+              dailyMemos[key as String] = memo;
+            }
+          }
+        }
+      } catch (e) {
+        // DailyMemoServiceの取得エラーは無視（後で復元可能）
+        print('⚠️ DailyMemoService取得エラー: $e');
+      }
+      
       // 全データを収集
       final backupData = {
         'medicationMemos': (await _medicationRepo.getMemos())
@@ -40,6 +60,7 @@ class CreateBackupUseCase {
             .map((date) => date.toIso8601String())
             .toList(),
         'calendarMarks': await _calendarRepo.loadCalendarMarks(),
+        'dailyMemos': dailyMemos, // 日付ベースのメモを追加
         'alarmList': await _alarmRepo.loadAlarmList(),
         'alarmSettings': await _alarmRepo.loadAlarmSettings(),
       };

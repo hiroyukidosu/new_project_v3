@@ -103,7 +103,7 @@ mixin BackupDialogMixin<T extends StatefulWidget> on State<T>, BackupCoreMixin<T
                 child: const Text(
                   '⏱ バックアップ間隔\n\n'
                   '・毎日深夜2:00（自動）- フルバックアップ\n'
-                  '・手動保存（任意）- 任意タイミングで保存',
+                  '・手動保存（任意）- 任意タイミングでデータを保存します',
                   style: TextStyle(fontSize: 14),
                 ),
               ),

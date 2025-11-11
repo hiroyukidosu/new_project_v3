@@ -21,6 +21,9 @@ class MedicationDataPersistence {
     'medication_memos_v2',
   ];
 
+  /// 削除されたメモIDのリスト（復元を防ぐため）
+  static const String _deletedMemoIdsKey = 'deleted_medication_memo_ids';
+
   // Monthly-segmented key prefixes
   static const String _dosePrefix = 'dose_status'; // dose_status_YYYY-MM
   static const String _weekdayPrefix = 'weekday_status'; // weekday_status_YYYY-MM
@@ -159,22 +162,54 @@ class MedicationDataPersistence {
     }
   }
 
-  /// Hiveボックスからメモを読み込み（フレーム分散対応）
+  /// Hiveボックスからメモを読み込み（フレーム分散対応、2年分のみ）
+  /// 重要: Hiveが存在する場合は、SharedPreferencesから復元しない（削除された状態を反映）
   Future<List<MedicationMemo>> loadMedicationMemos() async {
     try {
-      // 1. Hiveから読み込み
+      // 1. Hiveから読み込み（常にHiveを優先、削除された状態を反映）
+      Box<MedicationMemo>? box;
+      
+      // Hiveボックスを開く（既に開かれている場合は取得）
       if (Hive.isBoxOpen('medication_memos')) {
-        final box = Hive.box<MedicationMemo>('medication_memos');
+        box = Hive.box<MedicationMemo>('medication_memos');
+      } else {
+        // ボックスが開かれていない場合、開いてみる
+        try {
+          box = await Hive.openBox<MedicationMemo>('medication_memos');
+        } catch (e) {
+          // ボックスが存在しない場合（初回起動時）
+          Logger.warning('Hiveボックスが存在しません。初回起動とみなし、SharedPreferencesから復元を試みます');
+          return await _loadFromSharedPreferences();
+        }
+      }
+
+      // Hiveボックスが存在する場合は、Hiveから読み込む（削除された状態を反映）
+      // 2年分のみ読み込む（10年運用時のパフォーマンス最適化）
+      final cutoffDate = DateTime.now().subtract(const Duration(days: 365 * 2));
+      
+      // 削除されたメモIDのリストを取得（念のため二重チェック）
+      final prefs = await SharedPreferences.getInstance();
+      final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+      
+      // フレーム分散で読み込み（大量データの場合に有効）
+      final allValues = box.values;
+      final memos = <MedicationMemo>[];
+      
+      // バッチ処理でフレーム分散
+      const batchSize = 50;
+      int count = 0;
+      int filteredCount = 0;
+      int deletedCount = 0;
+      
+      for (final memo in allValues) {
+        // 削除されたメモIDリストに含まれている場合は除外（二重チェック）
+        if (deletedIds.contains(memo.id)) {
+          deletedCount++;
+          continue;
+        }
         
-        // フレーム分散で読み込み（大量データの場合に有効）
-        final allValues = box.values;
-        final memos = <MedicationMemo>[];
-        
-        // バッチ処理でフレーム分散
-        const batchSize = 50;
-        int count = 0;
-        
-        for (final memo in allValues) {
+        // 2年以内のメモのみ追加
+        if (memo.createdAt.isAfter(cutoffDate)) {
           memos.add(memo);
           count++;
           
@@ -182,16 +217,24 @@ class MedicationDataPersistence {
           if (count % batchSize == 0) {
             await Future.delayed(Duration.zero);
           }
-        }
-        
-        if (memos.isNotEmpty) {
-          Logger.info('Hiveから読み込み成功: ${memos.length}件');
-          return memos;
+        } else {
+          filteredCount++;
         }
       }
-
-      // 2. SharedPreferencesからバックアップ復元
-      return await _loadFromSharedPreferences();
+      
+      // Hiveから読み込めた場合は、そのまま返す（削除されたメモは含まれない）
+      // 空のリストでも返す（削除された状態を反映）
+      // 重要: SharedPreferencesから復元しない（削除された状態を維持）
+      if (deletedCount > 0) {
+        Logger.info('Hiveから読み込み成功: ${memos.length}件（${filteredCount}件をフィルタリング、${deletedCount}件の削除されたメモを除外）');
+      } else {
+        Logger.info('Hiveから読み込み成功: ${memos.length}件（${filteredCount}件をフィルタリング、削除されたメモは含まれない）');
+      }
+      
+      // 新しい順にソート
+      memos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      return memos;
     } catch (e, stackTrace) {
       Logger.error('メモ読み込みエラー', e);
       // Crashlyticsに記録
@@ -201,23 +244,38 @@ class MedicationDataPersistence {
       } catch (_) {
         // Crashlytics記録失敗時は無視
       }
+      // エラー時は空のリストを返す（削除された状態を反映）
       return [];
     }
   }
 
-  /// SharedPreferencesから復元
+  /// SharedPreferencesから復元（削除されたメモは除外）
   Future<List<MedicationMemo>> _loadFromSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // 削除されたメモIDのリストを取得
+    final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+    Logger.debug('削除されたメモID: ${deletedIds.length}件');
     
     for (final key in _backupKeys) {
       try {
         final jsonString = prefs.getString(key);
         if (jsonString != null && jsonString.isNotEmpty) {
           final List<dynamic> memosList = jsonDecode(jsonString);
+          
+          // 削除されたメモを除外
           final memos = memosList
               .map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>))
+              .where((memo) => !deletedIds.contains(memo.id)) // 削除されたメモを除外
               .toList();
-          Logger.info('SharedPreferencesから復元: ${memos.length}件 ($key)');
+          
+          final filteredCount = memosList.length - memos.length;
+          if (filteredCount > 0) {
+            Logger.info('SharedPreferencesから復元: ${memos.length}件（${filteredCount}件の削除されたメモを除外） ($key)');
+          } else {
+            Logger.info('SharedPreferencesから復元: ${memos.length}件 ($key)');
+          }
+          
           return memos;
         }
       } catch (e) {
@@ -239,7 +297,16 @@ class MedicationDataPersistence {
         await box.put(memo.id, memo);
       }
       
-      // 2. SharedPreferencesにバックアップ
+      // 2. 削除IDリストから削除（メモが再作成された場合）
+      final prefs = await SharedPreferences.getInstance();
+      final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+      if (deletedIds.contains(memo.id)) {
+        deletedIds.remove(memo.id);
+        await prefs.setStringList(_deletedMemoIdsKey, deletedIds);
+        Logger.debug('削除IDリストから削除: ${memo.id}（メモが再作成されました）');
+      }
+      
+      // 3. SharedPreferencesにバックアップ
       await _backupToSharedPreferences();
       
       Logger.info('メモ保存完了: ${memo.name}');
@@ -259,6 +326,21 @@ class MedicationDataPersistence {
         }
       }
       
+      // 削除IDリストから削除（メモが再作成された場合）
+      final prefs = await SharedPreferences.getInstance();
+      final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+      bool deletedIdsUpdated = false;
+      for (final memo in memos) {
+        if (deletedIds.contains(memo.id)) {
+          deletedIds.remove(memo.id);
+          deletedIdsUpdated = true;
+        }
+      }
+      if (deletedIdsUpdated) {
+        await prefs.setStringList(_deletedMemoIdsKey, deletedIds);
+        Logger.debug('削除IDリストから削除: ${memos.length}件のメモが再作成されました');
+      }
+      
       await _backupToSharedPreferences();
       Logger.info('メモ一括保存完了: ${memos.length}件');
     } catch (e) {
@@ -267,42 +349,145 @@ class MedicationDataPersistence {
     }
   }
 
-  /// メモを削除
+  /// メモを削除（HiveとSharedPreferencesの両方から削除）
+  /// 重要: 削除後に必ずバックアップを更新して、削除された状態を反映
   Future<void> deleteMedicationMemo(String memoId) async {
     try {
+      // 1. Hiveから削除
       if (Hive.isBoxOpen('medication_memos')) {
         final box = Hive.box<MedicationMemo>('medication_memos');
         await box.delete(memoId);
+        Logger.debug('Hiveからメモ削除: $memoId');
       }
       
+      // 2. 削除されたメモIDをSharedPreferencesに記録（復元を防ぐため）
+      final prefs = await SharedPreferences.getInstance();
+      final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+      if (!deletedIds.contains(memoId)) {
+        deletedIds.add(memoId);
+        await prefs.setStringList(_deletedMemoIdsKey, deletedIds);
+        Logger.debug('削除されたメモIDを記録: $memoId');
+      }
+      
+      // 3. SharedPreferencesのバックアップを更新（削除されたメモは含まれない）
+      // 重要: 削除後に必ずバックアップを更新して、削除された状態を反映
+      // これにより、次回起動時に削除されたメモが復元されない
       await _backupToSharedPreferences();
-      Logger.info('メモ削除完了: $memoId');
+      
+      Logger.info('メモ削除完了: $memoId（HiveとSharedPreferencesの両方から削除、削除IDを記録）');
     } catch (e) {
       Logger.error('メモ削除エラー', e);
       rethrow;
     }
   }
 
+  /// 古いメモをアーカイブ（2年以上前のメモをアーカイブボックスに移動）
+  Future<int> archiveOldMemos({int keepYears = 2}) async {
+    try {
+      if (!Hive.isBoxOpen('medication_memos')) {
+        Logger.warning('medication_memosボックスが開かれていません');
+        return 0;
+      }
+
+      final box = Hive.box<MedicationMemo>('medication_memos');
+      final cutoffDate = DateTime.now().subtract(Duration(days: 365 * keepYears));
+      
+      // アーカイブボックスを開く（存在しない場合は作成）
+      Box<MedicationMemo> archiveBox;
+      if (Hive.isBoxOpen('medication_memos_archive')) {
+        archiveBox = Hive.box<MedicationMemo>('medication_memos_archive');
+      } else {
+        archiveBox = await Hive.openBox<MedicationMemo>('medication_memos_archive');
+      }
+
+      final oldMemos = box.values
+          .where((memo) => memo.createdAt.isBefore(cutoffDate))
+          .toList();
+
+      int archivedCount = 0;
+      for (final memo in oldMemos) {
+        try {
+          // アーカイブボックスに移動
+          await archiveBox.put(memo.id, memo);
+          // 元のボックスから削除
+          await box.delete(memo.id);
+          archivedCount++;
+        } catch (e) {
+          Logger.error('メモアーカイブエラー: ${memo.id}', e);
+        }
+      }
+
+      if (archivedCount > 0) {
+        // アーカイブ後にバックアップを更新
+        await _backupToSharedPreferences();
+        Logger.info('古いメモをアーカイブ完了: ${archivedCount}件（${keepYears}年以上前）');
+      }
+
+      return archivedCount;
+    } catch (e) {
+      Logger.error('古いメモアーカイブエラー', e);
+      return 0;
+    }
+  }
+
+  /// アーカイブからメモを復元（必要に応じて）
+  Future<List<MedicationMemo>> loadArchivedMemos({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      if (!Hive.isBoxOpen('medication_memos_archive')) {
+        return [];
+      }
+
+      final archiveBox = Hive.box<MedicationMemo>('medication_memos_archive');
+      final memos = archiveBox.values.where((memo) {
+        if (startDate != null && memo.createdAt.isBefore(startDate)) return false;
+        if (endDate != null && memo.createdAt.isAfter(endDate)) return false;
+        return true;
+      }).toList();
+
+      memos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      Logger.info('アーカイブから読み込み: ${memos.length}件');
+      return memos;
+    } catch (e) {
+      Logger.error('アーカイブ読み込みエラー', e);
+      return [];
+    }
+  }
+
   /// SharedPreferencesへのバックアップ保存
+  /// 重要: 削除されたメモは含まれない（Hiveの現在の状態を反映）
   Future<void> _backupToSharedPreferences() async {
     try {
-      if (!Hive.isBoxOpen('medication_memos')) return;
+      if (!Hive.isBoxOpen('medication_memos')) {
+        Logger.warning('medication_memosボックスが開かれていません。バックアップをスキップします');
+        return;
+      }
       
       final box = Hive.box<MedicationMemo>('medication_memos');
+      // 重要: Hiveの現在の状態をそのまま保存（削除されたメモは含まれない）
       final memos = box.values.toList();
       
-      if (memos.isEmpty) return;
-      
+      // 空のリストでも保存する（削除された状態を反映するため）
       final prefs = await SharedPreferences.getInstance();
-      final memosJson = memos.map((memo) => memo.toJson()).toList();
+      
+      // 削除されたメモIDのリストも取得（念のため）
+      final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
+      
+      // 削除されたメモを除外（二重チェック）
+      final validMemos = memos.where((memo) => !deletedIds.contains(memo.id)).toList();
+      
+      final memosJson = validMemos.map((memo) => memo.toJson()).toList();
       final jsonString = jsonEncode(memosJson);
       
       // 複数キーに保存（3重バックアップ）
+      // 重要: 削除されたメモは含まれない（Hiveの現在の状態を反映）
       await Future.wait(_backupKeys.map((key) => 
         prefs.setString(key, jsonString)
       ));
       
-      Logger.debug('バックアップ保存完了: ${memos.length}件');
+      Logger.debug('バックアップ保存完了: ${validMemos.length}件（削除されたメモは含まれない、削除IDリスト: ${deletedIds.length}件）');
     } catch (e) {
       Logger.error('バックアップ保存エラー', e);
     }

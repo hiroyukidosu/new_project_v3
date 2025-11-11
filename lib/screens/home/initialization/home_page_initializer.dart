@@ -2,7 +2,11 @@
 // ホームページの初期化ロジックを集約
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../state/home_page_state_manager.dart';
 import '../persistence/medication_data_persistence.dart';
 import '../persistence/alarm_data_persistence.dart';
@@ -26,6 +30,10 @@ import '../handlers/memo_event_handler.dart';
 import '../business/pagination_manager.dart';
 import 'package:intl/intl.dart';
 import '../handlers/home_page_event_handler.dart';
+import '../../../models/medication_info.dart';
+import '../../../models/medication_memo.dart';
+import '../../../models/medicine_data.dart';
+import '../../../services/daily_memo_service.dart';
 import 'home_page_dependencies.dart';
 
 /// ホームページの初期化を管理するクラス
@@ -62,8 +70,169 @@ class HomePageInitializer {
     final backupHandler = BackupHandler(
       onMountedCheck: onMountedCheck,
       onShowSnackBar: onShowSnackBar,
-      onDataRestored: (restored) {
-        // データ復元後の処理は各メソッド内で実行済み
+      onAlarmTabKeyChanged: onAlarmTabKeyChanged,
+      onUpdateMedicineInputsForSelectedDate: onUpdateMedicineInputsForSelectedDate,
+      onLoadMemoForSelectedDate: onLoadMemoForSelectedDate,
+      onCalculateAdherenceStats: onCalculateAdherenceStats,
+      onUpdateCalendarMarks: onUpdateCalendarMarks,
+      onDataRestored: (restored) async {
+        // StateManagerにデータを反映
+        try {
+          // メモを復元（服用メモ一覧の変更・作成・削除を反映）
+          // RestoreBackupUseCaseで既にHiveに保存されているので、MedicationDataPersistenceから再読み込み
+          try {
+            // MedicationDataPersistenceから最新のメモを取得（復元後の状態を反映）
+            // 少し待機してから読み込む（Hiveの書き込み完了を待つ）
+            await Future.delayed(const Duration(milliseconds: 100));
+            final restoredMemos = await medicationDataPersistence.loadMedicationMemos();
+            
+            // StateManagerに反映
+            stateManager.medicationMemos = restoredMemos;
+            
+            // PaginationManagerにも反映（メモ一覧の表示に必要）
+            if (stateManager.paginationManager != null) {
+              stateManager.paginationManager!.setAllMemos(stateManager.medicationMemos);
+            }
+            
+            debugPrint('✅ 服用メモ復元完了: ${stateManager.medicationMemos.length}件（MedicationDataPersistenceから再読み込み）');
+          } catch (e) {
+            debugPrint('⚠️ 服用メモ復元エラー: $e');
+            // フォールバック: バックアップデータから直接復元
+            final restoredMemos = restored['restoredMemos'] as List? ?? [];
+            final memosList = restoredMemos.map((json) {
+              return MedicationMemo.fromJson(json as Map<String, dynamic>);
+            }).toList();
+            
+            stateManager.medicationMemos = memosList;
+            await medicationDataPersistence.saveMedicationMemos(stateManager.medicationMemos);
+            
+            if (stateManager.paginationManager != null) {
+              stateManager.paginationManager!.setAllMemos(stateManager.medicationMemos);
+            }
+            
+            debugPrint('✅ 服用メモ復元完了（フォールバック）: ${stateManager.medicationMemos.length}件');
+          }
+          
+          // medicinesを復元（MedicineData）
+          final restoredMedicines = restored['restoredMedicines'] as List? ?? [];
+          if (restoredMedicines.isNotEmpty) {
+            try {
+              stateManager.medicines = restoredMedicines.map((json) {
+                return MedicineData.fromJson(json as Map<String, dynamic>);
+              }).toList();
+            } catch (e) {
+              debugPrint('⚠️ medicines復元エラー: $e');
+            }
+          }
+          
+          // 追加された薬を復元
+          final restoredAddedMeds = restored['restoredAddedMedications'] as List? ?? [];
+          stateManager.addedMedications = restoredAddedMeds.cast<Map<String, dynamic>>();
+          
+          // メディケーションデータを復元
+          final restoredMedicationData = restored['restoredMedicationData'] as Map<String, Map<String, dynamic>>? ?? {};
+          stateManager.medicationData = restoredMedicationData.map((dateKey, dayData) {
+            return MapEntry(
+              dateKey,
+              dayData.map((medKey, medInfo) {
+                return MapEntry(medKey, MedicationInfo.fromJson(medInfo));
+              }),
+            );
+          });
+          
+          // 曜日メディケーションステータスを復元
+          final restoredWeekdayStatus = restored['restoredWeekdayStatus'] as Map<String, Map<String, bool>>? ?? {};
+          stateManager.weekdayMedicationStatus = restoredWeekdayStatus;
+          
+          // 服用ステータスを復元
+          final restoredWeekdayDoseStatus = restored['restoredWeekdayDoseStatus'] as Map<String, Map<String, Map<int, bool>>>? ?? {};
+          stateManager.weekdayMedicationDoseStatus = restoredWeekdayDoseStatus;
+          
+          // メモステータスを復元
+          final restoredMemoStatus = restored['restoredMemoStatus'] as Map<String, bool>? ?? {};
+          stateManager.medicationMemoStatus = restoredMemoStatus;
+          
+          // 日付色を復元
+          final restoredDayColors = restored['restoredDayColors'] as Map<String, Color>? ?? {};
+          stateManager.dayColors = restoredDayColors;
+          
+          // アラームリストを復元
+          final restoredAlarmList = restored['restoredAlarmList'] as List? ?? [];
+          stateManager.alarmList = restoredAlarmList.cast<Map<String, dynamic>>();
+          
+          // アラーム設定を復元
+          final restoredAlarmSettings = restored['restoredAlarmSettings'] as Map<String, dynamic>? ?? {};
+          stateManager.alarmSettings = restoredAlarmSettings;
+          
+          // 遵守率を復元
+          final restoredAdherenceRates = restored['restoredAdherenceRates'] as Map<String, double>? ?? {};
+          stateManager.adherenceRates = restoredAdherenceRates;
+          
+          // Notifierを更新
+          stateManager.notifiers.dayColorsNotifier.value = Map<String, Color>.from(stateManager.dayColors);
+          
+          // メモフィールドを再同期（選択日のメモを読み込む）
+          if (stateManager.selectedDay != null) {
+            final dateStr = DateFormat('yyyy-MM-dd').format(stateManager.selectedDay!);
+            try {
+              final memo = await DailyMemoService.getMemo(dateStr);
+              stateManager.memoController.text = memo;
+              stateManager.notifiers.memoTextNotifier.value = memo;
+            } catch (e) {
+              debugPrint('⚠️ メモ読み込みエラー: $e');
+            }
+          }
+          
+          // データを永続化（メモは既に保存済み）
+          
+          // メモステータスを保存
+          await medicationDataPersistence.saveMedicationMemoStatus(stateManager.medicationMemoStatus);
+          
+          // 曜日ステータスを保存
+          await medicationDataPersistence.saveWeekdayMedicationStatus(stateManager.weekdayMedicationStatus);
+          
+          // 服用ステータスを保存
+          await medicationDataPersistence.saveMedicationDoseStatus(stateManager.weekdayMedicationDoseStatus);
+          
+          // アラームデータを永続化
+          await alarmDataPersistence.saveAlarmData(stateManager.alarmList);
+          
+          // アラーム設定はSharedPreferencesに直接保存
+          if (stateManager.alarmSettings.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('alarm_settings', jsonEncode(stateManager.alarmSettings));
+          }
+          
+          // UIを完全に更新
+          if (onMountedCheck()) {
+            // アラームタブキーを更新（再構築のため）
+            onAlarmTabKeyChanged(UniqueKey());
+            
+            // カレンダーと入力を再評価
+            await onUpdateMedicineInputsForSelectedDate();
+            await onLoadMemoForSelectedDate();
+            
+            // 統計の再計算
+            await onCalculateAdherenceStats();
+            
+            // 服用記録の表示を強制更新
+            onUpdateCalendarMarks();
+            
+            // 状態変更を通知
+            onStateChanged();
+          }
+          
+          debugPrint('✅ バックアップ復元完了: メモ${stateManager.medicationMemos.length}件、アラーム${stateManager.alarmList.length}件');
+        } catch (e, stackTrace) {
+          debugPrint('❌ バックアップ復元エラー: $e');
+          // Crashlyticsに記録
+          try {
+            await FirebaseCrashlytics.instance.log('バックアップ復元エラー: onDataRestored');
+            await FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+          } catch (_) {
+            // Crashlytics記録失敗時は無視
+          }
+        }
       },
       createBackupData: (label) async {
         if (stateManager.isInitialized) {

@@ -4,6 +4,7 @@ import '../../repositories/medication_repository.dart';
 import '../../repositories/calendar_repository.dart';
 import '../../repositories/alarm_repository.dart';
 import '../../models/medication_memo.dart';
+import '../../services/daily_memo_service.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 
@@ -30,18 +31,36 @@ class RestoreBackupUseCase {
         return const Error('バックアップが見つかりません');
       }
       
-      // メディケーションデータの復元
+      // メディケーションデータの復元（全削除→全保存で確実に復元）
       if (backupData.containsKey('medicationMemos')) {
         final memosList = backupData['medicationMemos'] as List<dynamic>;
+        
+        // 既存のメモを全て削除（変更・削除を反映するため）
+        try {
+          final existingMemos = await _medicationRepo.getMemos(forceRefresh: true);
+          for (final existingMemo in existingMemos) {
+            await _medicationRepo.deleteMemo(existingMemo.id);
+          }
+        } catch (e) {
+          // 削除エラーは無視して続行
+          print('⚠️ 既存メモ削除エラー: $e');
+        }
+        
+        // バックアップからメモを復元（作成・変更を反映）
         for (final memoJson in memosList) {
           try {
             final memo = MedicationMemo.fromJson(memoJson as Map<String, dynamic>);
             await _medicationRepo.saveMemo(memo);
           } catch (e) {
             // 個別のメモの復元エラーは無視して続行
+            print('⚠️ メモ復元エラー: $e');
             continue;
           }
         }
+        
+        // キャッシュをクリアして再読み込みを強制
+        _medicationRepo.clearCache();
+        print('✅ 服用メモ復元完了: ${memosList.length}件（既存メモを削除してから復元）');
       }
       
       // メモステータスの復元
@@ -87,6 +106,24 @@ class RestoreBackupUseCase {
       if (backupData.containsKey('calendarMarks')) {
         final marks = backupData['calendarMarks'] as Map<String, dynamic>;
         await _calendarRepo.saveCalendarMarks(marks);
+      }
+      
+      // DailyMemoServiceのメモを復元
+      if (backupData.containsKey('dailyMemos')) {
+        try {
+          final dailyMemos = backupData['dailyMemos'] as Map<String, dynamic>;
+          await DailyMemoService.initialize();
+          for (final entry in dailyMemos.entries) {
+            final dateStr = entry.key;
+            final memo = entry.value as String;
+            if (memo.isNotEmpty) {
+              await DailyMemoService.setMemo(dateStr, memo);
+            }
+          }
+        } catch (e) {
+          // DailyMemoServiceの復元エラーは無視（後で再試行可能）
+          print('⚠️ DailyMemoService復元エラー: $e');
+        }
       }
       
       // アラームデータの復元

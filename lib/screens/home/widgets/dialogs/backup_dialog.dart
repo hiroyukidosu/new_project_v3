@@ -28,7 +28,7 @@ class BackupDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '手動保存 - 任意タイミングで保存',
+            '任意タイミングでデータを保存します',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

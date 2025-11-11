@@ -2,11 +2,13 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../models/medication_memo.dart';
 import '../../models/medicine_data.dart';
 import '../../models/medication_info.dart';
 import '../../services/backup_utils.dart';
 import '../../services/backup_history_service.dart';
+import '../../services/daily_memo_service.dart';
 
 class HomePageBackupHelper {
   static Future<Map<String, dynamic>> createSafeBackupData({
@@ -23,6 +25,24 @@ class HomePageBackupHelper {
     required Map<String, dynamic> alarmSettings,
     required Map<String, double> adherenceRates,
   }) async {
+    // DailyMemoServiceの全メモを取得
+    final dailyMemos = <String, String>{};
+    try {
+      await DailyMemoService.initialize();
+      if (Hive.isBoxOpen('daily_memos')) {
+        final memoBox = Hive.box<String>('daily_memos');
+        for (final key in memoBox.keys) {
+          final memo = memoBox.get(key as String);
+          if (memo != null && memo.isNotEmpty) {
+            dailyMemos[key as String] = memo;
+          }
+        }
+      }
+    } catch (e) {
+      // DailyMemoServiceの取得エラーは無視（後で復元可能）
+      debugPrint('⚠️ DailyMemoService取得エラー: $e');
+    }
+    
     return {
       'name': backupName,
       'createdAt': DateTime.now().toIso8601String(),
@@ -64,6 +84,7 @@ class HomePageBackupHelper {
       }),
       'medicationMemoStatus': medicationMemoStatus,
       'dayColors': dayColors.map((key, value) => MapEntry(key, value.value)),
+      'dailyMemos': dailyMemos, // 日付ベースのメモを追加
       'alarmList': alarmList.map((alarm) => {
         'name': alarm['name']?.toString(),
         'time': alarm['time']?.toString(),
@@ -117,6 +138,25 @@ class HomePageBackupHelper {
     final version = backupData['version'] as String?;
     if (version == null) {
       debugPrint('警告: バックアップバージョン情報がありません');
+    }
+    
+    // DailyMemoServiceのメモを復元
+    if (backupData.containsKey('dailyMemos')) {
+      try {
+        final dailyMemos = backupData['dailyMemos'] as Map<String, dynamic>;
+        await DailyMemoService.initialize();
+        for (final entry in dailyMemos.entries) {
+          final dateStr = entry.key;
+          final memo = entry.value as String;
+          if (memo.isNotEmpty) {
+            await DailyMemoService.setMemo(dateStr, memo);
+          }
+        }
+        debugPrint('✅ DailyMemoService復元完了: ${dailyMemos.length}件');
+      } catch (e) {
+        // DailyMemoServiceの復元エラーは無視（後で再試行可能）
+        debugPrint('⚠️ DailyMemoService復元エラー: $e');
+      }
     }
     
     return {
