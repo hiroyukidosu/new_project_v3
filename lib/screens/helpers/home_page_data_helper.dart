@@ -95,8 +95,11 @@ class HomePageDataHelper {
       for (final entry in dayColors.entries) {
         colorsJson[entry.key] = entry.value.value;
       }
-      await prefs.setString('day_colors', jsonEncode(colorsJson));
-      await prefs.setString('day_colors_backup', jsonEncode(colorsJson));
+      final jsonString = jsonEncode(colorsJson);
+      // 複数のキーに保存（互換性のため）
+      await prefs.setString('day_colors', jsonString);
+      await prefs.setString('day_colors_backup', jsonString);
+      await prefs.setString('day_colors_v2', jsonString);
     } catch (e) {
       // エラー処理
     }
@@ -106,14 +109,23 @@ class HomePageDataHelper {
     try {
       final prefs = await SharedPreferences.getInstance();
       String? colorsStr;
-      final keys = ['day_colors', 'day_colors_backup'];
+      // 複数のキーから読み込みを試行（互換性のため）
+      final keys = ['day_colors', 'day_colors_backup', 'day_colors_v2'];
       for (final key in keys) {
         colorsStr = prefs.getString(key);
         if (colorsStr != null && colorsStr.isNotEmpty) break;
       }
       if (colorsStr != null && colorsStr.isNotEmpty) {
         final decoded = jsonDecode(colorsStr) as Map<String, dynamic>;
-        return decoded.map((key, value) => MapEntry(key, Color(value)));
+        return decoded.map((key, value) {
+          final colorInt = value is int 
+              ? value 
+              : int.tryParse(value.toString());
+          if (colorInt != null) {
+            return MapEntry(key, Color(colorInt));
+          }
+          return MapEntry(key, Colors.transparent);
+        });
       }
     } catch (e) {
       // エラー処理

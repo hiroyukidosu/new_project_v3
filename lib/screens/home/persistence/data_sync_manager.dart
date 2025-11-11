@@ -260,15 +260,20 @@ class DataSyncManager {
   Future<void> _saveCalendarMarks(Map<String, Color> dayColors) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final colorsJson = <String, String>{};
+      final colorsJson = <String, dynamic>{};
 
       dayColors.forEach((date, color) {
-        colorsJson[date] = color.value.toString();
+        colorsJson[date] = color.value;
       });
 
-      await prefs.setString('day_colors_v2', jsonEncode(colorsJson));
+      final jsonString = jsonEncode(colorsJson);
       
-      Logger.info('カレンダーマーク保存完了');
+      // 複数のキーに保存（互換性のため）
+      await prefs.setString('day_colors', jsonString);
+      await prefs.setString('day_colors_backup', jsonString);
+      await prefs.setString('day_colors_v2', jsonString);
+      
+      Logger.info('カレンダーマーク保存完了: ${dayColors.length}件');
     } catch (e) {
       Logger.error('カレンダーマーク保存エラー', e);
     }
@@ -278,21 +283,35 @@ class DataSyncManager {
   Future<Map<String, Color>> _loadCalendarMarks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString('day_colors_v2');
+      
+      // 複数のキーから読み込みを試行（互換性のため）
+      String? jsonString;
+      final keys = ['day_colors', 'day_colors_backup', 'day_colors_v2'];
+      for (final key in keys) {
+        jsonString = prefs.getString(key);
+        if (jsonString != null && jsonString.isNotEmpty) {
+          break;
+        }
+      }
 
-      if (jsonString == null) return {};
+      if (jsonString == null || jsonString.isEmpty) {
+        Logger.info('カレンダーマーク読み込み完了: データなし');
+        return {};
+      }
 
       final colorsJson = jsonDecode(jsonString) as Map<String, dynamic>;
       final dayColors = <String, Color>{};
 
       colorsJson.forEach((date, colorValue) {
-        final colorInt = int.tryParse(colorValue.toString());
+        final colorInt = colorValue is int 
+            ? colorValue 
+            : int.tryParse(colorValue.toString());
         if (colorInt != null) {
           dayColors[date] = Color(colorInt);
         }
       });
 
-      Logger.info('カレンダーマーク読み込み完了');
+      Logger.info('カレンダーマーク読み込み完了: ${dayColors.length}件');
       return dayColors;
     } catch (e) {
       Logger.error('カレンダーマーク読み込みエラー', e);
