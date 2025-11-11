@@ -5,8 +5,10 @@ import '../../repositories/calendar_repository.dart';
 import '../../repositories/alarm_repository.dart';
 import '../../models/medication_memo.dart';
 import '../../services/daily_memo_service.dart';
+import '../../screens/home/persistence/medication_data_persistence.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// バックアップ復元のUseCase
 class RestoreBackupUseCase {
@@ -36,11 +38,40 @@ class RestoreBackupUseCase {
         final memosList = backupData['medicationMemos'] as List<dynamic>;
         
         // 既存のメモを全て削除（変更・削除を反映するため）
+        // 重要: MedicationDataPersistenceを使って削除IDリストに記録
         try {
           final existingMemos = await _medicationRepo.getMemos(forceRefresh: true);
+          
+          // 削除IDリストを取得
+          final prefs = await SharedPreferences.getInstance();
+          final deletedIdsKey = 'deleted_medication_memo_ids';
+          final deletedIds = prefs.getStringList(deletedIdsKey) ?? <String>[];
+          
+          // バックアップに含まれていない既存メモを削除IDリストに追加
+          final backupMemoIds = memosList
+              .map((json) => (json as Map<String, dynamic>)['id'] as String)
+              .toSet();
+          
           for (final existingMemo in existingMemos) {
-            await _medicationRepo.deleteMemo(existingMemo.id);
+            // バックアップに含まれていないメモは削除されたとみなす
+            if (!backupMemoIds.contains(existingMemo.id)) {
+              if (!deletedIds.contains(existingMemo.id)) {
+                deletedIds.add(existingMemo.id);
+              }
+              // Hiveからも削除
+              await _medicationRepo.deleteMemo(existingMemo.id);
+            }
           }
+          
+          // 削除IDリストを保存
+          await prefs.setStringList(deletedIdsKey, deletedIds);
+          
+          // バックアップに含まれているメモは削除IDリストから削除（復元されるため）
+          for (final memoId in backupMemoIds) {
+            deletedIds.remove(memoId);
+          }
+          await prefs.setStringList(deletedIdsKey, deletedIds);
+          
         } catch (e) {
           // 削除エラーは無視して続行
           print('⚠️ 既存メモ削除エラー: $e');
@@ -58,9 +89,20 @@ class RestoreBackupUseCase {
           }
         }
         
+        // バックアップを更新（削除IDリストを反映）
+        // MedicationDataPersistenceのバックアップ更新を呼ぶ
+        try {
+          final medicationDataPersistence = MedicationDataPersistence();
+          await medicationDataPersistence.saveMedicationMemos(
+            memosList.map((json) => MedicationMemo.fromJson(json as Map<String, dynamic>)).toList()
+          );
+        } catch (e) {
+          print('⚠️ バックアップ更新エラー: $e');
+        }
+        
         // キャッシュをクリアして再読み込みを強制
         _medicationRepo.clearCache();
-        print('✅ 服用メモ復元完了: ${memosList.length}件（既存メモを削除してから復元）');
+        print('✅ 服用メモ復元完了: ${memosList.length}件（既存メモを削除してから復元、削除IDリストを更新）');
       }
       
       // メモステータスの復元

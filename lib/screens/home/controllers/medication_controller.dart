@@ -154,7 +154,7 @@ class MedicationController {
 
   /// バックアップ付きメモ削除
   Future<void> _deleteMedicationMemoWithBackup(String memoId) async {
-    // 実装は既存のロジックに従う
+    // 重要: MedicationDataPersistenceを使って削除（削除IDリストに記録される）
     await stateManager.memoEventHandler.deleteMemo(
       memoId,
       stateManager.medicationMemos.firstWhere(
@@ -167,7 +167,11 @@ class MedicationController {
         ),
       ),
       stateManager.medicationMemos,
-      (id) async {},
+      (id) async {
+        // 重要: MedicationDataPersistence.deleteMedicationMemo()を呼ぶ
+        // これにより、削除IDリストに記録され、バックアップも更新される
+        await stateManager.medicationDataPersistence.deleteMedicationMemo(id);
+      },
       () async => await stateManager.saveAllData(),
     );
   }

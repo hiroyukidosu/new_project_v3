@@ -150,10 +150,10 @@ class MemoEventHandler {
         );
       await onSaveSnapshotBeforeChange('メモ削除_${memo.name}');
 
-      // メモを削除
+      // メモを削除（重要: このコールバックでMedicationDataPersistence.deleteMedicationMemo()が呼ばれる）
       await deleteMedicationMemoWithBackup(memoId);
 
-      // コールバックで親に通知
+      // コールバックで親に通知（状態を更新）
       onMemoDeleted(memoId);
 
       // データを保存

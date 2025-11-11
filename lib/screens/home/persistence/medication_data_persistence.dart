@@ -191,7 +191,29 @@ class MedicationDataPersistence {
       final prefs = await SharedPreferences.getInstance();
       final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
       
+      // 削除IDリストに含まれているメモをHiveから物理的に削除（確実に削除するため）
+      // 重要: allValuesを取得する前に削除する（削除されたメモが含まれないようにする）
+      if (deletedIds.isNotEmpty) {
+        int physicallyDeletedCount = 0;
+        for (final deletedId in deletedIds) {
+          try {
+            if (box.containsKey(deletedId)) {
+              await box.delete(deletedId);
+              physicallyDeletedCount++;
+            }
+          } catch (e) {
+            Logger.warning('削除IDリストのメモをHiveから削除エラー: $deletedId - $e');
+          }
+        }
+        if (physicallyDeletedCount > 0) {
+          Logger.info('削除IDリストのメモをHiveから物理的に削除: ${physicallyDeletedCount}件');
+          // 削除後にバックアップを更新（削除された状態を反映）
+          await _backupToSharedPreferences();
+        }
+      }
+      
       // フレーム分散で読み込み（大量データの場合に有効）
+      // 削除IDリストのメモは既に物理的に削除されているため、allValuesには含まれない
       final allValues = box.values;
       final memos = <MedicationMemo>[];
       
@@ -202,9 +224,17 @@ class MedicationDataPersistence {
       int deletedCount = 0;
       
       for (final memo in allValues) {
-        // 削除されたメモIDリストに含まれている場合は除外（二重チェック）
+        // 削除されたメモIDリストに含まれている場合は除外（念のため二重チェック）
+        // 既に物理的に削除されているはずだが、念のためチェック
         if (deletedIds.contains(memo.id)) {
           deletedCount++;
+          // 念のため、まだHiveに残っている場合は削除（通常は発生しない）
+          try {
+            await box.delete(memo.id);
+            Logger.warning('削除IDリストのメモがまだHiveに残っていたため削除: ${memo.id}');
+          } catch (_) {
+            // 削除エラーは無視
+          }
           continue;
         }
         
@@ -250,6 +280,7 @@ class MedicationDataPersistence {
   }
 
   /// SharedPreferencesから復元（削除されたメモは除外）
+  /// 重要: このメソッドは初回起動時のみ呼ばれる（Hiveが存在しない場合）
   Future<List<MedicationMemo>> _loadFromSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -274,6 +305,15 @@ class MedicationDataPersistence {
             Logger.info('SharedPreferencesから復元: ${memos.length}件（${filteredCount}件の削除されたメモを除外） ($key)');
           } else {
             Logger.info('SharedPreferencesから復元: ${memos.length}件 ($key)');
+          }
+          
+          // 復元したメモをHiveに保存（次回からHiveから読み込むため）
+          if (memos.isNotEmpty && Hive.isBoxOpen('medication_memos')) {
+            final box = Hive.box<MedicationMemo>('medication_memos');
+            for (final memo in memos) {
+              await box.put(memo.id, memo);
+            }
+            Logger.debug('復元したメモをHiveに保存: ${memos.length}件');
           }
           
           return memos;
@@ -353,20 +393,31 @@ class MedicationDataPersistence {
   /// 重要: 削除後に必ずバックアップを更新して、削除された状態を反映
   Future<void> deleteMedicationMemo(String memoId) async {
     try {
-      // 1. Hiveから削除
-      if (Hive.isBoxOpen('medication_memos')) {
-        final box = Hive.box<MedicationMemo>('medication_memos');
-        await box.delete(memoId);
-        Logger.debug('Hiveからメモ削除: $memoId');
-      }
+      Logger.info('🔴 メモ削除開始: $memoId');
       
-      // 2. 削除されたメモIDをSharedPreferencesに記録（復元を防ぐため）
+      // 1. 削除されたメモIDをSharedPreferencesに記録（復元を防ぐため）
+      // 重要: Hiveから削除する前に記録する（確実に記録されるように）
       final prefs = await SharedPreferences.getInstance();
       final deletedIds = prefs.getStringList(_deletedMemoIdsKey) ?? <String>[];
       if (!deletedIds.contains(memoId)) {
         deletedIds.add(memoId);
         await prefs.setStringList(_deletedMemoIdsKey, deletedIds);
-        Logger.debug('削除されたメモIDを記録: $memoId');
+        Logger.info('✅ 削除されたメモIDを記録: $memoId（削除IDリスト: ${deletedIds.length}件）');
+      } else {
+        Logger.debug('削除IDリストに既に記録済み: $memoId');
+      }
+      
+      // 2. Hiveから削除
+      if (Hive.isBoxOpen('medication_memos')) {
+        final box = Hive.box<MedicationMemo>('medication_memos');
+        if (box.containsKey(memoId)) {
+          await box.delete(memoId);
+          Logger.info('✅ Hiveからメモ削除: $memoId');
+        } else {
+          Logger.warning('⚠️ Hiveにメモが存在しません: $memoId');
+        }
+      } else {
+        Logger.warning('⚠️ medication_memosボックスが開かれていません');
       }
       
       // 3. SharedPreferencesのバックアップを更新（削除されたメモは含まれない）
@@ -374,7 +425,7 @@ class MedicationDataPersistence {
       // これにより、次回起動時に削除されたメモが復元されない
       await _backupToSharedPreferences();
       
-      Logger.info('メモ削除完了: $memoId（HiveとSharedPreferencesの両方から削除、削除IDを記録）');
+      Logger.info('✅ メモ削除完了: $memoId（Hiveから削除、削除IDリストに記録、バックアップ更新）');
     } catch (e) {
       Logger.error('メモ削除エラー', e);
       rethrow;
