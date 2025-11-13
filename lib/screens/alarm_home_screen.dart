@@ -102,13 +102,23 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     try {
       final prefs = await StorageService.getSharedPreferences();
       final shouldStop = prefs.getBool('alarm_should_stop') ?? false;
-      if (shouldStop) {
+      final stopTimestamp = prefs.getInt('alarm_stop_timestamp') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      
+      // 停止フラグが設定されていて、5秒以内の停止要求の場合のみ処理（古いフラグを無視）
+      if (shouldStop && (now - stopTimestamp) < 5000) {
         // フラグをリセット
         await prefs.setBool('alarm_should_stop', false);
+        await prefs.remove('alarm_stop_timestamp');
+        
         // アラームを停止
         if (mounted && !_disposed) {
           await _stopAlarm();
         }
+      } else if (shouldStop) {
+        // 古いフラグはクリア（5秒以上経過している）
+        await prefs.setBool('alarm_should_stop', false);
+        await prefs.remove('alarm_stop_timestamp');
       }
     } catch (e) {
       // エラーは無視
@@ -165,14 +175,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   /// 通知タップ時の処理（コミット時の実装に合わせて）
-  void _onNotificationTapped(NotificationResponse response) {
+  Future<void> _onNotificationTapped(NotificationResponse response) async {
     if (!mounted || _disposed) return;
     
-    if (response.actionId == 'stop') {
-      _stopAlarm();
-    } else {
-      // 通知タップ時も停止処理を実行（コミット時の実装に合わせて）
-      _stopAlarm();
+    // 停止アクションまたは通知タップ時は必ずアラームを停止
+    if (response.actionId == 'stop' || response.actionId == null) {
+      await _stopAlarm();
     }
   }
 
@@ -366,10 +374,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   Future<void> _stopAlarm() async {
-    await _alarmService?.stopAlarm(_alarms);
-    setState(() {
-      _isAlarmPlaying = false;
-    });
+    try {
+      // アラームサービスで停止
+      await _alarmService?.stopAlarm(_alarms);
+      
+      // 状態を更新
+      if (mounted && !_disposed) {
+        setState(() {
+          _isAlarmPlaying = false;
+        });
+      }
+    } catch (e) {
+      // エラー時も状態を更新
+      if (mounted && !_disposed) {
+        setState(() {
+          _isAlarmPlaying = false;
+        });
+      }
+    }
   }
 
   @override

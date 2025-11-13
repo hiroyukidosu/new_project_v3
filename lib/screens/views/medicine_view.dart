@@ -46,6 +46,8 @@ class _MedicineViewState extends State<MedicineView> {
 
   void _onMemosChanged() {
     if (mounted) {
+      // メモリストが変更されたときにページネーションを更新
+      widget.stateManager.paginationManager.setAllMemos(widget.stateManager.medicationMemos);
       setState(() {
         // メモリストが変更されたので画面を更新
       });
@@ -100,17 +102,22 @@ class _MedicineViewState extends State<MedicineView> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // ValueListenableBuilderでメモリストの変更を監視
+    // ValueListenableBuilderでメモリストの変更とページネーションの状態を監視
     return ValueListenableBuilder<int>(
       valueListenable: widget.stateManager.notifiers.medicationMemosNotifier,
       builder: (context, _, __) {
-        final memos = widget.stateManager.paginationManager.displayedMemos;
-        final hasMore = widget.stateManager.paginationManager.hasMore;
-        final currentPage = widget.stateManager.paginationManager.currentPage;
-        final totalMemos = widget.stateManager.medicationMemos.length;
-        final totalPages = (totalMemos / widget.stateManager.paginationManager.pageSize).ceil();
-        
-        return _buildContent(context, memos, hasMore, currentPage, totalMemos, totalPages);
+        return ValueListenableBuilder<int>(
+          valueListenable: widget.stateManager.paginationManager.pageNotifier,
+          builder: (context, __, ___) {
+            final memos = widget.stateManager.paginationManager.displayedMemos;
+            final hasMore = widget.stateManager.paginationManager.hasMore;
+            final currentPage = widget.stateManager.paginationManager.currentPage;
+            final totalMemos = widget.stateManager.medicationMemos.length;
+            final totalPages = widget.stateManager.paginationManager.totalPages;
+            
+            return _buildContent(context, memos, hasMore, currentPage, totalMemos, totalPages);
+          },
+        );
       },
     );
   }
@@ -184,7 +191,7 @@ class _MedicineViewState extends State<MedicineView> {
                           ),
                           if (totalPages > 1)
                             Text(
-                              'ページ ${currentPage + 1} / $totalPages',
+                              'ページ $currentPage / $totalPages',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white.withOpacity(0.9),
@@ -249,9 +256,7 @@ class _MedicineViewState extends State<MedicineView> {
                               child: ElevatedButton(
                                 onPressed: () {
                                   widget.stateManager.paginationManager.loadNextPage();
-                                  if (mounted) {
-                                    setState(() {});
-                                  }
+                                  // pageNotifierが自動的に更新されるのでsetStateは不要
                                 },
                                 child: const Text('次のページを読み込む'),
                               ),
@@ -279,24 +284,20 @@ class _MedicineViewState extends State<MedicineView> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.chevron_left),
-                        onPressed: currentPage > 0
+                        onPressed: currentPage > 1
                             ? () {
                                 widget.stateManager.paginationManager.goToPage(currentPage - 1);
-                                if (mounted) {
-                                  setState(() {});
-                                }
+                                // pageNotifierが自動的に更新されるのでsetStateは不要
                               }
                             : null,
                       ),
-                      Text('${currentPage + 1} / $totalPages'),
+                      Text('$currentPage / $totalPages'),
                       IconButton(
                         icon: const Icon(Icons.chevron_right),
                         onPressed: hasMore
                             ? () {
                                 widget.stateManager.paginationManager.loadNextPage();
-                                if (mounted) {
-                                  setState(() {});
-                                }
+                                // pageNotifierが自動的に更新されるのでsetStateは不要
                               }
                             : null,
                       ),

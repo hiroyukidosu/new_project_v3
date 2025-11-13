@@ -13,9 +13,11 @@ import 'storage_service.dart';
 // バックグラウンド通知ハンドラー（トップレベル関数）
 @pragma('vm:entry-point')
 void notificationActionHandler(NotificationResponse response) async {
-  if (response.actionId == 'stop') {
-    // バックグラウンドで停止フラグを設定
+  // 停止アクションまたは通知タップ時は必ずアラームを停止
+  if (response.actionId == 'stop' || response.actionId == null) {
+    // バックグラウンドで停止フラグを設定（アプリがバックグラウンドの時用）
     await _setAlarmStopFlag();
+    
     // 通知をキャンセル
     try {
       final notifications = FlutterLocalNotificationsPlugin();
@@ -52,12 +54,12 @@ Future<void> _setAlarmStopFlag() async {
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
-  static Function(NotificationResponse)? _onNotificationTappedCallback;
+  static Future<void> Function(NotificationResponse)? _onNotificationTappedCallback;
   static Function(String)? _onStopAlarmCallback;
 
   /// 通知を初期化
   static Future<void> initialize(
-    Function(NotificationResponse) onNotificationTapped,
+    Future<void> Function(NotificationResponse) onNotificationTapped,
     Function(String)? onStopAlarm,
   ) async {
     if (_initialized) return;
@@ -121,9 +123,9 @@ class NotificationService {
             // フォアグラウンドでもコールバックを呼び出してアラームを停止（コミットbb37ef5の実装に合わせて）
             try {
               if (_onNotificationTappedCallback != null) {
-                _onNotificationTappedCallback!(response);
+                await _onNotificationTappedCallback!(response);
               } else {
-                onNotificationTapped(response);
+                await onNotificationTapped(response);
               }
             } catch (e, stackTrace) {
               // Crashlyticsに記録
@@ -153,9 +155,9 @@ class NotificationService {
           // コールバックを呼び出す
           try {
             if (_onNotificationTappedCallback != null) {
-              _onNotificationTappedCallback!(response);
+              await _onNotificationTappedCallback!(response);
             } else {
-              onNotificationTapped(response);
+              await onNotificationTapped(response);
             }
           } catch (e, stackTrace) {
             // Crashlyticsに記録

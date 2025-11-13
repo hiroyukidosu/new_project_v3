@@ -557,7 +557,7 @@ class HomePageStateManager {
       }
     } catch (e, stackTrace) {
       // エラーは常にログに出力（本番環境でも重要）
-      Logger.error('遵守率更新エラー', e, stackTrace: stackTrace);
+      Logger.error('遵守率更新エラー', e, stackTrace);
       if (kDebugMode) {
         debugPrint('❌ 遵守率更新エラー: $e');
         debugPrint('スタックトレース: $stackTrace');
@@ -652,6 +652,7 @@ class HomePageStateManager {
     statsScrollController.dispose();
     medicationHistoryScrollController.dispose();
     medicationPageController.dispose();
+    paginationManager.dispose();
     notifiers.dispose();
   }
 }
