@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1074871455961",
+    "project_id": "hiroponapp",
+    "storage_bucket": "hiroponapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1074871455961:android:9ca0a1957f3cee98ceeec8",
+        "android_client_info": {
+          "package_name": "com.example.medication_calendar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBM6Qt8oKxlaEVx4j6m5yv2t3rbQnnkoqg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1074871455961:android:3ec0f5b69b07c4b8ceeec8",
+        "android_client_info": {
+          "package_name": "com.hirochaso.medicationcalendar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBM6Qt8oKxlaEVx4j6m5yv2t3rbQnnkoqg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
